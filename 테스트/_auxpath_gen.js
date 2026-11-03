@@ -74,7 +74,7 @@ let lastAux = { status: '', raw: '', applied: 0 };
   // ── 이 PC의 Claude Code · Codex (v1.15.0) ─────────────────────────────
   // 편집기 생성을 리수 모델 대신 PC에서 켜 둔 다리(tools/cli-bridge)로 보낸다. 플러그인은 샌드박스라 프로세스를
   // 못 띄우므로 HTTP 한 번이 전부다 — Risuai.nativeFetch (리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시,
-  // 웹은 plain fetch 설정을 켜야 localhost에 닿는다. 포켓리스는 불가). RP 채팅·상태 갱신은 건드리지 않는다 —
+  // 웹은 [직접 요청 보내기](usePlainFetch)를 켜야 localhost에 닿는다 — 실험적. 포켓리스는 불가). RP 채팅·상태 갱신은 건드리지 않는다 —
   // callGenLLM만 이 길을 탄다. 다리는 본문을 어디에도 안 남기고, 이쪽도 인증 정보를 모른다.
   const CLI_DEFAULT_URL = 'http://127.0.0.1:5181';
   const cliBase = (url) => String(url || CLI_DEFAULT_URL).trim().replace(/\/+$/, '');
@@ -86,13 +86,21 @@ let lastAux = { status: '', raw: '', applied: 0 };
     try { body = JSON.parse(text); } catch { body = null; }
     return { status: res.status, body, text };
   }
+  // 리수 화면에 "plain fetch"라는 이름은 없다 — 한국어 UI는 고급 설정 → [비권장 설정 보이기]를 켜야 나오는 [직접 요청 보내기] (v1.21.2 실기)
+  const CLI_WEB_PATH = '고급 설정 → [비권장 설정 보이기]를 켜면 나오는 [직접 요청 보내기]';
   const cliErr = (e) => {
     const m = String(e?.message ?? e);
     if (/fetch|network|ECONNREFUSED|refused|load failed|closed|timeout|timed out/i.test(m)) {
-      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat 창이 켜져 있는지, 주소가 맞는지 확인해 주세요. 웹 리수는 설정의 plain fetch를 켜야 닿고, 포켓리스에서는 쓸 수 없어요.`;
+      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat 창이 켜져 있는지, 주소가 맞는지 확인해 주세요. 웹 리수는 ${CLI_WEB_PATH}를 켜야 닿고(브라우저가 로컬 네트워크 접근을 물으면 허용), 포켓리스에서는 쓸 수 없어요.`;
     }
     return m;
   };
+  // 웹 리수가 [직접 요청 보내기]를 안 켜면 nativeFetch는 리수 프록시(Cloudflare)로 가고, 프록시가 127.0.0.1을 대신 부르다 막혀
+  // 403 "error code: 1003"(Cloudflare — IP 직접 접속 불가)이 온다. 다리엔 아무것도 안 닿는다 — 다리는 이 꼴의 답을 안 낸다.
+  // 전엔 "다리가 이상한 답을 했어요 (HTTP 403): error code: 1003"으로 떠 다리를 의심하게 했다 (v1.21.2 실기 — 웹 리수, 다리 창엔 아무 줄도 없음)
+  const cliViaWebProxy = (r) => /^\s*error code:\s*1\d{3}\b/i.test(r.text || '');
+  const CLI_WEB_PROXY_MSG = `웹 리수가 리수 서버를 거쳐 보내서 이 PC의 다리에 못 닿았어요 — ${CLI_WEB_PATH}를 켜고 다시 확인해 주세요. `
+    + '실험적이에요: 리수의 모든 요청이 브라우저에서 바로 나가서 모델에 따라 오류가 날 수 있으니, 다리를 쓸 때만 켜 두세요.';
   // 리수 서버가 대신 접속하는 환경(셀프호스트·RisuBard의 /proxy2, 웹의 리수 프록시)에선 다리에 못 닿은 것이 예외가 아니라
   // 서버의 5xx 응답으로 온다 — {"error":"fetch failed"}(서버 쪽 Node fetch의 ECONNREFUSED). 다리 자신의 오류는 늘 {error:{message}}
   // 객체라 문자열 error로 가른다. 전엔 이게 "다리가 이상한 답을 했어요 (HTTP 500)"로 떠 다리를 의심하게 했다 (v1.20.2 실기 — RisuBard에서 다리를 안 켠 채 확인)
@@ -104,6 +112,7 @@ let lastAux = { status: '', raw: '', applied: 0 };
     try {
       const r = await cliFetch(cliBase(url) + '/health?refresh=1', { method: 'GET', headers: {} });
       if (cliUnreached(r)) return { error: cliUnreachedMsg(r) };
+      if (cliViaWebProxy(r)) return { error: CLI_WEB_PROXY_MSG };
       if (!r.body || !r.body.ok) return { error: `다리가 이상한 답을 했어요 (HTTP ${r.status}): ${r.text.slice(0, 80)}` };
       return { ok: true, version: r.body.version, backends: r.body.backends || {},
         models: Array.isArray(r.body.models) ? r.body.models.map((m) => ({ id: m.id, label: m.label || m.id })) : [] };
@@ -118,6 +127,7 @@ let lastAux = { status: '', raw: '', applied: 0 };
       const text = r.body?.choices?.[0]?.message?.content;
       if (r.status === 200 && typeof text === 'string' && text.trim()) return text;
       if (cliUnreached(r)) return { error: `이 PC의 Claude Code·Codex: ${cliUnreachedMsg(r)}` };
+      if (cliViaWebProxy(r)) return { error: `이 PC의 Claude Code·Codex: ${CLI_WEB_PROXY_MSG}` };
       const msg = r.body?.error?.message || r.text.slice(0, 160) || `HTTP ${r.status}`;
       return { error: `이 PC의 Claude Code·Codex: ${msg}` };
     } catch (e) { return { error: `이 PC의 Claude Code·Codex: ${cliErr(e)}` }; }

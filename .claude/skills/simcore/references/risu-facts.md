@@ -378,11 +378,17 @@ alwaysActive를 바꾸는 UI 동작일 뿐(프롬프트 조립엔 폴더 의미 
 
 ---
 
-## ★ nativeFetch · globalFetch와 localhost — 웹 리수는 PC에 못 닿는다 (v1.20.0 ① 다리 실사, RisuAI main 2026-10-14)
+## ★ nativeFetch · globalFetch와 localhost — 웹 리수는 [직접 요청 보내기]를 켜야 PC에 닿는다 (v1.20.0 ① 다리 실사 RisuAI main 2026-10-14 · v1.21.2 실기 2026-11-03)
 
 - `Risuai.nativeFetch(url, init)` (v3, `v3.svelte.ts` → `globalApi.fetchNative`): 블랙리스트는 risuai.xyz·risuai.net·sionyw.com뿐.
-  **Tauri 데스크톱 = 네이티브 `streamed_fetch`** / 노드 셀프호스트 = 서버의 `/proxy2` / **웹 = 리수 프록시 서버를 거친다**
-  (`throughProxy = !isTauri && !isNodeServer && !db.usePlainFetch`) → localhost는 설정 **plain fetch**를 켠 웹에서만 브라우저가 직접 부른다.
+  **Tauri 데스크톱 = 네이티브 `streamed_fetch`** / 노드 셀프호스트 = 서버의 `/proxy2` / **웹 = 리수 프록시 서버(`hubURL/proxy2`)를 거친다**
+  (`throughProxy = !isTauri && !isNodeServer && !db.usePlainFetch`, 2026-11-03 main 그대로) → localhost는 `usePlainFetch`를 켠 웹에서만 브라우저가 직접 부른다.
+  - **화면 이름**: `usePlainFetch` = 한국어 UI **직접 요청 보내기** (`advancedSettingsData.ts` adv.plainFetch, labelKey `forcePlainFetch`). 고급 설정에서
+    **비권장 설정 보이기**(`showUnrecommended`)를 켜야 나타난다. "plain fetch"로 안내하면 유저가 못 찾는다 (실기). 리수 도움말: "브라우저 Fetch API를 사용 — CORS 오류가 발생할 수 있습니다".
+    `globalFetch`의 `forcePlainFetch`에도 `db.usePlainFetch`가 들어가 **모델 호출까지 브라우저 직통**이 된다 — 켠 채 두라고 안내하지 말 것.
+  - **꺼진 채 부르면**: 프록시(Cloudflare)가 127.0.0.1을 대신 부르다 **403 본문 `error code: 1003`**(Cloudflare "Direct IP access not allowed") — 예외가 아니라 응답으로 온다. 다리엔 아무것도 안 닿는다(다리 창 무반응). 어댑터 `cliViaWebProxy`가 `error code: 1xxx` 꼴을 잡는다 (v1.21.2).
+  - **켜고 부르면**: 브라우저 직통, Origin `https://risuai.xyz` → 다리 1.1.0 허용 목록 통과, 연결 확인 OK (유저 실기 2026-11-03). 크롬 로컬 네트워크 허용 창이 떴는지는 미기록.
+  - main에 새로 `arg.networkRoute === 'local_network'` 인자가 생겼다 — 이걸 넘기면 웹에선 "웹에서는 사설망 직접 호출 불가" 예외. 어댑터는 안 넘긴다(넘기지 말 것).
   POST·PUT은 body 필수(문자열·Uint8Array), method 기본 POST. 응답은 `factory.ts`가 `Response`를 `{__specialType:'Response', value: body stream, init}`로
   넘겨 게스트에서 `new Response(...)`로 복원 — `res.text()`·`res.json()` 그대로 된다. 본문은 `logFetch` 기본 true라 리수 fetch 로그에 남는다.
 - 리수 모델 시스템이 쓰는 `globalFetch`는 **웹에서 localhost·127.0.0.1·0.0.0.0을 아예 막는다**(`knownHostes` → "This is not allowed due to browser

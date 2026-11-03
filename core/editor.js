@@ -13334,7 +13334,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         : aiGenModel.choice === 'main'
           ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
           : aiGenModel.choice === 'cli'
-            ? '이 PC에서 켜 둔 다리(tools/cli-bridge)를 거쳐 Claude Code·Codex 구독으로 생성해요. 리수 데스크톱·셀프호스트용이고 포켓리스·웹 리수에서는 안 돼요. RP 채팅은 그대로 리수 모델이에요.'
+            ? '이 PC에서 켜 둔 다리(tools/cli-bridge)를 거쳐 Claude Code·Codex 구독으로 생성해요. 리수 데스크톱·셀프호스트용이에요. 웹 리수는 실험적으로 — 고급 설정 → [비권장 설정 보이기]를 켜면 나오는 [직접 요청 보내기]를 켜면 닿아요(리수의 모든 요청이 브라우저에서 바로 나가서 모델에 따라 오류가 날 수 있으니 다리를 쓸 때만). 포켓리스에서는 안 돼요. RP 채팅은 그대로 리수 모델이에요.'
             : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.';
       gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' }, copy));
     };

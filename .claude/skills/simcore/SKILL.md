@@ -139,8 +139,10 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
     행마다 열 폭을 못 바꾼다(넓혀야 하면 `colSpan`뿐). 패널 스타일시트엔 같은 선택자가 **세 번**(옛 팔레트·v1.9 토큰·`@media`) 나오니 테스트는 캐스케이드로 본다 (`test-varchip.js`). 상세: risu-facts.md.
 17. **이 PC 다리(생성 모델 `cli`)를 `callGenLLM` 밖으로 넓히는 것.** 다리는 편집기 생성 전용이다 — 보조 갱신(`callAuxLLM`)·RP는 리수 모델로
     남긴다. 턴마다 프로세스를 띄우면 2~4초씩 붙고, 구독 할당량이 RP에 새고, "개인 PC에서 본인 구독"이라는 전제가 무너진다. 다리는 구독을 앱에 연결하는 것이 아니라 공식 CLI를 터미널처럼 실행한다(노벨 스튜디오·AutoQA와 같은 구조) — 배포 근거 세 조건은 `tools/cli-bridge/README.md`, 깨지 말 것.
-    `Risuai.nativeFetch`는 웹 리수에서 프록시를 거쳐 localhost에 못 가고 리수 모델 시스템의 `globalFetch`는 localhost를 아예 막는다 —
-    안내문에서 "데스크톱·셀프호스트용, 포켓리스·웹 불가"를 빼지 말 것 (risu-facts "nativeFetch · globalFetch와 localhost").
+    `Risuai.nativeFetch`는 웹 리수에서 기본은 리수 프록시(Cloudflare)를 거쳐 localhost에 못 가고(403 `error code: 1003`) 리수 모델 시스템의 `globalFetch`는 localhost를 아예 막는다 —
+    안내문은 "데스크톱·셀프호스트용, **웹은 실험적**(고급 설정 → [비권장 설정 보이기] → [직접 요청 보내기], 리수의 모든 요청이 브라우저 직통이 되니 다리를 쓸 때만), 포켓리스 불가"
+    (v1.21.2 유저 결정 2026-11-03 — 그 전엔 "웹 불가"). 웹을 "그냥 된다"로 올리거나 주의를 빼지 말 것, "plain fetch"라는 이름으로 안내하지 말 것(리수 화면에 없다).
+    상세 risu-facts "nativeFetch · globalFetch와 localhost".
 18. **새 기능을 넣고 `FEATURE_MAP`에 줄을 안 넣는 것.** 편집기 어시스턴트(💬 대화·🗂 정리·✨ 창작)가 아는 기능은 프롬프트에 적힌 것뿐이다 — #3의 모델판이다. 패치 규격서엔 패치 8섹션의 세계만 있어서,
     상점·보드·메신저·의뢰판은 이름도 없었고 모델은 "게시판이라는 기능이 따로 있는 건 아니고"라며 목록 변수로 조립했다 (v1.21.0 실제 모델 시험, 커뮤니티 제보). 🧩 카드도 같은 병이었다(상점 카드가 v0.96 뒤에도 액션 묶음을 시켰다).
     표 한 줄이면 지도(`featureMapLines`)·현황(`featureDigestLines`, 설정 요약은 여기 손으로 한 줄)·규격(`featureRuleLines`)에 실린다. 빠뜨리면 `test-featuremap`이 `UNSUPPORTED_HINT`·`activeSections`와 대조해 잡는다.

@@ -193,6 +193,8 @@ const Risuai = {
   pluginStorage: { getItem: async (k) => (store.has(k) ? store.get(k) : null), setItem: async (k, v) => { store.set(k, v); } },
   nativeFetch: async (url, init) => {
     globalThis.__lastFetch = { url, init };
+    // [직접 요청 보내기]가 꺼진 웹 리수 흉내 — 리수 프록시(Cloudflare)가 127.0.0.1을 대신 부르다 403 "error code: 1003" (v1.21.2 실기). 다리엔 안 닿는다
+    if (globalThis.__viaWebProxy) return new Response('error code: 1003', { status: 403, headers: { 'Content-Type': 'text/plain' } });
     if (!globalThis.__viaProxy) return fetch(url, init);
     // 셀프호스트·RisuBard의 /proxy2 흉내 — 서버가 대신 fetch하다 못 닿으면 예외가 아니라 500 {"error": err.message} (v1.20.2 실기)
     try { return await fetch(url, init); }
@@ -247,6 +249,20 @@ module.exports = { getGenModel, setGenModel, callGenLLM, probeCli, _auxCalls: ()
       const badp = await M.callGenLLM({ system: 'S', messages: [{ role: 'user', content: 'FAIL_LOGIN' }] });
       ck('다리 자신의 오류({error:{message}})는 못 닿음으로 오인하지 않는다', badp && /로그인되어 있지 않아요/.test(badp.error) && !/닿지 못했어요/.test(badp.error), JSON.stringify(badp));
       globalThis.__viaProxy = false;
+      // 웹 리수 + [직접 요청 보내기] 꺼짐 (v1.21.2 실기 — "다리가 이상한 답을 했어요 (HTTP 403): error code: 1003")
+      globalThis.__viaWebProxy = true;
+      const wp = await M.probeCli(B + '/');
+      ck('★ 웹 프록시 — 403 "error code: 1003"은 "리수 서버를 거쳐 못 닿았다" + 메뉴 경로 (다리 탓 "이상한 답" 아님)',
+        wp.error && /리수 서버를 거쳐/.test(wp.error) && /비권장 설정 보이기/.test(wp.error) && /직접 요청 보내기/.test(wp.error) && !/이상한 답/.test(wp.error) && !/plain fetch/.test(wp.error), JSON.stringify(wp));
+      ck('웹 프록시 — 실험 주의(다리를 쓸 때만)도 같이', /실험적/.test(wp.error) && /다리를 쓸 때만/.test(wp.error), wp.error);
+      const wc = await M.callGenLLM('p');
+      ck('웹 프록시 — 생성 호출도 같은 안내', wc && /이 PC의 Claude Code·Codex/.test(wc.error) && /직접 요청 보내기/.test(wc.error), JSON.stringify(wc));
+      globalThis.__viaWebProxy = false;
+      const wok = await M.probeCli(B + '/');
+      ck('켜면(직통) 그대로 ok', wok.ok === true, JSON.stringify(wok).slice(0, 120));
+      await M.setGenModel({ choice: 'cli', cliUrl: 'http://127.0.0.1:1', cliModel: 'claude-code' });
+      const wdown = await M.probeCli('http://127.0.0.1:1');
+      ck('못 닿음 안내의 웹 꼬리 = 메뉴 경로 (plain fetch라는 이름은 리수 화면에 없다)', /직접 요청 보내기/.test(wdown.error) && !/plain fetch/.test(wdown.error), wdown.error);
       try { fs.unlinkSync(out); } catch { }
     }
 
@@ -260,6 +276,8 @@ module.exports = { getGenModel, setGenModel, callGenLLM, probeCli, _auxCalls: ()
       // 창작 runAiGenerate · 💬 runChatSend · 🗂 runChatExtract(v1.16.0) — 셋
       ck('생성 라벨에 cli (세 곳)', (src.match(/aiGenModel\?\.choice === 'cli' \? '이 PC의 Claude Code·Codex'/g) || []).length === 3, String((src.match(/aiGenModel\?\.choice === 'cli' \? '이 PC의 Claude Code·Codex'/g) || []).length));
       ck('안내문: RP는 그대로 리수 모델', src.includes('RP 채팅은 그대로 리수 모델이에요'), '');
+      // v1.21.2 유저 결정 — 웹은 "안 돼요"가 아니라 실험적으로 된다. 포켓리스는 그대로 불가
+      ck('안내문: 웹 리수는 실험적으로 + 메뉴 경로, 포켓리스 불가', src.includes('웹 리수는 실험적으로 — 고급 설정 → [비권장 설정 보이기]를 켜면 나오는 [직접 요청 보내기]를 켜면 닿아요') && src.includes('포켓리스에서는 안 돼요. RP 채팅은') && !src.includes('포켓리스·웹 리수에서는 안 돼요'), '');
       ck('nativeFetch 없는 리수 → 안내', src.includes("이 리수 버전엔 nativeFetch가 없어요"), '');
       // 버전 핀은 test-bundle.js 한 곳에서만 — 여기선 v1.15.0 이상 + 체인지로그 항목만 (v1.15.1에서 핀이 깨졌다)
       ck('버전 1.15.0 이상 + 체인지로그', /\/\/@version (1\.(1[5-9]|[2-9]\d)\.\d+|[2-9]\.\d+\.\d+)/.test(src) && src.includes('// ── v1.15.0 ──'), '');

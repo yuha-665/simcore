@@ -2763,10 +2763,12 @@ S.statusUI.templates = [{
     // 갈림길(§14 길드 허가 등) — 보고서 모달 **밖**에 둔다. 안에 두면 "영지 보고서 확인"을 눌러야 보여 못 보고 지나친다.
     // 걸린 갈림길이 없으면 빈 문자열이라 자리를 안 먹는다.
     + '{choices}'
-    + '<input type="checkbox" id="sim_status_toggle" class="status-checkbox">'
-    + '<label for="sim_status_toggle" class="status-open-label">영지 보고서 확인</label>'
+    // 토글 id에 {uid} (v1.21.3) — 고정 id면 최신 메시지의 [영지 보고서 확인]이 문서에서 처음 만난(맨 위) 메시지의 체크박스를 눌러
+    // 그때 값이 든 옛 보고서가 열렸다 (SimCore 규칙 #4 — 검증기가 이제 경고로 잡는다)
+    + '<input type="checkbox" id="sim_status_toggle-{uid}" class="status-checkbox">'
+    + '<label for="sim_status_toggle-{uid}" class="status-open-label">영지 보고서 확인</label>'
     + '<div class="status-full-overlay"><div class="status-modal-window">'
-    + '<label for="sim_status_toggle" class="status-close-label">×</label>'
+    + '<label for="sim_status_toggle-{uid}" class="status-close-label">×</label>'
     + '<div class="status-header"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div>'
     + '<div class="status-grid">'
     + '<div class="status-section-title">연대기 및 환경</div>'

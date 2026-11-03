@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.21.2
-//@display-name SimCore (시뮬 엔진) v1.21.2 🔌 웹 리수도 다리에 (실험)
+//@version 1.21.3
+//@display-name SimCore (시뮬 엔진) v1.21.3 🧩 채팅에서도 미리보기처럼
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,26 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.21.3 ───────────────────────────────────────────────
+// **🧩 채팅에서도 미리보기처럼.** 커뮤니티 제보(2026-11-03): "상태창 커스텀 HTML을 2열 이상 그리드로 짜면 플러그인 결과창에선 깔끔한데 채팅에선 찌그러진다,
+// 탭 체크박스가 가끔 안 먹는다 — 모바일, 데스크탑 모드도 같다." 제보자는 줄바꿈을 걷고 flex로 바꿔 풀었다. 리수 main 소스(parser.svelte.ts)를 옮긴 흉내 +
+// 진짜 markdown-it 14·@adobe/css-tools 4.4.4·Edge 렌더로 재현했다. 편집기 미리보기는 innerHTML 그대로라 리수가 채팅에서 더 하는 두 번의 읽기를 안 거친다:
+// ① 마크다운(html·breaks, 들여쓴 코드 끔) — HTML 블록은 블록 태그 줄에서 열려 빈 줄에서 끝나고 나머지 줄은 <p>·<br> 문단. 덫이 셋이었다:
+//    태그 안 빈 줄 · 4칸 넘는 들여쓰기(<div>여도 블록을 못 연다 — AI 템플릿의 기본 모양) · <style>로 시작하는 상태창 머리 줄이 문단이라 거기 붙은 템플릿 첫 줄들.
+//    그리드 칸이 <p>에 묶이고 칸 안에 <br>이 끼고, 탭 라벨이 라디오의 형제가 아니게 됐다. 제목 밑 빈 <p> 여백도 이 머리 줄 문단이 낸 것.
+// ② 엄격한 CSS — <style> 하나라도 못 읽으면 블록째 버린다(브라우저는 그 규칙만). 규격서가 "id에 {uid}"라 하니 AI가 CSS에도 #tab1-{uid}를 썼고,
+//    안 바뀐 {uid}의 중괄호 때문에 상태창 CSS 전체(기본 CSS까지)가 사라져 그리드가 한 줄로 쌓이고 라디오가 날것으로 보였다.
+// - [렌더] 블록 태그로 시작하는 템플릿은 상태창을 <div>로 시작하고 <style>을 뒤로 — 통째로 HTML 블록. 태그 안 빈 줄은 빈 주석으로 메우고 블록 태그 줄은 들여쓰기를 뗀다
+//   (validate.chatSafeTemplate). 맨 바깥 빈 줄·글자 줄·글자로 시작하는 템플릿·그룹 모드는 예전 그대로 — 글자 줄은 채팅의 <br>을 믿고 있다.
+// - [렌더] CSS의 {uid} → 그 메시지 번호. 기본 CSS와 제작자 CSS를 <style> 둘로 (statusCssParts) — 제작자 CSS가 틀려도 기본 모양은 남는다.
+// - [검증] 경고 셋 — 리수가 통째로 버리는 CSS({변수}·중첩·따옴표 속 {·닫는 } 빠짐·#{uid}) / @layer·@starting-style 안 규칙(접두가 안 붙어 안 먹음) /
+//   {uid} 없는 input id·label for·라디오 name(다른 메시지 체크박스가 눌린다, 규칙 #4) / 그래도 남는 마크다운 줄. 내장 16·리포 봇 7 오탐 0.
+// - [편집기] 🎨 배치 결과는 빈 줄을 걷고 넣는다. 스킨 결과가 버려질 문법이면 알린다. 규격서 둘에 규칙(빈 줄·중첩 금지, CSS의 {uid}는 된다).
+// - [베리디아] 보고서 토글 id에 {uid} — 최신 메시지의 [영지 보고서 확인]이 맨 위 메시지의 (그때 값) 보고서를 열던 것. 재배포는 안 함.
+// - [호환] 리포 봇 7·내장 16을 옛/새 코어로 리수 경유 비교: 다섯은 그대로, 블록 태그로 시작하는 템플릿 둘(trpg·던전러너)은 제목 밑 빈 <p> 여백만 빠졌다(= 미리보기).
+//   바뀌는 건 태그 안 빈 줄로 일부러 문단을 만들던 템플릿 — 이제 미리보기처럼 그려진다.
+// - [증명] test-chathtml.js.
 //
 // ── v1.21.2 ───────────────────────────────────────────────
 // **🔌 웹 리수도 다리에 (실험).** 유저 실기(2026-11-03, 웹 리수 + 다리 1.1.0): [다시 확인] → "✗ 다리가 이상한 답을 했어요 (HTTP 403): error code: 1003",
@@ -1953,14 +1973,31 @@ function validateSchema(schema) {
     checkTemplateRefs(schema.promptState.checkGuide, '$.promptState.checkGuide', allIds, err);
   }
   const ui = schema.statusUI || {};
+  // 리수 채팅이 한 번 더 읽어서 생기는 고장 (v1.21.3) — 미리보기는 멀쩡해 보이니 여기서 알려 준다
+  const chatCss = (css, p) => {
+    const r = cssChatProblems(css);
+    if (r.kill.length) warn(p, `리수 채팅이 이 CSS를 통째로 버립니다 — ${r.kill.join(' · ')}. 미리보기는 그 규칙만 빼고 그려서 멀쩡해 보입니다`);
+    if (r.dead.length) warn(p, `${r.dead.join('·')} 안의 규칙은 리수 채팅에서 안 먹습니다 (리수가 안쪽 클래스에 접두를 안 붙입니다) — 밖으로 꺼내세요`);
+  };
+  const chatTpl = (tpl, p) => {
+    const md = chatMarkdownLines(String(tpl).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ''));
+    if (md.length) warn(p, `"${md[0].slice(0, 40)}" 줄${md.length > 1 ? ` 외 ${md.length - 1}줄` : ''}이 리수 채팅에서 마크다운 문단(<p>·<br>)이 됩니다 — `
+      + '미리보기엔 안 보이는 줄바꿈·여백이 낍니다. 감싸는 태그를 <div>로 시작하게 하거나, 그 앞 맨 바깥 빈 줄을 지우세요');
+    const ids = fixedIdRefs(tpl);
+    if (ids.length) warn(p, `${ids.slice(0, 3).join(' ')}에 {uid}가 없습니다 — 상태창은 메시지마다 그려져서 다른 메시지의 체크박스·탭이 눌립니다 (예: id="tab1-{uid}")`);
+    chatCss(extractStyleCss(tpl), p);
+  };
+  if (typeof ui.customCSS === 'string' && ui.customCSS.trim()) chatCss(ui.customCSS, '$.statusUI.customCSS');
   if (ui.mode === 'template') {
     // <style> 블록은 CSS이므로 자리표시자 검사에서 제외 (통짜 붙여넣기 지원)
     const stripStyle = (s) => String(s).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
     const conds = Array.isArray(ui.templates) ? ui.templates : [];
     if (!conds.length && (typeof ui.template !== 'string' || !ui.template.trim()))
       err('$.statusUI.template', '템플릿 모드인데 template이 비어 있음');
-    if (typeof ui.template === 'string' && ui.template.trim())
+    if (typeof ui.template === 'string' && ui.template.trim()) {
       checkTemplateRefs(stripStyle(ui.template), '$.statusUI.template', allIds, err);
+      chatTpl(ui.template, '$.statusUI.template');
+    }
 
     const tplIds = new Set();
     let sawUnconditional = false;
@@ -1972,7 +2009,7 @@ function validateSchema(schema) {
       else if (tplIds.has(t.id)) err(p, `중복 템플릿 id: '${t.id}'`);
       else tplIds.add(t.id);
       if (typeof t.template !== 'string' || !t.template.trim()) err(p, 'template이 비어 있음');
-      else checkTemplateRefs(stripStyle(t.template), p + '.template', allIds, err);
+      else { checkTemplateRefs(stripStyle(t.template), p + '.template', allIds, err); chatTpl(t.template, p + '.template'); }
       if (t.when != null && String(t.when).trim()) {
         checkExpr(t.when, p + '.when', allIds, err, { allowRand: false });
         if (sawUnconditional) warn(p, '조건 없는 템플릿보다 뒤에 있어 영원히 안 뜸 — 위로 올리세요');
@@ -3260,9 +3297,130 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
+// ── 리수 채팅이 상태창을 한 번 더 읽는 규칙 (v1.21.3 실사 — RisuAI main parser.svelte.ts 2026-11-03) ──
+// 편집기 미리보기는 innerHTML 그대로라 아래 둘을 안 거친다. 그래서 "미리보기는 멀쩡한데 채팅에서 찌그러진다"가 된다.
+// ① 메시지 HTML은 markdown-it(html·breaks, 들여쓴 코드 끔)을 탄다. HTML 블록은 블록 태그(div·table…)로 시작하는 줄에서 열려 빈 줄에서 끝난다.
+//    그 밖의 줄은 문단이 되어 <p>로 싸이고 줄마다 <br>이 낀다 — 그리드 칸이 <p>에 묶이고 탭 라벨이 라디오의 형제가 아니게 된다.
+//    덫 셋: 빈 줄 · 4칸 넘는 들여쓰기(<div>여도 블록을 못 연다) · 상태창 머리 줄(<style>로 시작해 문단이다)에 템플릿 첫 줄이 붙는 것.
+// ② 메시지 <style>은 @adobe/css-tools 4.4.4가 읽는다. 하나라도 못 읽으면 그 <style> 블록을 통째로 버린다 (브라우저는 그 규칙 하나만 버린다).
+//    @media·@supports·@container 안만 클래스 접두(x-risu-)를 붙여서 @layer·@starting-style·@scope 안 규칙은 채팅에서 아무것도 못 집는다.
+const MD_BLOCK6 = /^<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/i;
+const MD_BLOCK7 = /^(?:<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][\w.:-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*\/?>|<\/[A-Za-z][A-Za-z0-9-]*\s*>)\s*$/;
+const MD_RAW = [ // 1~5형 — 끝 표시가 나오는 줄까지 그대로 통과
+  [/^<(?:script|pre|style|textarea)(?:\s|>|$)/i, /<\/(?:script|pre|style|textarea)>/i],
+  [/^<!--/, /-->/], [/^<\?/, /\?>/], [/^<![A-Za-z]/, />/], [/^<!\[CDATA\[/, /\]\]>/]];
+const VOID_TAG = /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+const tagDepth = (line, depth) => {
+  for (const m of line.matchAll(/<(\/?)([A-Za-z][\w-]*)\b[^>]*?(\/?)>/g)) {
+    if (!m[3] && !VOID_TAG.test(m[2])) depth = m[1] ? Math.max(0, depth - 1) : depth + 1;
+  }
+  return depth;
+};
+
+/**
+ * 템플릿 HTML을 리수 채팅이 HTML 그대로 읽게 다듬는다 (렌더러가 매 렌더에 쓴다). 화면은 미리보기와 같다 —
+ * 태그 안쪽의 빈 줄은 빈 주석으로 메우고(HTML 블록이 거기서 안 끊기게), 블록 태그로 시작하는 줄은 들여쓰기를 뗀다.
+ * 맨 바깥(태그 밖) 빈 줄과 글자 줄은 그대로 둔다 — 글자만 쓴 템플릿은 그 줄바꿈이 채팅에서 <br>이 되는 걸 믿고 있다.
+ * blockFirst = 첫 줄이 블록 태그 → 렌더러가 상태창을 <div>로 시작하게 내보내 머리 줄째 HTML 블록이 된다.
+ */
+function chatSafeTemplate(html) {
+  let depth = 0;
+  const lines = String(html).split('\n').map((line, i) => {
+    const d0 = depth;
+    depth = tagDepth(line, depth);
+    if (!line.trim()) return i > 0 && d0 > 0 ? '<!---->' : line; // 첫 줄은 머리 줄에 붙어 있어 빈 줄이 아니다
+    const s = line.trimStart();
+    return MD_BLOCK6.test(s) ? s : line;
+  });
+  const first = lines.find((l) => l.trim());
+  return { html: lines.join('\n'), blockFirst: !!first && MD_BLOCK6.test(first.trimStart()) };
+}
+
+/** chatSafeTemplate를 거친 뒤에도 리수 채팅이 마크다운 문단으로 읽는 줄 — 태그 안쪽(깊이 1 이상)만. 미리보기와 갈라지는 자리다 */
+function chatMarkdownLines(rawHtml) {
+  const { html, blockFirst } = chatSafeTemplate(rawHtml);
+  const out = [];
+  let state = blockFirst ? 'html' : 'para', end = null, depth = 0; // 첫 줄은 상태창 머리 줄의 이음 (머리 줄이 <div>면 HTML 블록, <style>이면 문단)
+  for (const [i, line] of html.split('\n').entries()) {
+    const d0 = depth;
+    depth = tagDepth(line, depth);
+    if (i === 0) continue;
+    if (end) { if (end.test(line)) end = null; continue; }
+    if (!line.trim()) { state = 'none'; continue; }
+    if (state === 'html') continue;
+    let ind = 0;
+    for (const ch of line) { if (ch === ' ') ind++; else if (ch === '\t') ind += 4 - (ind % 4); else break; }
+    const s = line.trimStart();
+    if (ind <= 3) {
+      const raw = MD_RAW.find(([a]) => a.test(s));
+      if (raw) { state = 'none'; if (!raw[1].test(s)) end = raw[1]; continue; }
+      if (MD_BLOCK6.test(s) || (state === 'none' && MD_BLOCK7.test(s))) { state = 'html'; continue; } // 7형(태그 하나만 있는 줄)은 문단을 못 끊는다
+    }
+    state = 'para';
+    if (d0 > 0) out.push(s);
+  }
+  return out;
+}
+
+/** 상태창 CSS에서 리수 채팅이 걸리는 것 — kill = <style> 블록 통째로 버림, dead = 안쪽 규칙이 채팅에서 안 먹음 */
+function cssChatProblems(css) {
+  const kill = [], dead = [];
+  const PH = /\{\s*([A-Za-z_][\w.]*(?:\s*[-+*/%]\s*[\w.]+)*)\s*\}/g; // CSS엔 값이 안 들어간다 — {uid}만 렌더러가 메시지 번호로 바꾼다
+  const src = String(css).replace(/\/\*[\s\S]*?\*\//g, '');
+  const ph = [...new Set([...src.matchAll(PH)].map((m) => m[1]).filter((n) => n !== 'uid'))];
+  if (ph.length) kill.push(`{${ph.slice(0, 3).join('}·{')}} 자리표시자 (CSS엔 값이 안 들어갑니다 — {uid}만 됩니다)`);
+  if (/#\{\s*uid\s*\}/.test(src)) kill.push('#{uid} (메시지 번호는 숫자라 #7 같은 id 선택자가 됩니다 — id="tab-{uid}"처럼 앞에 글자를)');
+  const stack = [];
+  let head = '', nested = false;
+  for (const c of src.replace(PH, '0')) {
+    if (c === '{') {
+      if (stack[stack.length - 1] === 'rule') nested = true;
+      const h = head.trim();
+      if (/^@(?:layer|starting-style|scope)\b/i.test(h)) dead.push(h.split(/\s/)[0]);
+      stack.push(/^@(?:-webkit-)?keyframes\b/i.test(h) ? 'kf' : /^@(?:media|supports|container|layer|document|scope|starting-style)\b/i.test(h) ? 'wrap' : 'rule');
+      head = '';
+    } else if (c === '}') { stack.pop(); head = ''; }
+    else if (c === ';' && stack[stack.length - 1] !== 'rule') head = '';
+    else head += c;
+  }
+  if (nested) kill.push('중첩 CSS (.a { .b {…} } · &:hover) 또는 따옴표 안의 {');
+  if (stack.length) kill.push(`닫는 } ${stack.length}개 빠짐`);
+  return { kill, dead: [...new Set(dead)] };
+}
+
+/** 메시지마다 똑같이 찍혀 다른 메시지와 엉키는 id·for·라디오 name ({uid}가 없는 것) */
+function fixedIdRefs(html) {
+  const bad = new Set();
+  const val = (m) => m[2] ?? m[3] ?? '';
+  for (const tag of String(html).match(/<(?:input|label)\b[^>]*>/gi) || []) {
+    const isInput = /^<input/i.test(tag);
+    for (const m of tag.matchAll(/\s(id|for|name)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+      const a = m[1].toLowerCase();
+      if (a === 'for' && isInput) continue;
+      if (a === 'name' && !(isInput && /\stype\s*=\s*["']?radio/i.test(tag))) continue; // name이 묶는 건 라디오뿐
+      if (a === 'id' && !isInput) continue;
+      if (!val(m).includes('{uid}')) bad.add(`${a}="${val(m)}"`);
+    }
+  }
+  return [...bad];
+}
+
+function extractStyleCss(tpl) {
+  return [...String(tpl).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
+}
+
+/** 템플릿의 빈 줄을 지운다 (<style> 안은 그대로) — 리수 채팅에서 HTML 블록이 끊기지 않게. AI가 만든 템플릿을 넣을 때 쓴다 */
+function dropBlankLines(html) {
+  return String(html).split(/(<style[^>]*>[\s\S]*?<\/style>)/i)
+    .map((part, i) => (i % 2 ? part : part.replace(/\n[ \t]*(?=\n)/g, ''))).join('');
+}
+
 // 편집기의 필드 사전(fieldDictLines)이 읽는다 — 테스트 하네스가 편집기 구간을 validateSchema만 주입해 단독 평가하므로 함수에 매단다
 validateSchema.KNOWN_KEYS = KNOWN_KEYS;
-module.exports = { validateSchema, varFreeWork, KNOWN_KEYS, activeSections };
+// 같은 이유로 편집기 🎨 적용 경로가 쓰는 것도 매단다 (v1.21.3)
+validateSchema.dropBlankLines = dropBlankLines;
+validateSchema.cssChatProblems = cssChatProblems;
+module.exports = { validateSchema, varFreeWork, KNOWN_KEYS, activeSections, chatSafeTemplate, chatMarkdownLines, cssChatProblems, fixedIdRefs, dropBlankLines };
 
 });
 
@@ -11263,6 +11421,7 @@ const { exposedDefs, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
 const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
 const { secretChipHtml } = require('./secret'); // 비밀 자물쇠 칩 (v1.10.0) — 반전은 아예 안 그린다
+const { chatSafeTemplate } = require('./validate'); // 리수 채팅 마크다운이 템플릿 HTML을 안 끊게 (v1.21.3)
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -11290,14 +11449,26 @@ const THEMES = {
 };
 
 /** 상태창용 전체 CSS (기본 + 테마 + 스코프된 커스텀) — 메시지 내 <style> 자체 포함용 */
-function buildStatusCss(schema) {
+function buildStatusCss(schema, uid = null) {
+  const c = statusCssParts(schema, uid);
+  return c.base + '\n' + c.custom;
+}
+
+/**
+ * 기본(+배치·테마)과 제작자 CSS를 따로 (v1.21.3). 리수 채팅은 <style> 한 블록에서 하나라도 못 읽으면 그 블록을 통째로 버린다 —
+ * 한 블록이던 때는 제작자 CSS의 오타 하나가 기본 CSS까지 지워 상태창이 날것으로 나왔다. 렌더러는 둘을 <style> 두 개로 싣는다.
+ * uid를 주면 제작자 CSS의 {uid}를 그 메시지 번호로 바꾼다 — `#tab1-{uid}:checked ~ …`가 그대로 돈다
+ * (전엔 안 바뀐 {uid}의 중괄호 때문에 리수가 CSS를 통째로 버렸다. 미리보기는 그 규칙만 빠져 멀쩡해 보였다).
+ */
+function statusCssParts(schema, uid = null) {
   const ui = schema?.statusUI || {};
   const theme = THEMES[ui.theme] ?? '';
-  let custom = ui.customCSS ? scopeCss(ui.customCSS) : '';
+  const U = (css) => (uid == null ? css : String(css).replace(/\{\s*uid\s*\}/g, uid));
+  let custom = ui.customCSS ? scopeCss(U(ui.customCSS)) : '';
   if (ui.mode === 'template') {
     if (ui.template) {
       const embedded = extractTemplateParts(ui.template).css;
-      if (embedded.trim()) custom += '\n' + scopeCss(embedded);
+      if (embedded.trim()) custom += '\n' + scopeCss(U(embedded));
     }
     // 여기서 state를 볼 수 없으니 어느 템플릿이 뜰지 모른다 → 전부 싣되, 각자 자기 id 껍데기에 가둔다.
     // 그래서 두 템플릿이 `.status-modal-window`를 똑같이 정의해도 서로를 덮어쓰지 않는다.
@@ -11305,10 +11476,10 @@ function buildStatusCss(schema) {
       if (!t?.template) continue;
       const embedded = extractTemplateParts(t.template).css;
       if (!embedded.trim()) continue;
-      custom += '\n' + (t.id ? scopeCss(embedded, `.sim-status .sim-tpl-${t.id}`) : scopeCss(embedded));
+      custom += '\n' + (t.id ? scopeCss(U(embedded), `.sim-status .sim-tpl-${t.id}`) : scopeCss(U(embedded)));
     }
   }
-  return BASE_CSS + layoutCss(ui) + theme + '\n' + custom;
+  return { base: BASE_CSS + layoutCss(ui) + theme, custom };
 }
 
 const BASE_CSS = `
@@ -11668,6 +11839,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
 
   let inner = '';
+  let blockFirst = false; // 템플릿 첫 줄이 블록 태그 — 상태창을 <div>로 시작해 머리 줄째 HTML 블록으로 낸다 (v1.21.3)
 
   if (ui.mode === 'template' && (ui.template || (ui.templates || []).length)) {
     // 조건부 템플릿: 조건이 참인 첫 번째 것만 그린다 (한 봇에 두 가지 플레이가 있을 때).
@@ -11675,7 +11847,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     // CSS가 각자 자기 껍데기 안으로 갇혀서 서로를 덮어쓰지 않는다.
     const pick = pickTemplate(ui, lookup);
     if (pick) {
-      const html = renderTemplate(extractTemplateParts(pick.template).html, lookup, extras, quoteSafe, dueNow);
+      const tplHtml = extractTemplateParts(pick.template).html;
+      // 리수 채팅은 상태창 HTML을 마크다운으로 한 번 더 읽는다 — 태그 안 빈 줄·4칸 들여쓰기에서 HTML이 끊겨 <p>·<br>이 끼던 것 (v1.21.3 실기 제보:
+      // "미리보기는 깔끔한데 채팅에서 2열 그리드가 찌그러진다"). 머리 줄 선택은 치환 전 템플릿으로 — {choices}가 떴다 말았다 해도 판마다 같게
+      blockFirst = chatSafeTemplate(tplHtml).blockFirst;
+      const html = chatSafeTemplate(renderTemplate(tplHtml, lookup, extras, quoteSafe, dueNow)).html;
       inner = pick.id ? `<div class="sim-tpl-${esc(pick.id)}">${html}</div>` : html;
     }
   } else {
@@ -11850,10 +12026,18 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // 변화(판정 성패·돈·소지품·스탯)를 게임 알림처럼 세운다. 실기 제보: 변화가 전부
   // 접힌 로그 속에 있어서 "플레이가 남긴 흔적"이 채팅에서 안 보였다.
   const cards = highlightCards(schema, changeLog, varById, dueNow);
-  const styleTag = opts.includeStyle ? `<style>${buildStatusCss(schema)}</style>` : '';
+  let styleTag = '';
+  if (opts.includeStyle) {
+    const css = statusCssParts(schema, uid);
+    styleTag = `<style>${css.base}</style>` + (css.custom.trim() ? `<style>${css.custom}</style>` : '');
+  }
   // id에 uid를 섞는다 (규칙 #4) — 어댑터가 패널 조작 직후 이 손잡이로 상태창을 찾아
   // 제자리 갱신한다 (v0.85.4). 새니타이저 허용 속성이 id뿐이라 data-*는 못 쓴다.
-  return `${styleTag}<div class="sim-status" id="simst-${uid}">${cards}${body}</div>`;
+  const box = `<div class="sim-status" id="simst-${uid}">${cards}${body}</div>`;
+  // 블록 태그로 시작하는 템플릿은 <style>을 뒤로 (v1.21.3) — 리수가 <style>을 <risu-style>로 바꾼 뒤 마크다운을 돌려서, 그게 맨 앞이면
+  // 머리 줄이 문단이 되고 거기 붙은 템플릿 첫 줄들이 <br>을 먹는다 (제목 밑 빈 <p> 여백도 여기서 났다). <div>로 시작하면 통째로 HTML 블록이다.
+  // 그룹 모드·글자로 시작하는 템플릿은 예전 그대로 — 글자 줄은 그 문단의 <br>을 믿고 있다. 제자리 갱신은 루트 안만 갈아서 <style>이 어디 있든 무관
+  return blockFirst ? box + styleTag : styleTag + box;
 }
 
 /**
@@ -12164,7 +12348,7 @@ function fmtNum(n) {
   return Number.isInteger(n) ? n.toLocaleString('en-US') : (Math.round(n * 100) / 100).toLocaleString('en-US');
 }
 
-module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
+module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, statusCssParts, extractTemplateParts,
   pickTemplate,
   layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, scenarioChipHtml, BASE_CSS, THEMES };
 
@@ -17902,6 +18086,7 @@ function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
     '  `font-family`는 기기에 이미 있는 폰트만 지정하세요.',
     '- `position: fixed` / `position: absolute`는 피하세요. 채팅 흐름 안에 들어가는 창입니다.',
     '- `@keyframes`와 `animation`, `transition`은 쓸 수 있습니다.',
+    '- **중첩 CSS(`.a { .b {…} }`, `&:hover`)와 `@layer`는 쓰지 마세요.** 리수 채팅은 CSS를 엄격하게 읽어서 하나라도 못 읽으면 스킨 전체를 버립니다 (미리보기에선 멀쩡해 보입니다).',
     '- 아래 목록에 **없는 클래스는 만들지 마세요.** 존재하지 않아서 아무 효과가 없습니다.',
     '- 밝은 테마/어두운 테마 어느 쪽에서도 글씨가 읽히도록 배경색과 글자색을 같이 지정하세요.',
     '',
@@ -17981,8 +18166,12 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     '- **아래 목록에 없는 {자리표시자}를 쓰면 설치가 거부됩니다.** 꾸밈용 텍스트는 그냥 글자로 쓰세요.',
     '- 탭·팝업 같은 전환은 체크박스/라디오 + CSS로만 (JS 불가). 라디오·체크박스의 `id`/`name`에는',
     '  반드시 `{uid}`를 섞으세요 (예: `id="tab1-{uid}"`) — 메시지마다 상태창이 새로 그려져서, 없으면 서로 엉킵니다.',
+    '  CSS에서 그 id를 집을 때도 `#tab1-{uid}:checked ~ …`처럼 그대로 쓰면 메시지 번호로 바뀝니다. `{uid}` 말고 다른 {자리표시자}는 CSS에 쓰지 마세요 — 값이 안 들어가고 채팅에선 CSS 전체가 버려집니다. 값에 따라 바꿀 건 HTML의 `style="…"`이나 class에.',
     '- 숨김 라디오·체크박스는 반드시 `display:none`으로 숨기세요. `position:absolute` 0×0으로 숨기면',
     '  라벨 클릭 때 브라우저가 거기로 포커스 스크롤을 해서 앱 화면 전체가 밀립니다.',
+    '- **HTML 안에 빈 줄을 넣지 마세요.** 리수 채팅은 상태창 HTML을 마크다운으로 한 번 더 읽어서, 빈 줄 다음 줄이 `<span>`·`<label>`·글자로 시작하거나',
+    '  4칸 넘게 들여쓰이면 그 줄부터 `<p>`·`<br>`이 끼어 그리드·탭이 무너집니다 (미리보기엔 안 보입니다).',
+    '- **CSS에 중첩(`.a { .b {…} }`, `&:hover`)·`@layer`를 쓰지 마세요.** 리수 채팅은 CSS를 엄격하게 읽어서 하나라도 못 읽으면 `<style>` 전체를 버립니다.',
     '- 밝은 테마/어두운 테마 어느 쪽에서도 읽히도록 배경색과 글자색을 같이 지정하세요.',
     '',
     '## 쓸 수 있는 자리표시자 (이게 전부입니다)',
@@ -27937,7 +28126,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       // 적용은 즉시, 안전은 이중으로 — 스코핑(.sim-status 제한)은 렌더러가 자동으로 하고, 되돌리기 1슬롯
       takeBackup();
       ui.customCSS = css;
-      cssGen.note = '✅ 적용됐습니다 — 아래 미리보기가 새 스킨입니다.';
+      // 리수 채팅이 통째로 버리는 문법이면 알린다 (v1.21.3) — 미리보기는 그 규칙만 빼고 그려서 멀쩡해 보인다
+      const chatKill = validateSchema.cssChatProblems(css).kill;
+      cssGen.note = chatKill.length
+        ? `⚠ 적용은 했지만 리수 채팅에서는 이 스킨이 통째로 버려집니다 — ${chatKill.join(' · ')}. 다시 시키거나 그 부분을 고쳐 주세요.`
+        : '✅ 적용됐습니다 — 아래 미리보기가 새 스킨입니다.';
       rerender(); return;
     }
 
@@ -27949,6 +28142,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       cssGen.note = '⚠ HTML 템플릿으로 보이지 않는 응답입니다 — 앞부분: ' + tpl.slice(0, 80);
       rerender(); return;
     }
+    // 빈 줄을 걷는다 (v1.21.3) — 리수 채팅은 HTML을 마크다운으로 한 번 더 읽어서 빈 줄에서 HTML이 끊기고 그 뒤가 <p>·<br>로 무너진다.
+    // 미리보기엔 안 보이는 고장이라 모델이 규칙을 어겨도 여기서 막는다. 사람이 쓴 템플릿은 안 건드린다(검증 경고만).
+    tpl = validateSchema.dropBlankLines(tpl);
     // 원자 적용 — 자리표시자 계약은 검증기가 지킨다. 새 오류가 생기면 통째로 되돌린다.
     const beforeErrs = new Set(validateSchema(schema).errors.map((e) => e.path + '|' + e.msg));
     // 규격서가 보여준 그 칸에 넣는다 — 다른 칸에 쓰면 렌더러가 안 보고 "적용됐는데 그대로"가 된다 (v1.7.4)

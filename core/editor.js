@@ -3808,6 +3808,7 @@ function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
     '  `font-family`는 기기에 이미 있는 폰트만 지정하세요.',
     '- `position: fixed` / `position: absolute`는 피하세요. 채팅 흐름 안에 들어가는 창입니다.',
     '- `@keyframes`와 `animation`, `transition`은 쓸 수 있습니다.',
+    '- **중첩 CSS(`.a { .b {…} }`, `&:hover`)와 `@layer`는 쓰지 마세요.** 리수 채팅은 CSS를 엄격하게 읽어서 하나라도 못 읽으면 스킨 전체를 버립니다 (미리보기에선 멀쩡해 보입니다).',
     '- 아래 목록에 **없는 클래스는 만들지 마세요.** 존재하지 않아서 아무 효과가 없습니다.',
     '- 밝은 테마/어두운 테마 어느 쪽에서도 글씨가 읽히도록 배경색과 글자색을 같이 지정하세요.',
     '',
@@ -3887,8 +3888,12 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     '- **아래 목록에 없는 {자리표시자}를 쓰면 설치가 거부됩니다.** 꾸밈용 텍스트는 그냥 글자로 쓰세요.',
     '- 탭·팝업 같은 전환은 체크박스/라디오 + CSS로만 (JS 불가). 라디오·체크박스의 `id`/`name`에는',
     '  반드시 `{uid}`를 섞으세요 (예: `id="tab1-{uid}"`) — 메시지마다 상태창이 새로 그려져서, 없으면 서로 엉킵니다.',
+    '  CSS에서 그 id를 집을 때도 `#tab1-{uid}:checked ~ …`처럼 그대로 쓰면 메시지 번호로 바뀝니다. `{uid}` 말고 다른 {자리표시자}는 CSS에 쓰지 마세요 — 값이 안 들어가고 채팅에선 CSS 전체가 버려집니다. 값에 따라 바꿀 건 HTML의 `style="…"`이나 class에.',
     '- 숨김 라디오·체크박스는 반드시 `display:none`으로 숨기세요. `position:absolute` 0×0으로 숨기면',
     '  라벨 클릭 때 브라우저가 거기로 포커스 스크롤을 해서 앱 화면 전체가 밀립니다.',
+    '- **HTML 안에 빈 줄을 넣지 마세요.** 리수 채팅은 상태창 HTML을 마크다운으로 한 번 더 읽어서, 빈 줄 다음 줄이 `<span>`·`<label>`·글자로 시작하거나',
+    '  4칸 넘게 들여쓰이면 그 줄부터 `<p>`·`<br>`이 끼어 그리드·탭이 무너집니다 (미리보기엔 안 보입니다).',
+    '- **CSS에 중첩(`.a { .b {…} }`, `&:hover`)·`@layer`를 쓰지 마세요.** 리수 채팅은 CSS를 엄격하게 읽어서 하나라도 못 읽으면 `<style>` 전체를 버립니다.',
     '- 밝은 테마/어두운 테마 어느 쪽에서도 읽히도록 배경색과 글자색을 같이 지정하세요.',
     '',
     '## 쓸 수 있는 자리표시자 (이게 전부입니다)',
@@ -13843,7 +13848,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       // 적용은 즉시, 안전은 이중으로 — 스코핑(.sim-status 제한)은 렌더러가 자동으로 하고, 되돌리기 1슬롯
       takeBackup();
       ui.customCSS = css;
-      cssGen.note = '✅ 적용됐습니다 — 아래 미리보기가 새 스킨입니다.';
+      // 리수 채팅이 통째로 버리는 문법이면 알린다 (v1.21.3) — 미리보기는 그 규칙만 빼고 그려서 멀쩡해 보인다
+      const chatKill = validateSchema.cssChatProblems(css).kill;
+      cssGen.note = chatKill.length
+        ? `⚠ 적용은 했지만 리수 채팅에서는 이 스킨이 통째로 버려집니다 — ${chatKill.join(' · ')}. 다시 시키거나 그 부분을 고쳐 주세요.`
+        : '✅ 적용됐습니다 — 아래 미리보기가 새 스킨입니다.';
       rerender(); return;
     }
 
@@ -13855,6 +13864,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       cssGen.note = '⚠ HTML 템플릿으로 보이지 않는 응답입니다 — 앞부분: ' + tpl.slice(0, 80);
       rerender(); return;
     }
+    // 빈 줄을 걷는다 (v1.21.3) — 리수 채팅은 HTML을 마크다운으로 한 번 더 읽어서 빈 줄에서 HTML이 끊기고 그 뒤가 <p>·<br>로 무너진다.
+    // 미리보기엔 안 보이는 고장이라 모델이 규칙을 어겨도 여기서 막는다. 사람이 쓴 템플릿은 안 건드린다(검증 경고만).
+    tpl = validateSchema.dropBlankLines(tpl);
     // 원자 적용 — 자리표시자 계약은 검증기가 지킨다. 새 오류가 생기면 통째로 되돌린다.
     const beforeErrs = new Set(validateSchema(schema).errors.map((e) => e.path + '|' + e.msg));
     // 규격서가 보여준 그 칸에 넣는다 — 다른 칸에 쓰면 렌더러가 안 보고 "적용됐는데 그대로"가 된다 (v1.7.4)

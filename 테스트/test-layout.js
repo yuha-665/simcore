@@ -178,7 +178,7 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
     const v = validateSchema(s2);
     ck(`★ '${kind}' 뼈대가 그대로 검증을 통과한다`, v.ok, JSON.stringify(v.errors ?? []));
     const html = renderStatusHtml(s2, engine.initState(s2), null, null, { includeStyle: true, uid: 7 });
-    const body = html.replace(/<style>[\s\S]*?<\/style>/, '');
+    const body = html.replace(/<style>[\s\S]*?<\/style>/g, ''); // <style>은 v1.21.3부터 둘(기본·제작자)
     ck(`'${kind}' 뼈대에 미치환 자리표시자가 없다`, !/\{[A-Za-z_]/.test(body),
       (body.match(/\{[^}]*\}/g) || []).join(','));
     ck(`'${kind}' 뼈대가 그룹 이름을 가져온다`, body.includes('몸') && body.includes('짐'), '');

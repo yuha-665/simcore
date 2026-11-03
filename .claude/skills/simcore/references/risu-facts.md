@@ -164,6 +164,34 @@ ADD_ATTR: ['allow','allowfullscreen','frameborder','scrolling','risu-ctrl','risu
 overflow:hidden 앱 컨테이너까지 스크롤되어 **화면 전체가 밀리고**(아래는 검은 여백)
 스크롤바가 없어 유저가 되돌릴 수도 없다. display:none이면 렌더가 안 되어 포커스 자체가 불가능하다.
 
+## ★ 메시지 HTML은 마크다운을, <style>은 엄격한 CSS 해석기를 한 번 더 탄다 — 미리보기와 갈라지는 자리 (v1.21.3 실사)
+
+커뮤니티 제보(2026-11-03): "상태창 2열 그리드가 편집기 결과창에선 깔끔한데 채팅에선 찌그러진다, 탭 체크박스가 가끔 안 먹는다." RisuAI main
+`src/ts/parser/parser.svelte.ts`(2026-11-03)를 옮긴 흉내 + 진짜 markdown-it 14·@adobe/css-tools 4.4.4(리수 고정 버전)·Edge 렌더로 재현했다.
+`ParseMarkdown` = editdisplay(플러그인 display 훅 포함) → `encodeStyle`(`<style>…</style>` → `<risu-style>16진</risu-style>`) → markdown-it → `trimMarkdown`(DOMPurify + risu-style 복원).
+편집기 미리보기는 innerHTML 그대로라 **둘 다 안 거친다**.
+
+**① 마크다운** — `markdownit({ html:true, breaks:true, typographer:true })` + `md.disable(['code'])`(들여쓴 코드 블록 끔).
+- HTML 블록(CommonMark 6형)은 줄이 `<div`·`<table`·`<details`·`</div` 같은 **블록 태그로 시작할 때** 열리고 **빈 줄에서** 끝난다. 그 안은 그대로 통과.
+- 그 밖의 줄은 문단 — `<p>`로 싸이고 줄마다 `<br>`(breaks)이 낀다. `<span>`·`<label>`·`<b>`·글자로 시작하는 줄, 그리고
+  **4칸 넘게 들여쓴 줄은 `<div>`여도 블록을 못 연다**(html_block이 `sCount ≥ 4`면 거절하고, 코드 블록은 꺼져 있어 문단으로 떨어진다).
+  `<input …>`처럼 태그 하나만 있는 줄(7형)은 빈 줄 뒤엔 블록을 열지만 문단을 끊지는 못한다.
+- 덫 셋: 태그 안 빈 줄 · 4칸 들여쓰기(AI 템플릿의 기본 모양) · **`<style>`로 시작하는 줄은 문단**이라 SimCore 상태창 머리 줄
+  (`<style>…</style><div class="sim-status">…<summary>제목</summary>`)이 문단이 되고, 거기 바로 붙은 템플릿 첫 줄과 이어지는 줄들이 `<br>`을 먹었다.
+  제목 밑 빈 `<p>`(prose 여백 1.25em)도 이 문단이 남긴 짝 없는 `</p>`다.
+- 결과: 그리드 칸이 `<p>`에 묶이거나 빈 `<p>`가 칸 하나를 먹고, 칸 안에 `<br>`이 끼고, 탭 라벨이 `<p>` 안으로 들어가 `:checked ~`가 못 닿는다.
+- 문단 안 글자는 typographer가 따옴표를 `<mark risu-mark="quote2">`로, `*`·`_`를 강조로 바꾼다 — HTML 블록 안은 안 바꾼다.
+- **SimCore v1.21.3**: 블록 태그로 시작하는 템플릿은 상태창을 `<div>`로 시작하고 `<style>`을 뒤로 내보내 통째로 HTML 블록이 되게, 태그 안 빈 줄은 `<!---->`로 메우고
+  블록 태그 줄은 들여쓰기를 뗀다(`validate.chatSafeTemplate`). 맨 바깥 빈 줄·글자 줄·글자로 시작하는 템플릿·그룹 모드는 예전 그대로 — 글자 줄은 그 `<br>`을 믿는다.
+
+**② 엄격한 CSS** — `decodeStyleContent`가 `risuChatParser`(CBS) → `@adobe/css-tools` parse → 선택자마다 클래스에 `x-risu-`(postcss-selector-parser) + 앞에 `.chattext `.
+- **해석 오류가 하나라도 나면 그 `<style>` 블록을 통째로 버린다**(설정 `returnCSSError`면 "CSS ERROR" 글자). 브라우저는 그 규칙 하나만 버려서 미리보기는 멀쩡하다.
+  통째로 죽는 것(4.4.4 실측): 선택자·값의 `{자리표시자}`(`#t1-{uid}`·`width:{hp}%`) · 중첩 CSS(`.a{ .b{} }`·`&:hover`) · 따옴표 안의 `{` · 닫는 `}` 빠짐.
+  견디는 것: `}` 하나 더 · `@media` 범위식 · `@container` · `:has()`·`:is()` · `@keyframes` · `@property` · `:root` 변수.
+- 안으로 들어가 접두를 붙이는 at-rule은 `media·supports·document·host·container`뿐 — **`@layer`·`@starting-style`·`@scope` 안 규칙은 접두가 안 붙어 채팅에서 아무것도 못 집는다**.
+- SimCore는 기본 CSS와 제작자 CSS를 한 블록에 싣고 있어서 제작자 오타 하나가 기본 CSS까지 지웠다 → v1.21.3에서 `<style>` 둘로(`render.statusCssParts`),
+  CSS의 `{uid}`는 메시지 번호로 치환. 나머지는 검증 경고(`validate.cssChatProblems`).
+
 ## ★ 잘라 내는 상자 안에 조작 버튼을 두지 마라 (v1.10.1 실사고)
 
 관리 패널 [현황]의 목록 변수는 항목마다 `칩 + ✕`로 뜬다. 제보: **"항목이 좀만 길면 잘려서

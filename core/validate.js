@@ -807,14 +807,31 @@ function validateSchema(schema) {
     checkTemplateRefs(schema.promptState.checkGuide, '$.promptState.checkGuide', allIds, err);
   }
   const ui = schema.statusUI || {};
+  // 리수 채팅이 한 번 더 읽어서 생기는 고장 (v1.21.3) — 미리보기는 멀쩡해 보이니 여기서 알려 준다
+  const chatCss = (css, p) => {
+    const r = cssChatProblems(css);
+    if (r.kill.length) warn(p, `리수 채팅이 이 CSS를 통째로 버립니다 — ${r.kill.join(' · ')}. 미리보기는 그 규칙만 빼고 그려서 멀쩡해 보입니다`);
+    if (r.dead.length) warn(p, `${r.dead.join('·')} 안의 규칙은 리수 채팅에서 안 먹습니다 (리수가 안쪽 클래스에 접두를 안 붙입니다) — 밖으로 꺼내세요`);
+  };
+  const chatTpl = (tpl, p) => {
+    const md = chatMarkdownLines(String(tpl).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ''));
+    if (md.length) warn(p, `"${md[0].slice(0, 40)}" 줄${md.length > 1 ? ` 외 ${md.length - 1}줄` : ''}이 리수 채팅에서 마크다운 문단(<p>·<br>)이 됩니다 — `
+      + '미리보기엔 안 보이는 줄바꿈·여백이 낍니다. 감싸는 태그를 <div>로 시작하게 하거나, 그 앞 맨 바깥 빈 줄을 지우세요');
+    const ids = fixedIdRefs(tpl);
+    if (ids.length) warn(p, `${ids.slice(0, 3).join(' ')}에 {uid}가 없습니다 — 상태창은 메시지마다 그려져서 다른 메시지의 체크박스·탭이 눌립니다 (예: id="tab1-{uid}")`);
+    chatCss(extractStyleCss(tpl), p);
+  };
+  if (typeof ui.customCSS === 'string' && ui.customCSS.trim()) chatCss(ui.customCSS, '$.statusUI.customCSS');
   if (ui.mode === 'template') {
     // <style> 블록은 CSS이므로 자리표시자 검사에서 제외 (통짜 붙여넣기 지원)
     const stripStyle = (s) => String(s).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
     const conds = Array.isArray(ui.templates) ? ui.templates : [];
     if (!conds.length && (typeof ui.template !== 'string' || !ui.template.trim()))
       err('$.statusUI.template', '템플릿 모드인데 template이 비어 있음');
-    if (typeof ui.template === 'string' && ui.template.trim())
+    if (typeof ui.template === 'string' && ui.template.trim()) {
       checkTemplateRefs(stripStyle(ui.template), '$.statusUI.template', allIds, err);
+      chatTpl(ui.template, '$.statusUI.template');
+    }
 
     const tplIds = new Set();
     let sawUnconditional = false;
@@ -826,7 +843,7 @@ function validateSchema(schema) {
       else if (tplIds.has(t.id)) err(p, `중복 템플릿 id: '${t.id}'`);
       else tplIds.add(t.id);
       if (typeof t.template !== 'string' || !t.template.trim()) err(p, 'template이 비어 있음');
-      else checkTemplateRefs(stripStyle(t.template), p + '.template', allIds, err);
+      else { checkTemplateRefs(stripStyle(t.template), p + '.template', allIds, err); chatTpl(t.template, p + '.template'); }
       if (t.when != null && String(t.when).trim()) {
         checkExpr(t.when, p + '.when', allIds, err, { allowRand: false });
         if (sawUnconditional) warn(p, '조건 없는 템플릿보다 뒤에 있어 영원히 안 뜸 — 위로 올리세요');
@@ -2114,6 +2131,127 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
+// ── 리수 채팅이 상태창을 한 번 더 읽는 규칙 (v1.21.3 실사 — RisuAI main parser.svelte.ts 2026-11-03) ──
+// 편집기 미리보기는 innerHTML 그대로라 아래 둘을 안 거친다. 그래서 "미리보기는 멀쩡한데 채팅에서 찌그러진다"가 된다.
+// ① 메시지 HTML은 markdown-it(html·breaks, 들여쓴 코드 끔)을 탄다. HTML 블록은 블록 태그(div·table…)로 시작하는 줄에서 열려 빈 줄에서 끝난다.
+//    그 밖의 줄은 문단이 되어 <p>로 싸이고 줄마다 <br>이 낀다 — 그리드 칸이 <p>에 묶이고 탭 라벨이 라디오의 형제가 아니게 된다.
+//    덫 셋: 빈 줄 · 4칸 넘는 들여쓰기(<div>여도 블록을 못 연다) · 상태창 머리 줄(<style>로 시작해 문단이다)에 템플릿 첫 줄이 붙는 것.
+// ② 메시지 <style>은 @adobe/css-tools 4.4.4가 읽는다. 하나라도 못 읽으면 그 <style> 블록을 통째로 버린다 (브라우저는 그 규칙 하나만 버린다).
+//    @media·@supports·@container 안만 클래스 접두(x-risu-)를 붙여서 @layer·@starting-style·@scope 안 규칙은 채팅에서 아무것도 못 집는다.
+const MD_BLOCK6 = /^<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/i;
+const MD_BLOCK7 = /^(?:<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][\w.:-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*\/?>|<\/[A-Za-z][A-Za-z0-9-]*\s*>)\s*$/;
+const MD_RAW = [ // 1~5형 — 끝 표시가 나오는 줄까지 그대로 통과
+  [/^<(?:script|pre|style|textarea)(?:\s|>|$)/i, /<\/(?:script|pre|style|textarea)>/i],
+  [/^<!--/, /-->/], [/^<\?/, /\?>/], [/^<![A-Za-z]/, />/], [/^<!\[CDATA\[/, /\]\]>/]];
+const VOID_TAG = /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+const tagDepth = (line, depth) => {
+  for (const m of line.matchAll(/<(\/?)([A-Za-z][\w-]*)\b[^>]*?(\/?)>/g)) {
+    if (!m[3] && !VOID_TAG.test(m[2])) depth = m[1] ? Math.max(0, depth - 1) : depth + 1;
+  }
+  return depth;
+};
+
+/**
+ * 템플릿 HTML을 리수 채팅이 HTML 그대로 읽게 다듬는다 (렌더러가 매 렌더에 쓴다). 화면은 미리보기와 같다 —
+ * 태그 안쪽의 빈 줄은 빈 주석으로 메우고(HTML 블록이 거기서 안 끊기게), 블록 태그로 시작하는 줄은 들여쓰기를 뗀다.
+ * 맨 바깥(태그 밖) 빈 줄과 글자 줄은 그대로 둔다 — 글자만 쓴 템플릿은 그 줄바꿈이 채팅에서 <br>이 되는 걸 믿고 있다.
+ * blockFirst = 첫 줄이 블록 태그 → 렌더러가 상태창을 <div>로 시작하게 내보내 머리 줄째 HTML 블록이 된다.
+ */
+function chatSafeTemplate(html) {
+  let depth = 0;
+  const lines = String(html).split('\n').map((line, i) => {
+    const d0 = depth;
+    depth = tagDepth(line, depth);
+    if (!line.trim()) return i > 0 && d0 > 0 ? '<!---->' : line; // 첫 줄은 머리 줄에 붙어 있어 빈 줄이 아니다
+    const s = line.trimStart();
+    return MD_BLOCK6.test(s) ? s : line;
+  });
+  const first = lines.find((l) => l.trim());
+  return { html: lines.join('\n'), blockFirst: !!first && MD_BLOCK6.test(first.trimStart()) };
+}
+
+/** chatSafeTemplate를 거친 뒤에도 리수 채팅이 마크다운 문단으로 읽는 줄 — 태그 안쪽(깊이 1 이상)만. 미리보기와 갈라지는 자리다 */
+function chatMarkdownLines(rawHtml) {
+  const { html, blockFirst } = chatSafeTemplate(rawHtml);
+  const out = [];
+  let state = blockFirst ? 'html' : 'para', end = null, depth = 0; // 첫 줄은 상태창 머리 줄의 이음 (머리 줄이 <div>면 HTML 블록, <style>이면 문단)
+  for (const [i, line] of html.split('\n').entries()) {
+    const d0 = depth;
+    depth = tagDepth(line, depth);
+    if (i === 0) continue;
+    if (end) { if (end.test(line)) end = null; continue; }
+    if (!line.trim()) { state = 'none'; continue; }
+    if (state === 'html') continue;
+    let ind = 0;
+    for (const ch of line) { if (ch === ' ') ind++; else if (ch === '\t') ind += 4 - (ind % 4); else break; }
+    const s = line.trimStart();
+    if (ind <= 3) {
+      const raw = MD_RAW.find(([a]) => a.test(s));
+      if (raw) { state = 'none'; if (!raw[1].test(s)) end = raw[1]; continue; }
+      if (MD_BLOCK6.test(s) || (state === 'none' && MD_BLOCK7.test(s))) { state = 'html'; continue; } // 7형(태그 하나만 있는 줄)은 문단을 못 끊는다
+    }
+    state = 'para';
+    if (d0 > 0) out.push(s);
+  }
+  return out;
+}
+
+/** 상태창 CSS에서 리수 채팅이 걸리는 것 — kill = <style> 블록 통째로 버림, dead = 안쪽 규칙이 채팅에서 안 먹음 */
+function cssChatProblems(css) {
+  const kill = [], dead = [];
+  const PH = /\{\s*([A-Za-z_][\w.]*(?:\s*[-+*/%]\s*[\w.]+)*)\s*\}/g; // CSS엔 값이 안 들어간다 — {uid}만 렌더러가 메시지 번호로 바꾼다
+  const src = String(css).replace(/\/\*[\s\S]*?\*\//g, '');
+  const ph = [...new Set([...src.matchAll(PH)].map((m) => m[1]).filter((n) => n !== 'uid'))];
+  if (ph.length) kill.push(`{${ph.slice(0, 3).join('}·{')}} 자리표시자 (CSS엔 값이 안 들어갑니다 — {uid}만 됩니다)`);
+  if (/#\{\s*uid\s*\}/.test(src)) kill.push('#{uid} (메시지 번호는 숫자라 #7 같은 id 선택자가 됩니다 — id="tab-{uid}"처럼 앞에 글자를)');
+  const stack = [];
+  let head = '', nested = false;
+  for (const c of src.replace(PH, '0')) {
+    if (c === '{') {
+      if (stack[stack.length - 1] === 'rule') nested = true;
+      const h = head.trim();
+      if (/^@(?:layer|starting-style|scope)\b/i.test(h)) dead.push(h.split(/\s/)[0]);
+      stack.push(/^@(?:-webkit-)?keyframes\b/i.test(h) ? 'kf' : /^@(?:media|supports|container|layer|document|scope|starting-style)\b/i.test(h) ? 'wrap' : 'rule');
+      head = '';
+    } else if (c === '}') { stack.pop(); head = ''; }
+    else if (c === ';' && stack[stack.length - 1] !== 'rule') head = '';
+    else head += c;
+  }
+  if (nested) kill.push('중첩 CSS (.a { .b {…} } · &:hover) 또는 따옴표 안의 {');
+  if (stack.length) kill.push(`닫는 } ${stack.length}개 빠짐`);
+  return { kill, dead: [...new Set(dead)] };
+}
+
+/** 메시지마다 똑같이 찍혀 다른 메시지와 엉키는 id·for·라디오 name ({uid}가 없는 것) */
+function fixedIdRefs(html) {
+  const bad = new Set();
+  const val = (m) => m[2] ?? m[3] ?? '';
+  for (const tag of String(html).match(/<(?:input|label)\b[^>]*>/gi) || []) {
+    const isInput = /^<input/i.test(tag);
+    for (const m of tag.matchAll(/\s(id|for|name)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+      const a = m[1].toLowerCase();
+      if (a === 'for' && isInput) continue;
+      if (a === 'name' && !(isInput && /\stype\s*=\s*["']?radio/i.test(tag))) continue; // name이 묶는 건 라디오뿐
+      if (a === 'id' && !isInput) continue;
+      if (!val(m).includes('{uid}')) bad.add(`${a}="${val(m)}"`);
+    }
+  }
+  return [...bad];
+}
+
+function extractStyleCss(tpl) {
+  return [...String(tpl).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
+}
+
+/** 템플릿의 빈 줄을 지운다 (<style> 안은 그대로) — 리수 채팅에서 HTML 블록이 끊기지 않게. AI가 만든 템플릿을 넣을 때 쓴다 */
+function dropBlankLines(html) {
+  return String(html).split(/(<style[^>]*>[\s\S]*?<\/style>)/i)
+    .map((part, i) => (i % 2 ? part : part.replace(/\n[ \t]*(?=\n)/g, ''))).join('');
+}
+
 // 편집기의 필드 사전(fieldDictLines)이 읽는다 — 테스트 하네스가 편집기 구간을 validateSchema만 주입해 단독 평가하므로 함수에 매단다
 validateSchema.KNOWN_KEYS = KNOWN_KEYS;
-module.exports = { validateSchema, varFreeWork, KNOWN_KEYS, activeSections };
+// 같은 이유로 편집기 🎨 적용 경로가 쓰는 것도 매단다 (v1.21.3)
+validateSchema.dropBlankLines = dropBlankLines;
+validateSchema.cssChatProblems = cssChatProblems;
+module.exports = { validateSchema, varFreeWork, KNOWN_KEYS, activeSections, chatSafeTemplate, chatMarkdownLines, cssChatProblems, fixedIdRefs, dropBlankLines };

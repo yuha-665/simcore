@@ -7,6 +7,7 @@ const { exposedDefs, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
 const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
 const { secretChipHtml } = require('./secret'); // 비밀 자물쇠 칩 (v1.10.0) — 반전은 아예 안 그린다
+const { chatSafeTemplate } = require('./validate'); // 리수 채팅 마크다운이 템플릿 HTML을 안 끊게 (v1.21.3)
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -34,14 +35,26 @@ const THEMES = {
 };
 
 /** 상태창용 전체 CSS (기본 + 테마 + 스코프된 커스텀) — 메시지 내 <style> 자체 포함용 */
-function buildStatusCss(schema) {
+function buildStatusCss(schema, uid = null) {
+  const c = statusCssParts(schema, uid);
+  return c.base + '\n' + c.custom;
+}
+
+/**
+ * 기본(+배치·테마)과 제작자 CSS를 따로 (v1.21.3). 리수 채팅은 <style> 한 블록에서 하나라도 못 읽으면 그 블록을 통째로 버린다 —
+ * 한 블록이던 때는 제작자 CSS의 오타 하나가 기본 CSS까지 지워 상태창이 날것으로 나왔다. 렌더러는 둘을 <style> 두 개로 싣는다.
+ * uid를 주면 제작자 CSS의 {uid}를 그 메시지 번호로 바꾼다 — `#tab1-{uid}:checked ~ …`가 그대로 돈다
+ * (전엔 안 바뀐 {uid}의 중괄호 때문에 리수가 CSS를 통째로 버렸다. 미리보기는 그 규칙만 빠져 멀쩡해 보였다).
+ */
+function statusCssParts(schema, uid = null) {
   const ui = schema?.statusUI || {};
   const theme = THEMES[ui.theme] ?? '';
-  let custom = ui.customCSS ? scopeCss(ui.customCSS) : '';
+  const U = (css) => (uid == null ? css : String(css).replace(/\{\s*uid\s*\}/g, uid));
+  let custom = ui.customCSS ? scopeCss(U(ui.customCSS)) : '';
   if (ui.mode === 'template') {
     if (ui.template) {
       const embedded = extractTemplateParts(ui.template).css;
-      if (embedded.trim()) custom += '\n' + scopeCss(embedded);
+      if (embedded.trim()) custom += '\n' + scopeCss(U(embedded));
     }
     // 여기서 state를 볼 수 없으니 어느 템플릿이 뜰지 모른다 → 전부 싣되, 각자 자기 id 껍데기에 가둔다.
     // 그래서 두 템플릿이 `.status-modal-window`를 똑같이 정의해도 서로를 덮어쓰지 않는다.
@@ -49,10 +62,10 @@ function buildStatusCss(schema) {
       if (!t?.template) continue;
       const embedded = extractTemplateParts(t.template).css;
       if (!embedded.trim()) continue;
-      custom += '\n' + (t.id ? scopeCss(embedded, `.sim-status .sim-tpl-${t.id}`) : scopeCss(embedded));
+      custom += '\n' + (t.id ? scopeCss(U(embedded), `.sim-status .sim-tpl-${t.id}`) : scopeCss(U(embedded)));
     }
   }
-  return BASE_CSS + layoutCss(ui) + theme + '\n' + custom;
+  return { base: BASE_CSS + layoutCss(ui) + theme, custom };
 }
 
 const BASE_CSS = `
@@ -412,6 +425,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
 
   let inner = '';
+  let blockFirst = false; // 템플릿 첫 줄이 블록 태그 — 상태창을 <div>로 시작해 머리 줄째 HTML 블록으로 낸다 (v1.21.3)
 
   if (ui.mode === 'template' && (ui.template || (ui.templates || []).length)) {
     // 조건부 템플릿: 조건이 참인 첫 번째 것만 그린다 (한 봇에 두 가지 플레이가 있을 때).
@@ -419,7 +433,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     // CSS가 각자 자기 껍데기 안으로 갇혀서 서로를 덮어쓰지 않는다.
     const pick = pickTemplate(ui, lookup);
     if (pick) {
-      const html = renderTemplate(extractTemplateParts(pick.template).html, lookup, extras, quoteSafe, dueNow);
+      const tplHtml = extractTemplateParts(pick.template).html;
+      // 리수 채팅은 상태창 HTML을 마크다운으로 한 번 더 읽는다 — 태그 안 빈 줄·4칸 들여쓰기에서 HTML이 끊겨 <p>·<br>이 끼던 것 (v1.21.3 실기 제보:
+      // "미리보기는 깔끔한데 채팅에서 2열 그리드가 찌그러진다"). 머리 줄 선택은 치환 전 템플릿으로 — {choices}가 떴다 말았다 해도 판마다 같게
+      blockFirst = chatSafeTemplate(tplHtml).blockFirst;
+      const html = chatSafeTemplate(renderTemplate(tplHtml, lookup, extras, quoteSafe, dueNow)).html;
       inner = pick.id ? `<div class="sim-tpl-${esc(pick.id)}">${html}</div>` : html;
     }
   } else {
@@ -594,10 +612,18 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // 변화(판정 성패·돈·소지품·스탯)를 게임 알림처럼 세운다. 실기 제보: 변화가 전부
   // 접힌 로그 속에 있어서 "플레이가 남긴 흔적"이 채팅에서 안 보였다.
   const cards = highlightCards(schema, changeLog, varById, dueNow);
-  const styleTag = opts.includeStyle ? `<style>${buildStatusCss(schema)}</style>` : '';
+  let styleTag = '';
+  if (opts.includeStyle) {
+    const css = statusCssParts(schema, uid);
+    styleTag = `<style>${css.base}</style>` + (css.custom.trim() ? `<style>${css.custom}</style>` : '');
+  }
   // id에 uid를 섞는다 (규칙 #4) — 어댑터가 패널 조작 직후 이 손잡이로 상태창을 찾아
   // 제자리 갱신한다 (v0.85.4). 새니타이저 허용 속성이 id뿐이라 data-*는 못 쓴다.
-  return `${styleTag}<div class="sim-status" id="simst-${uid}">${cards}${body}</div>`;
+  const box = `<div class="sim-status" id="simst-${uid}">${cards}${body}</div>`;
+  // 블록 태그로 시작하는 템플릿은 <style>을 뒤로 (v1.21.3) — 리수가 <style>을 <risu-style>로 바꾼 뒤 마크다운을 돌려서, 그게 맨 앞이면
+  // 머리 줄이 문단이 되고 거기 붙은 템플릿 첫 줄들이 <br>을 먹는다 (제목 밑 빈 <p> 여백도 여기서 났다). <div>로 시작하면 통째로 HTML 블록이다.
+  // 그룹 모드·글자로 시작하는 템플릿은 예전 그대로 — 글자 줄은 그 문단의 <br>을 믿고 있다. 제자리 갱신은 루트 안만 갈아서 <style>이 어디 있든 무관
+  return blockFirst ? box + styleTag : styleTag + box;
 }
 
 /**
@@ -908,6 +934,6 @@ function fmtNum(n) {
   return Number.isInteger(n) ? n.toLocaleString('en-US') : (Math.round(n * 100) / 100).toLocaleString('en-US');
 }
 
-module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
+module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, statusCssParts, extractTemplateParts,
   pickTemplate,
   layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, scenarioChipHtml, BASE_CSS, THEMES };

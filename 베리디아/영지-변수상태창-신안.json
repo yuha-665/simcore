@@ -609,68 +609,132 @@
       "desc": "Where the scouts are currently working. Set it when the narration sends them somewhere; \"없음\" means they are kept home."
     },
     {
-      "id": "exp_n",
-      "label": "북 탐사",
+      "id": "exr_n",
+      "label": "북 자원 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "ext_n",
+      "label": "북 지형 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "exh_n",
+      "label": "북 둥지 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "xfind_n",
+      "label": "(내부) 북 이번 발견",
       "type": "int",
       "init": 0,
       "min": 0,
       "max": 140
     },
     {
-      "id": "exp_w",
-      "label": "서 탐사",
+      "id": "exr_w",
+      "label": "서 자원 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "ext_w",
+      "label": "서 지형 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "exh_w",
+      "label": "서 둥지 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "xfind_w",
+      "label": "(내부) 서 이번 발견",
       "type": "int",
       "init": 0,
       "min": 0,
       "max": 140
     },
     {
-      "id": "exp_s",
-      "label": "남 탐사",
+      "id": "exr_s",
+      "label": "남 자원 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "ext_s",
+      "label": "남 지형 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "exh_s",
+      "label": "남 둥지 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "xfind_s",
+      "label": "(내부) 남 이번 발견",
       "type": "int",
       "init": 0,
       "min": 0,
       "max": 140
     },
     {
-      "id": "exp_e",
-      "label": "동 탐사",
+      "id": "exr_e",
+      "label": "동 자원 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "ext_e",
+      "label": "동 지형 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "exh_e",
+      "label": "동 둥지 탐사",
+      "type": "float",
+      "init": 0,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "id": "xfind_e",
+      "label": "(내부) 동 이번 발견",
       "type": "int",
       "init": 0,
       "min": 0,
       "max": 140
-    },
-    {
-      "id": "exb_n",
-      "label": "(내부) 북 이월 진척",
-      "type": "int",
-      "init": 0,
-      "min": 0,
-      "max": 1000
-    },
-    {
-      "id": "exb_w",
-      "label": "(내부) 서 이월 진척",
-      "type": "int",
-      "init": 0,
-      "min": 0,
-      "max": 1000
-    },
-    {
-      "id": "exb_s",
-      "label": "(내부) 남 이월 진척",
-      "type": "int",
-      "init": 0,
-      "min": 0,
-      "max": 1000
-    },
-    {
-      "id": "exb_e",
-      "label": "(내부) 동 이월 진척",
-      "type": "int",
-      "init": 0,
-      "min": 0,
-      "max": 1000
     },
     {
       "id": "res_n",
@@ -895,14 +959,6 @@
       "init": "",
       "maxLength": 24,
       "desc": "Name of the 동 강가 lair (see DISCOVERIES)."
-    },
-    {
-      "id": "xroll",
-      "label": "(내부) 탐사 굴림",
-      "type": "int",
-      "init": 1,
-      "min": 1,
-      "max": 1000
     },
     {
       "id": "hunt_target",
@@ -1855,22 +1911,22 @@
     {
       "id": "found_n",
       "label": "칼날 능선",
-      "expr": "\"자원 \" + res_n + \"/2 · 지형 \" + ter_n + \"/1\" + (lair_on_n ? \" · 둥지 \" + (lairname_n != \"\" ? lairname_n : \"이름 없음\") + \"(세력 \" + lair_n + \")\" : \"\") + (exp_n >= 100 ? \" · 정리 중\" : (exp_n > 0 ? \" · 훑는 중 \" + exp_n + \"%\" : \"\"))"
+      "expr": "\"자원 \" + res_n + \"/2\" + (res_n < 2 and exr_n > 0 ? \" (\" + (exr_n >= 100 ? \"정리 중\" : floor(exr_n) + \"%\") + \")\" : \"\") + \" · 지형 \" + ter_n + \"/1\" + (ter_n < 1 and ext_n > 0 ? \" (\" + (ext_n >= 100 ? \"정리 중\" : floor(ext_n) + \"%\") + \")\" : \"\") + (lair_on_n ? \" · 둥지 \" + (lairname_n != \"\" ? lairname_n : \"이름 없음\") + \"(세력 \" + lair_n + \")\" + (res_n < 2 or ter_n < 1 ? \"\" : \" — 길을 막고 있다\") : (exh_n > 0 ? \" · 둥지 찾는 중 \" + (exh_n >= 100 ? \"정리 중\" : floor(exh_n) + \"%\") : \"\"))"
     },
     {
       "id": "found_w",
       "label": "속삭이는 숲",
-      "expr": "\"자원 \" + res_w + \"/2 · 지형 \" + ter_w + \"/2\" + (lair_on_w ? \" · 둥지 \" + (lairname_w != \"\" ? lairname_w : \"이름 없음\") + \"(세력 \" + lair_w + \")\" : \"\") + (exp_w >= 100 ? \" · 정리 중\" : (exp_w > 0 ? \" · 훑는 중 \" + exp_w + \"%\" : \"\"))"
+      "expr": "\"자원 \" + res_w + \"/2\" + (res_w < 2 and exr_w > 0 ? \" (\" + (exr_w >= 100 ? \"정리 중\" : floor(exr_w) + \"%\") + \")\" : \"\") + \" · 지형 \" + ter_w + \"/2\" + (ter_w < 2 and ext_w > 0 ? \" (\" + (ext_w >= 100 ? \"정리 중\" : floor(ext_w) + \"%\") + \")\" : \"\") + (lair_on_w ? \" · 둥지 \" + (lairname_w != \"\" ? lairname_w : \"이름 없음\") + \"(세력 \" + lair_w + \")\" + (res_w < 2 or ter_w < 2 ? \"\" : \" — 길을 막고 있다\") : (exh_w > 0 ? \" · 둥지 찾는 중 \" + (exh_w >= 100 ? \"정리 중\" : floor(exh_w) + \"%\") : \"\"))"
     },
     {
       "id": "found_s",
       "label": "잿빛 평원",
-      "expr": "\"자원 \" + res_s + \"/1 · 지형 \" + ter_s + \"/3\" + (lair_on_s ? \" · 둥지 \" + (lairname_s != \"\" ? lairname_s : \"이름 없음\") + \"(세력 \" + lair_s + \")\" : \"\") + (exp_s >= 100 ? \" · 정리 중\" : (exp_s > 0 ? \" · 훑는 중 \" + exp_s + \"%\" : \"\"))"
+      "expr": "\"자원 \" + res_s + \"/1\" + (res_s < 1 and exr_s > 0 ? \" (\" + (exr_s >= 100 ? \"정리 중\" : floor(exr_s) + \"%\") + \")\" : \"\") + \" · 지형 \" + ter_s + \"/3\" + (ter_s < 3 and ext_s > 0 ? \" (\" + (ext_s >= 100 ? \"정리 중\" : floor(ext_s) + \"%\") + \")\" : \"\") + (lair_on_s ? \" · 둥지 \" + (lairname_s != \"\" ? lairname_s : \"이름 없음\") + \"(세력 \" + lair_s + \")\" + (res_s < 1 or ter_s < 3 ? \"\" : \" — 길을 막고 있다\") : (exh_s > 0 ? \" · 둥지 찾는 중 \" + (exh_s >= 100 ? \"정리 중\" : floor(exh_s) + \"%\") : \"\"))"
     },
     {
       "id": "found_e",
       "label": "강가",
-      "expr": "\"자원 \" + res_e + \"/2 · 지형 \" + ter_e + \"/2\" + (lair_on_e ? \" · 둥지 \" + (lairname_e != \"\" ? lairname_e : \"이름 없음\") + \"(세력 \" + lair_e + \")\" : \"\") + (exp_e >= 100 ? \" · 정리 중\" : (exp_e > 0 ? \" · 훑는 중 \" + exp_e + \"%\" : \"\"))"
+      "expr": "\"자원 \" + res_e + \"/2\" + (res_e < 2 and exr_e > 0 ? \" (\" + (exr_e >= 100 ? \"정리 중\" : floor(exr_e) + \"%\") + \")\" : \"\") + \" · 지형 \" + ter_e + \"/2\" + (ter_e < 2 and ext_e > 0 ? \" (\" + (ext_e >= 100 ? \"정리 중\" : floor(ext_e) + \"%\") + \")\" : \"\") + (lair_on_e ? \" · 둥지 \" + (lairname_e != \"\" ? lairname_e : \"이름 없음\") + \"(세력 \" + lair_e + \")\" + (res_e < 2 or ter_e < 2 ? \"\" : \" — 길을 막고 있다\") : (exh_e > 0 ? \" · 둥지 찾는 중 \" + (exh_e >= 100 ? \"정리 중\" : floor(exh_e) + \"%\") : \"\"))"
     },
     {
       "id": "finds",
@@ -1885,7 +1941,32 @@
     {
       "id": "scouting",
       "label": "탐사 진척",
-      "expr": "explore_dir == \"북 산맥\" ? (exp_n >= 100 ? \"정리 중\" : exp_n + \"%\") : (explore_dir == \"서 숲\" ? (exp_w >= 100 ? \"정리 중\" : exp_w + \"%\") : (explore_dir == \"남 평원\" ? (exp_s >= 100 ? \"정리 중\" : exp_s + \"%\") : (explore_dir == \"동 강가\" ? (exp_e >= 100 ? \"정리 중\" : exp_e + \"%\") : (\"보내지 않음\"))))"
+      "expr": "explore_dir == \"북 산맥\" ? (res_n < 2 ? \"자원 \" + (exr_n >= 100 ? \"정리 중\" : floor(exr_n) + \"%\") : \"\") + (ter_n < 1 ? (res_n < 2 ? \" · \" : \"\") + \"지형 \" + (ext_n >= 100 ? \"정리 중\" : floor(ext_n) + \"%\") : \"\") + (not lair_on_n ? (res_n < 2 or ter_n < 1 ? \" · \" : \"\") + \"둥지 \" + (exh_n >= 100 ? \"정리 중\" : floor(exh_n) + \"%\") : \"\") + (res_n < 2 or ter_n < 1 or not lair_on_n ? \"\" : \"둥지가 길을 막음\") : (explore_dir == \"서 숲\" ? (res_w < 2 ? \"자원 \" + (exr_w >= 100 ? \"정리 중\" : floor(exr_w) + \"%\") : \"\") + (ter_w < 2 ? (res_w < 2 ? \" · \" : \"\") + \"지형 \" + (ext_w >= 100 ? \"정리 중\" : floor(ext_w) + \"%\") : \"\") + (not lair_on_w ? (res_w < 2 or ter_w < 2 ? \" · \" : \"\") + \"둥지 \" + (exh_w >= 100 ? \"정리 중\" : floor(exh_w) + \"%\") : \"\") + (res_w < 2 or ter_w < 2 or not lair_on_w ? \"\" : \"둥지가 길을 막음\") : (explore_dir == \"남 평원\" ? (res_s < 1 ? \"자원 \" + (exr_s >= 100 ? \"정리 중\" : floor(exr_s) + \"%\") : \"\") + (ter_s < 3 ? (res_s < 1 ? \" · \" : \"\") + \"지형 \" + (ext_s >= 100 ? \"정리 중\" : floor(ext_s) + \"%\") : \"\") + (not lair_on_s ? (res_s < 1 or ter_s < 3 ? \" · \" : \"\") + \"둥지 \" + (exh_s >= 100 ? \"정리 중\" : floor(exh_s) + \"%\") : \"\") + (res_s < 1 or ter_s < 3 or not lair_on_s ? \"\" : \"둥지가 길을 막음\") : (explore_dir == \"동 강가\" ? (res_e < 2 ? \"자원 \" + (exr_e >= 100 ? \"정리 중\" : floor(exr_e) + \"%\") : \"\") + (ter_e < 2 ? (res_e < 2 ? \" · \" : \"\") + \"지형 \" + (ext_e >= 100 ? \"정리 중\" : floor(ext_e) + \"%\") : \"\") + (not lair_on_e ? (res_e < 2 or ter_e < 2 ? \" · \" : \"\") + \"둥지 \" + (exh_e >= 100 ? \"정리 중\" : floor(exh_e) + \"%\") : \"\") + (res_e < 2 or ter_e < 2 or not lair_on_e ? \"\" : \"둥지가 길을 막음\") : (\"보내지 않음\"))))"
+    },
+    {
+      "id": "xgain",
+      "label": "(내부) 척후 진척",
+      "expr": "explore_dir == \"북 산맥\" ? round(scout_men * (0.6 + min(5, res_n + ter_n + lairs_n) * 0.1)) * span : (explore_dir == \"서 숲\" ? round(scout_men * (0.6 + min(5, res_w + ter_w + lairs_w) * 0.1)) * span : (explore_dir == \"남 평원\" ? round(scout_men * (0.6 + min(5, res_s + ter_s + lairs_s) * 0.1)) * span : (explore_dir == \"동 강가\" ? round(scout_men * (0.6 + min(5, res_e + ter_e + lairs_e) * 0.1)) * span : (0))))"
+    },
+    {
+      "id": "xs_r",
+      "label": "(내부) 자원 몫",
+      "expr": "explore_dir == \"북 산맥\" ? (((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3)) == 0 ? 0 : (res_n < 2 ? 2 : 0) / ((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3))) : (explore_dir == \"서 숲\" ? (((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1)) == 0 ? 0 : (res_w < 2 ? 3 : 0) / ((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1))) : (explore_dir == \"남 평원\" ? (((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1)) == 0 ? 0 : (res_s < 1 ? 1 : 0) / ((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1))) : (explore_dir == \"동 강가\" ? (((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1)) == 0 ? 0 : (res_e < 2 ? 2 : 0) / ((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1))) : (0))))"
+    },
+    {
+      "id": "xs_t",
+      "label": "(내부) 지형 몫",
+      "expr": "explore_dir == \"북 산맥\" ? (((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3)) == 0 ? 0 : (ter_n < 1 ? 1 : 0) / ((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3))) : (explore_dir == \"서 숲\" ? (((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1)) == 0 ? 0 : (ter_w < 2 ? 2 : 0) / ((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1))) : (explore_dir == \"남 평원\" ? (((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1)) == 0 ? 0 : (ter_s < 3 ? 3 : 0) / ((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1))) : (explore_dir == \"동 강가\" ? (((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1)) == 0 ? 0 : (ter_e < 2 ? 2 : 0) / ((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1))) : (0))))"
+    },
+    {
+      "id": "xs_h",
+      "label": "(내부) 둥지 몫",
+      "expr": "explore_dir == \"북 산맥\" ? (((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3)) == 0 ? 1 : (lair_on_n ? 0 : 3) / ((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3))) : (explore_dir == \"서 숲\" ? (((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1)) == 0 ? 1 : (lair_on_w ? 0 : 1) / ((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1))) : (explore_dir == \"남 평원\" ? (((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1)) == 0 ? 1 : (lair_on_s ? 0 : 1) / ((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1))) : (explore_dir == \"동 강가\" ? (((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1)) == 0 ? 1 : (lair_on_e ? 0 : 1) / ((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1))) : (0))))"
+    },
+    {
+      "id": "scout_top",
+      "label": "(내부) 가장 가까운 발견",
+      "expr": "explore_dir == \"북 산맥\" ? max(res_n < 2 ? exr_n : 0, ter_n < 1 ? ext_n : 0, lair_on_n ? 0 : exh_n) : (explore_dir == \"서 숲\" ? max(res_w < 2 ? exr_w : 0, ter_w < 2 ? ext_w : 0, lair_on_w ? 0 : exh_w) : (explore_dir == \"남 평원\" ? max(res_s < 1 ? exr_s : 0, ter_s < 3 ? ext_s : 0, lair_on_s ? 0 : exh_s) : (explore_dir == \"동 강가\" ? max(res_e < 2 ? exr_e : 0, ter_e < 2 ? ext_e : 0, lair_on_e ? 0 : exh_e) : (0))))"
     },
     {
       "id": "lair_sum",
@@ -2724,40 +2805,68 @@
         "expr": "max(0, pop + ((surplus > 4 and fame >= 12 and pop < cap ? round(min(surplus * 0.2, 5)) : 0) - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5) - round(pop * 0.04) * min(lack_food, 5))"
       },
       {
-        "set": "xroll",
-        "expr": "rand(1, 1000)"
+        "set": "exr_n",
+        "expr": "res_n < 2 ? min(1000, exr_n + (explore_dir == \"북 산맥\" ? xgain * xs_r : 0)) : 0"
       },
       {
-        "set": "exb_n",
-        "expr": "exp_n >= 110 ? exb_n : min(1000, exb_n + max(0, exp_n + (explore_dir == \"북 산맥\" ? round(scout_men * (0.6 + min(5, res_n + ter_n + lairs_n) * 0.1)) * span : 0) - 100))"
+        "set": "ext_n",
+        "expr": "ter_n < 1 ? min(1000, ext_n + (explore_dir == \"북 산맥\" ? xgain * xs_t : 0)) : 0"
       },
       {
-        "set": "exp_n",
-        "expr": "exp_n >= 110 ? 0 : (exp_n + (explore_dir == \"북 산맥\" ? round(scout_men * (0.6 + min(5, res_n + ter_n + lairs_n) * 0.1)) * span : 0) >= 100 ? ((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3)) == 0 ? 140 : (((xroll - 1) % max(1, ((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3)))) < (res_n < 2 ? 2 : 0) ? 110 + res_n : (((xroll - 1) % max(1, ((res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) + (lair_on_n ? 0 : 3)))) < (res_n < 2 ? 2 : 0) + (ter_n < 1 ? 1 : 0) ? 120 + ter_n : 130)) : exp_n + (explore_dir == \"북 산맥\" ? round(scout_men * (0.6 + min(5, res_n + ter_n + lairs_n) * 0.1)) * span : 0))"
+        "set": "exh_n",
+        "expr": "min(1000, exh_n + (explore_dir == \"북 산맥\" ? xgain * xs_h : 0))"
       },
       {
-        "set": "exb_w",
-        "expr": "exp_w >= 110 ? exb_w : min(1000, exb_w + max(0, exp_w + (explore_dir == \"서 숲\" ? round(scout_men * (0.6 + min(5, res_w + ter_w + lairs_w) * 0.1)) * span : 0) - 100))"
+        "set": "xfind_n",
+        "expr": "res_n < 2 and exr_n >= 100 ? 110 + res_n : (ter_n < 1 and ext_n >= 100 ? 120 + ter_n : (exh_n >= 100 ? (lair_on_n ? (res_n < 2 or ter_n < 1 ? 0 : 140) : 130) : 0))"
       },
       {
-        "set": "exp_w",
-        "expr": "exp_w >= 110 ? 0 : (exp_w + (explore_dir == \"서 숲\" ? round(scout_men * (0.6 + min(5, res_w + ter_w + lairs_w) * 0.1)) * span : 0) >= 100 ? ((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1)) == 0 ? 140 : (((xroll - 1) % max(1, ((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1)))) < (res_w < 2 ? 3 : 0) ? 110 + res_w : (((xroll - 1) % max(1, ((res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) + (lair_on_w ? 0 : 1)))) < (res_w < 2 ? 3 : 0) + (ter_w < 2 ? 2 : 0) ? 120 + ter_w : 130)) : exp_w + (explore_dir == \"서 숲\" ? round(scout_men * (0.6 + min(5, res_w + ter_w + lairs_w) * 0.1)) * span : 0))"
+        "set": "exr_w",
+        "expr": "res_w < 2 ? min(1000, exr_w + (explore_dir == \"서 숲\" ? xgain * xs_r : 0)) : 0"
       },
       {
-        "set": "exb_s",
-        "expr": "exp_s >= 110 ? exb_s : min(1000, exb_s + max(0, exp_s + (explore_dir == \"남 평원\" ? round(scout_men * (0.6 + min(5, res_s + ter_s + lairs_s) * 0.1)) * span : 0) - 100))"
+        "set": "ext_w",
+        "expr": "ter_w < 2 ? min(1000, ext_w + (explore_dir == \"서 숲\" ? xgain * xs_t : 0)) : 0"
       },
       {
-        "set": "exp_s",
-        "expr": "exp_s >= 110 ? 0 : (exp_s + (explore_dir == \"남 평원\" ? round(scout_men * (0.6 + min(5, res_s + ter_s + lairs_s) * 0.1)) * span : 0) >= 100 ? ((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1)) == 0 ? 140 : (((xroll - 1) % max(1, ((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1)))) < (res_s < 1 ? 1 : 0) ? 110 + res_s : (((xroll - 1) % max(1, ((res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) + (lair_on_s ? 0 : 1)))) < (res_s < 1 ? 1 : 0) + (ter_s < 3 ? 3 : 0) ? 120 + ter_s : 130)) : exp_s + (explore_dir == \"남 평원\" ? round(scout_men * (0.6 + min(5, res_s + ter_s + lairs_s) * 0.1)) * span : 0))"
+        "set": "exh_w",
+        "expr": "min(1000, exh_w + (explore_dir == \"서 숲\" ? xgain * xs_h : 0))"
       },
       {
-        "set": "exb_e",
-        "expr": "exp_e >= 110 ? exb_e : min(1000, exb_e + max(0, exp_e + (explore_dir == \"동 강가\" ? round(scout_men * (0.6 + min(5, res_e + ter_e + lairs_e) * 0.1)) * span : 0) - 100))"
+        "set": "xfind_w",
+        "expr": "res_w < 2 and exr_w >= 100 ? 110 + res_w : (ter_w < 2 and ext_w >= 100 ? 120 + ter_w : (exh_w >= 100 ? (lair_on_w ? (res_w < 2 or ter_w < 2 ? 0 : 140) : 130) : 0))"
       },
       {
-        "set": "exp_e",
-        "expr": "exp_e >= 110 ? 0 : (exp_e + (explore_dir == \"동 강가\" ? round(scout_men * (0.6 + min(5, res_e + ter_e + lairs_e) * 0.1)) * span : 0) >= 100 ? ((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1)) == 0 ? 140 : (((xroll - 1) % max(1, ((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1)))) < (res_e < 2 ? 2 : 0) ? 110 + res_e : (((xroll - 1) % max(1, ((res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) + (lair_on_e ? 0 : 1)))) < (res_e < 2 ? 2 : 0) + (ter_e < 2 ? 2 : 0) ? 120 + ter_e : 130)) : exp_e + (explore_dir == \"동 강가\" ? round(scout_men * (0.6 + min(5, res_e + ter_e + lairs_e) * 0.1)) * span : 0))"
+        "set": "exr_s",
+        "expr": "res_s < 1 ? min(1000, exr_s + (explore_dir == \"남 평원\" ? xgain * xs_r : 0)) : 0"
+      },
+      {
+        "set": "ext_s",
+        "expr": "ter_s < 3 ? min(1000, ext_s + (explore_dir == \"남 평원\" ? xgain * xs_t : 0)) : 0"
+      },
+      {
+        "set": "exh_s",
+        "expr": "min(1000, exh_s + (explore_dir == \"남 평원\" ? xgain * xs_h : 0))"
+      },
+      {
+        "set": "xfind_s",
+        "expr": "res_s < 1 and exr_s >= 100 ? 110 + res_s : (ter_s < 3 and ext_s >= 100 ? 120 + ter_s : (exh_s >= 100 ? (lair_on_s ? (res_s < 1 or ter_s < 3 ? 0 : 140) : 130) : 0))"
+      },
+      {
+        "set": "exr_e",
+        "expr": "res_e < 2 ? min(1000, exr_e + (explore_dir == \"동 강가\" ? xgain * xs_r : 0)) : 0"
+      },
+      {
+        "set": "ext_e",
+        "expr": "ter_e < 2 ? min(1000, ext_e + (explore_dir == \"동 강가\" ? xgain * xs_t : 0)) : 0"
+      },
+      {
+        "set": "exh_e",
+        "expr": "min(1000, exh_e + (explore_dir == \"동 강가\" ? xgain * xs_h : 0))"
+      },
+      {
+        "set": "xfind_e",
+        "expr": "res_e < 2 and exr_e >= 100 ? 110 + res_e : (ter_e < 2 and ext_e >= 100 ? 120 + ter_e : (exh_e >= 100 ? (lair_on_e ? (res_e < 2 or ter_e < 2 ? 0 : 140) : 130) : 0))"
       },
       {
         "set": "lair_n",
@@ -2884,19 +2993,19 @@
       {
         "id": "find_n_res_1",
         "once": true,
-        "when": "exp_n == 110",
+        "when": "xfind_n == 110",
         "effects": [
           {
             "set": "res_n",
             "expr": "res_n + 1"
           },
           {
-            "set": "exp_n",
-            "expr": "min(100, exb_n)"
+            "set": "exr_n",
+            "expr": "max(0, exr_n - 100)"
           },
           {
-            "set": "exb_n",
-            "expr": "max(0, exb_n - 100)"
+            "set": "xfind_n",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 북 산맥 · 자원] 칼날 능선에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. 무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 캐거나 거두기 시작하면 그 값은 시스템이 매긴다. 예컨대 드러난 화강암 노두(성벽 쌓을 돌), 바위산의 산양 떼(모피와 젖) — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -2904,19 +3013,19 @@
       {
         "id": "find_n_res_2",
         "once": true,
-        "when": "exp_n == 111",
+        "when": "xfind_n == 111",
         "effects": [
           {
             "set": "res_n",
             "expr": "res_n + 1"
           },
           {
-            "set": "exp_n",
-            "expr": "min(100, exb_n)"
+            "set": "exr_n",
+            "expr": "max(0, exr_n - 100)"
           },
           {
-            "set": "exb_n",
-            "expr": "max(0, exb_n - 100)"
+            "set": "xfind_n",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 북 산맥 · 자원] 칼날 능선에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. 무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 캐거나 거두기 시작하면 그 값은 시스템이 매긴다. 예컨대 한여름에도 얼음이 안 녹는 동굴(천연 얼음 곳간), 쇠 냄새 나는 붉은 흙(철광 징후) — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -2924,19 +3033,19 @@
       {
         "id": "find_n_ter_1",
         "once": true,
-        "when": "exp_n == 120",
+        "when": "xfind_n == 120",
         "effects": [
           {
             "set": "ter_n",
             "expr": "ter_n + 1"
           },
           {
-            "set": "exp_n",
-            "expr": "min(100, exb_n)"
+            "set": "ext_n",
+            "expr": "max(0, ext_n - 100)"
           },
           {
-            "set": "exb_n",
-            "expr": "max(0, exb_n - 100)"
+            "set": "xfind_n",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 북 산맥 · 지형] 칼날 능선에서 사람 손이 닿았던 자리가 나왔다. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 누가 만들었고 왜 버려졌는지가 이 발견의 절반이다. 예컨대 무너진 옛 산성 터(성벽 돌이 그대로 남은 자리), 버려진 광부 마을(갱도 입구와 빈집들) — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -2944,7 +3053,7 @@
       {
         "id": "find_n_lair_1",
         "once": true,
-        "when": "exp_n == 130 and lairs_n == 0",
+        "when": "xfind_n == 130 and lairs_n == 0",
         "effects": [
           {
             "set": "lair_n",
@@ -2963,12 +3072,12 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_n",
-            "expr": "min(100, exb_n)"
+            "set": "exh_n",
+            "expr": "max(0, exh_n - 100)"
           },
           {
-            "set": "exb_n",
-            "expr": "max(0, exb_n - 100)"
+            "set": "xfind_n",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 북 산맥 · 위협] 칼날 능선에서 거기 사는 것과 마주쳤다. 정체는 이미 정해져 있다 — 고블린 부족들이다 — 능선 곳곳에 퍼져 살고, 수가 많다. 밤에 내려오는 길목이 이제 지도에 잡혔다. 이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라. 그 무리나 둥지에 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
@@ -2976,7 +3085,7 @@
       {
         "id": "find_n_lair_2",
         "once": true,
-        "when": "exp_n == 130 and lairs_n == 1",
+        "when": "xfind_n == 130 and lairs_n == 1",
         "effects": [
           {
             "set": "lair_n",
@@ -2995,19 +3104,19 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_n",
-            "expr": "min(100, exb_n)"
+            "set": "exh_n",
+            "expr": "max(0, exh_n - 100)"
           },
           {
-            "set": "exb_n",
-            "expr": "max(0, exb_n - 100)"
+            "set": "xfind_n",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 북 산맥 · 위협] 칼날 능선에서 거기 사는 것과 마주쳤다. 정체는 이미 정해져 있다 — 하피들이다 — 상승기류를 타고 봉우리 사이를 돈다. 높은 둥지 자리가 잡혔다. 이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라. 그 무리나 둥지에 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_n_lair_more",
-        "when": "exp_n == 130",
+        "when": "xfind_n == 130",
         "effects": [
           {
             "set": "lair_n",
@@ -3026,26 +3135,26 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_n",
-            "expr": "min(100, exb_n)"
+            "set": "exh_n",
+            "expr": "max(0, exh_n - 100)"
           },
           {
-            "set": "exb_n",
-            "expr": "max(0, exb_n - 100)"
+            "set": "xfind_n",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 북 산맥 · 위협] 칼날 능선에서 또 다른 것이 자리를 잡은 것을 찾았다 — 앞서 나온 것보다 깊은 곳의 것이다. 이 방향에 사는 것(고블린·하피·산짐승) 가운데 무엇이 몇이나 되는지 이번 장면에서 정하고 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_n_blocked",
-        "when": "exp_n == 140",
+        "when": "xfind_n == 140",
         "effects": [
           {
-            "set": "exp_n",
+            "set": "xfind_n",
             "expr": "0"
           },
           {
-            "set": "exb_n",
+            "set": "exh_n",
             "expr": "0"
           }
         ],
@@ -3081,19 +3190,19 @@
       {
         "id": "find_w_res_1",
         "once": true,
-        "when": "exp_w == 110",
+        "when": "xfind_w == 110",
         "effects": [
           {
             "set": "res_w",
             "expr": "res_w + 1"
           },
           {
-            "set": "exp_w",
-            "expr": "min(100, exb_w)"
+            "set": "exr_w",
+            "expr": "max(0, exr_w - 100)"
           },
           {
-            "set": "exb_w",
-            "expr": "max(0, exb_w - 100)"
+            "set": "xfind_w",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 서 숲 · 자원] 속삭이는 숲에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. 무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 캐거나 거두기 시작하면 그 값은 시스템이 매긴다. 예컨대 도끼날이 튕기는 은빛 나무 군락(쇠처럼 단단한 목재), 꿀벌이 든 큰 고목 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3101,19 +3210,19 @@
       {
         "id": "find_w_res_2",
         "once": true,
-        "when": "exp_w == 111",
+        "when": "xfind_w == 111",
         "effects": [
           {
             "set": "res_w",
             "expr": "res_w + 1"
           },
           {
-            "set": "exp_w",
-            "expr": "min(100, exb_w)"
+            "set": "exr_w",
+            "expr": "max(0, exr_w - 100)"
           },
           {
-            "set": "exb_w",
-            "expr": "max(0, exb_w - 100)"
+            "set": "xfind_w",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 서 숲 · 자원] 속삭이는 숲에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. 무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 캐거나 거두기 시작하면 그 값은 시스템이 매긴다. 예컨대 볕 드는 골짜기 하나가 통째로 약초밭, 송진 많은 수지 숲(횃불·방수) — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3121,19 +3230,19 @@
       {
         "id": "find_w_ter_1",
         "once": true,
-        "when": "exp_w == 120",
+        "when": "xfind_w == 120",
         "effects": [
           {
             "set": "ter_w",
             "expr": "ter_w + 1"
           },
           {
-            "set": "exp_w",
-            "expr": "min(100, exb_w)"
+            "set": "ext_w",
+            "expr": "max(0, ext_w - 100)"
           },
           {
-            "set": "exb_w",
-            "expr": "max(0, exb_w - 100)"
+            "set": "xfind_w",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 서 숲 · 지형] 속삭이는 숲에서 물이 나는 자리를 찾았다. 정체는 이미 정해져 있다 — 숲 초입 북서쪽, 산맥에서 내려온 지하수가 암반 아래 갇힌 자리 — 무너진 옛 수로의 취수구다. 옛 사람들은 여기서 마을까지 물을 끌었다. 손이 모자라 버려졌을 뿐이다. 바위를 깨고 수로를 다시 잇는 큰 공사감이지만, 뚫으면 물 문제가 뿌리부터 풀린다. 이미 서사에서 이 취수구를 찾아 쓰고 있다면, 이번에 척후가 찾은 것은 그 위쪽에서 갈라져 나오는 수맥의 본줄기다 — 더 깊고 물이 많다. 같은 것을 두 번 발견하지 마라. 이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라."
@@ -3141,19 +3250,19 @@
       {
         "id": "find_w_ter_2",
         "once": true,
-        "when": "exp_w == 121",
+        "when": "xfind_w == 121",
         "effects": [
           {
             "set": "ter_w",
             "expr": "ter_w + 1"
           },
           {
-            "set": "exp_w",
-            "expr": "min(100, exb_w)"
+            "set": "ext_w",
+            "expr": "max(0, ext_w - 100)"
           },
           {
-            "set": "exb_w",
-            "expr": "max(0, exb_w - 100)"
+            "set": "xfind_w",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 서 숲 · 지형] 속삭이는 숲에서 갈아서 밭으로 만들 수 있는 땅이 나왔다. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 찾은 것만으로 영지의 경작 상한이 늘어난다 — 밭으로 일구는 것은 서사의 몫이다. 예컨대 숲이 갈라진 볕 든 빈터, 쓰러진 고목들 아래 두껍게 쌓인 부엽토 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3161,7 +3270,7 @@
       {
         "id": "find_w_lair_1",
         "once": true,
-        "when": "exp_w == 130 and lairs_w == 0",
+        "when": "xfind_w == 130 and lairs_w == 0",
         "effects": [
           {
             "set": "lair_w",
@@ -3180,19 +3289,19 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_w",
-            "expr": "min(100, exb_w)"
+            "set": "exh_w",
+            "expr": "max(0, exh_w - 100)"
           },
           {
-            "set": "exb_w",
-            "expr": "max(0, exb_w - 100)"
+            "set": "xfind_w",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 서 숲 · 위협] 속삭이는 숲에서 거기 사는 것과 마주쳤다. 정체는 이미 정해져 있다 — 거대 거미들이다 — 그리고 숲 안쪽에는 식물이라고만 하기 어려운 것들이 자란다. 이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라. 그 무리나 둥지에 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_w_lair_more",
-        "when": "exp_w == 130",
+        "when": "xfind_w == 130",
         "effects": [
           {
             "set": "lair_w",
@@ -3211,26 +3320,26 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_w",
-            "expr": "min(100, exb_w)"
+            "set": "exh_w",
+            "expr": "max(0, exh_w - 100)"
           },
           {
-            "set": "exb_w",
-            "expr": "max(0, exb_w - 100)"
+            "set": "xfind_w",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 서 숲 · 위협] 속삭이는 숲에서 또 다른 것이 자리를 잡은 것을 찾았다 — 앞서 나온 것보다 깊은 곳의 것이다. 이 방향에 사는 것(거대 거미·숲의 짐승·이상한 식물) 가운데 무엇이 몇이나 되는지 이번 장면에서 정하고 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_w_blocked",
-        "when": "exp_w == 140",
+        "when": "xfind_w == 140",
         "effects": [
           {
-            "set": "exp_w",
+            "set": "xfind_w",
             "expr": "0"
           },
           {
-            "set": "exb_w",
+            "set": "exh_w",
             "expr": "0"
           }
         ],
@@ -3266,19 +3375,19 @@
       {
         "id": "find_s_res_1",
         "once": true,
-        "when": "exp_s == 110",
+        "when": "xfind_s == 110",
         "effects": [
           {
             "set": "res_s",
             "expr": "res_s + 1"
           },
           {
-            "set": "exp_s",
-            "expr": "min(100, exb_s)"
+            "set": "exr_s",
+            "expr": "max(0, exr_s - 100)"
           },
           {
-            "set": "exb_s",
-            "expr": "max(0, exb_s - 100)"
+            "set": "xfind_s",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 남 평원 · 자원] 잿빛 평원에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. 무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 캐거나 거두기 시작하면 그 값은 시스템이 매긴다. 예컨대 바람에 마른 소금 껍질 평원(먹을 건 못 돼도 팔 것은 된다), 이탄층(캐서 때는 흙) — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3286,19 +3395,19 @@
       {
         "id": "find_s_ter_1",
         "once": true,
-        "when": "exp_s == 120",
+        "when": "xfind_s == 120",
         "effects": [
           {
             "set": "ter_s",
             "expr": "ter_s + 1"
           },
           {
-            "set": "exp_s",
-            "expr": "min(100, exb_s)"
+            "set": "ext_s",
+            "expr": "max(0, ext_s - 100)"
           },
           {
-            "set": "exb_s",
-            "expr": "max(0, exb_s - 100)"
+            "set": "xfind_s",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 남 평원 · 지형] 잿빛 평원에서 갈아서 밭으로 만들 수 있는 땅이 나왔다. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 찾은 것만으로 영지의 경작 상한이 늘어난다 — 밭으로 일구는 것은 서사의 몫이다. 예컨대 재를 걷어내면 나오는 기름진 검은 흙(이 땅은 죽은 게 아니라 덮여 있었다), 재가 얕게 덮여 먼저 갈 수 있는 띠 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3306,19 +3415,19 @@
       {
         "id": "find_s_ter_2",
         "once": true,
-        "when": "exp_s == 121",
+        "when": "xfind_s == 121",
         "effects": [
           {
             "set": "ter_s",
             "expr": "ter_s + 1"
           },
           {
-            "set": "exp_s",
-            "expr": "min(100, exb_s)"
+            "set": "ext_s",
+            "expr": "max(0, ext_s - 100)"
           },
           {
-            "set": "exb_s",
-            "expr": "max(0, exb_s - 100)"
+            "set": "xfind_s",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 남 평원 · 지형] 잿빛 평원에서 큰 것을 앉힐 수 있는 터가 나왔다. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 예컨대 큰 건물 앉힐 단단한 반석 지대, 바람을 막아 주는 낮은 언덕 자락 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3326,19 +3435,19 @@
       {
         "id": "find_s_ter_3",
         "once": true,
-        "when": "exp_s == 122",
+        "when": "xfind_s == 122",
         "effects": [
           {
             "set": "ter_s",
             "expr": "ter_s + 1"
           },
           {
-            "set": "exp_s",
-            "expr": "min(100, exb_s)"
+            "set": "ext_s",
+            "expr": "max(0, ext_s - 100)"
           },
           {
-            "set": "exb_s",
-            "expr": "max(0, exb_s - 100)"
+            "set": "xfind_s",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 남 평원 · 지형] 잿빛 평원에서 사람 손이 닿았던 자리가 나왔다. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 누가 만들었고 왜 버려졌는지가 이 발견의 절반이다. 예컨대 재 아래 옛 전장(쓸 만한 무구, 그리고 파낸 자들이 앓는 무언가), 무너진 파수탑 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3346,7 +3455,7 @@
       {
         "id": "find_s_lair_1",
         "once": true,
-        "when": "exp_s == 130 and lairs_s == 0",
+        "when": "xfind_s == 130 and lairs_s == 0",
         "effects": [
           {
             "set": "lair_s",
@@ -3365,19 +3474,19 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_s",
-            "expr": "min(100, exb_s)"
+            "set": "exh_s",
+            "expr": "max(0, exh_s - 100)"
           },
           {
-            "set": "exb_s",
-            "expr": "max(0, exb_s - 100)"
+            "set": "xfind_s",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 남 평원 · 위협] 잿빛 평원에서 거기 사는 것과 마주쳤다. 정체는 이미 정해져 있다 — 오크 습격대다 — 여기 사는 것이 아니라 남쪽 저편에서 온다. 이 평원이 그들의 내습로다. 이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라. 그 무리나 둥지에 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_s_lair_more",
-        "when": "exp_s == 130",
+        "when": "xfind_s == 130",
         "effects": [
           {
             "set": "lair_s",
@@ -3396,26 +3505,26 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_s",
-            "expr": "min(100, exb_s)"
+            "set": "exh_s",
+            "expr": "max(0, exh_s - 100)"
           },
           {
-            "set": "exb_s",
-            "expr": "max(0, exb_s - 100)"
+            "set": "xfind_s",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 남 평원 · 위협] 잿빛 평원에서 또 다른 것이 자리를 잡은 것을 찾았다 — 앞서 나온 것보다 깊은 곳의 것이다. 이 방향에 사는 것(오크 습격대·떠도는 짐승) 가운데 무엇이 몇이나 되는지 이번 장면에서 정하고 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_s_blocked",
-        "when": "exp_s == 140",
+        "when": "xfind_s == 140",
         "effects": [
           {
-            "set": "exp_s",
+            "set": "xfind_s",
             "expr": "0"
           },
           {
-            "set": "exb_s",
+            "set": "exh_s",
             "expr": "0"
           }
         ],
@@ -3451,19 +3560,19 @@
       {
         "id": "find_e_res_1",
         "once": true,
-        "when": "exp_e == 110",
+        "when": "xfind_e == 110",
         "effects": [
           {
             "set": "res_e",
             "expr": "res_e + 1"
           },
           {
-            "set": "exp_e",
-            "expr": "min(100, exb_e)"
+            "set": "exr_e",
+            "expr": "max(0, exr_e - 100)"
           },
           {
-            "set": "exb_e",
-            "expr": "max(0, exb_e - 100)"
+            "set": "xfind_e",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 동 강가 · 자원] 강가에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. 무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 캐거나 거두기 시작하면 그 값은 시스템이 매긴다. 예컨대 구우면 벽돌이 되는 차진 점토층, 지붕 이엉과 바구니 감이 되는 갈대밭 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3471,19 +3580,19 @@
       {
         "id": "find_e_res_2",
         "once": true,
-        "when": "exp_e == 111",
+        "when": "xfind_e == 111",
         "effects": [
           {
             "set": "res_e",
             "expr": "res_e + 1"
           },
           {
-            "set": "exp_e",
-            "expr": "min(100, exb_e)"
+            "set": "exr_e",
+            "expr": "max(0, exr_e - 100)"
           },
           {
-            "set": "exb_e",
-            "expr": "max(0, exb_e - 100)"
+            "set": "xfind_e",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 동 강가 · 자원] 강가에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. 무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 캐거나 거두기 시작하면 그 값은 시스템이 매긴다. 예컨대 물고기가 회유하는 여울(어장), 강자갈 무더기(골재) — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3491,19 +3600,19 @@
       {
         "id": "find_e_ter_1",
         "once": true,
-        "when": "exp_e == 120",
+        "when": "xfind_e == 120",
         "effects": [
           {
             "set": "ter_e",
             "expr": "ter_e + 1"
           },
           {
-            "set": "exp_e",
-            "expr": "min(100, exb_e)"
+            "set": "ext_e",
+            "expr": "max(0, ext_e - 100)"
           },
           {
-            "set": "exb_e",
-            "expr": "max(0, exb_e - 100)"
+            "set": "xfind_e",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 동 강가 · 지형] 강가에서 물이나 길이 되는 자리가 나왔다. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 예컨대 자갈밭에 걸러진 맑은 지류(떠 마셔도 되는 물), 걸어 건널 여울목 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3511,19 +3620,19 @@
       {
         "id": "find_e_ter_2",
         "once": true,
-        "when": "exp_e == 121",
+        "when": "xfind_e == 121",
         "effects": [
           {
             "set": "ter_e",
             "expr": "ter_e + 1"
           },
           {
-            "set": "exp_e",
-            "expr": "min(100, exb_e)"
+            "set": "ext_e",
+            "expr": "max(0, ext_e - 100)"
           },
           {
-            "set": "exb_e",
-            "expr": "max(0, exb_e - 100)"
+            "set": "xfind_e",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 동 강가 · 지형] 강가에서 사람 손이 닿았던 자리가 나왔다. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라. 이름이 붙지 않으면 기록에 남지 않는다. 누가 만들었고 왜 버려졌는지가 이 발견의 절반이다. 예컨대 무너진 옛 나루터의 말뚝 잔해, 가라앉은 짐배 — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라."
@@ -3531,7 +3640,7 @@
       {
         "id": "find_e_lair_1",
         "once": true,
-        "when": "exp_e == 130 and lairs_e == 0",
+        "when": "xfind_e == 130 and lairs_e == 0",
         "effects": [
           {
             "set": "lair_e",
@@ -3550,19 +3659,19 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_e",
-            "expr": "min(100, exb_e)"
+            "set": "exh_e",
+            "expr": "max(0, exh_e - 100)"
           },
           {
-            "set": "exb_e",
-            "expr": "max(0, exb_e - 100)"
+            "set": "xfind_e",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 동 강가 · 위협] 강가에서 거기 사는 것과 마주쳤다. 정체는 이미 정해져 있다 — 리자드맨이다 — 갈대밭에 살고, 제 영역을 넘는 것을 가만히 지켜보고 있다. 이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라. 그 무리나 둥지에 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_e_lair_more",
-        "when": "exp_e == 130",
+        "when": "xfind_e == 130",
         "effects": [
           {
             "set": "lair_e",
@@ -3581,26 +3690,26 @@
             "expr": "\"\""
           },
           {
-            "set": "exp_e",
-            "expr": "min(100, exb_e)"
+            "set": "exh_e",
+            "expr": "max(0, exh_e - 100)"
           },
           {
-            "set": "exb_e",
-            "expr": "max(0, exb_e - 100)"
+            "set": "xfind_e",
+            "expr": "0"
           }
         ],
         "notify": "[탐사 · 동 강가 · 위협] 강가에서 또 다른 것이 자리를 잡은 것을 찾았다 — 앞서 나온 것보다 깊은 곳의 것이다. 이 방향에 사는 것(리자드맨·물가의 짐승) 가운데 무엇이 몇이나 되는지 이번 장면에서 정하고 이름을 붙여라. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다."
       },
       {
         "id": "find_e_blocked",
-        "when": "exp_e == 140",
+        "when": "xfind_e == 140",
         "effects": [
           {
-            "set": "exp_e",
+            "set": "xfind_e",
             "expr": "0"
           },
           {
-            "set": "exb_e",
+            "set": "exh_e",
             "expr": "0"
           }
         ],
@@ -5174,36 +5283,52 @@
           "when": "disaster == \"\" and route == \"없음\" and guild >= 1 and explore_dir != \"없음\"",
           "effects": [
             {
-              "set": "exb_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(1000, exb_n + max(0, exp_n + 15 - 100)) : exb_n"
+              "set": "exr_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exr_n + 15 * xs_r) : exr_n"
             },
             {
-              "set": "exp_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(100, exp_n + 15) : exp_n"
+              "set": "ext_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, ext_n + 15 * xs_t) : ext_n"
             },
             {
-              "set": "exb_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(1000, exb_w + max(0, exp_w + 15 - 100)) : exb_w"
+              "set": "exh_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exh_n + 15 * xs_h) : exh_n"
             },
             {
-              "set": "exp_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(100, exp_w + 15) : exp_w"
+              "set": "exr_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exr_w + 15 * xs_r) : exr_w"
             },
             {
-              "set": "exb_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(1000, exb_s + max(0, exp_s + 15 - 100)) : exb_s"
+              "set": "ext_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, ext_w + 15 * xs_t) : ext_w"
             },
             {
-              "set": "exp_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(100, exp_s + 15) : exp_s"
+              "set": "exh_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exh_w + 15 * xs_h) : exh_w"
             },
             {
-              "set": "exb_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(1000, exb_e + max(0, exp_e + 15 - 100)) : exb_e"
+              "set": "exr_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exr_s + 15 * xs_r) : exr_s"
             },
             {
-              "set": "exp_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(100, exp_e + 15) : exp_e"
+              "set": "ext_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, ext_s + 15 * xs_t) : ext_s"
+            },
+            {
+              "set": "exh_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exh_s + 15 * xs_h) : exh_s"
+            },
+            {
+              "set": "exr_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exr_e + 15 * xs_r) : exr_e"
+            },
+            {
+              "set": "ext_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, ext_e + 15 * xs_t) : ext_e"
+            },
+            {
+              "set": "exh_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exh_e + 15 * xs_h) : exh_e"
             }
           ],
           "notify": "[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, 피할 자리 하나. 척후가 그만큼 빨라진다. 무슨 이야기였는지는 이번 장면에서 정하라."
@@ -5832,11 +5957,11 @@
     {
       "id": "scouting_on",
       "when": "explore_dir != \"없음\"",
-      "text": "[SCOUTING] Scouts are working {explore_dir} — {scouting} of the ground covered. What they bring back is fragments, not answers: a track, a smell on the wind, a shape seen at distance. Do not let them deliver the find itself until the system says they have. What the Baron sees with his own eyes may stand as a lead — a thing noted in the ledger, not yet a discovery."
+      "text": "[SCOUTING] Scouts are working {explore_dir} — how close each kind of find is: {scouting}. What they bring back is fragments, not answers: a track, a smell on the wind, a shape seen at distance. Do not let them deliver the find itself until the system says they have. What the Baron sees with his own eyes may stand as a lead — a thing noted in the ledger, not yet a discovery."
     },
     {
       "id": "scouting_close",
-      "when": "explore_dir != \"없음\" and (exp_n >= 80 or exp_w >= 80 or exp_s >= 80 or exp_e >= 80)",
+      "when": "explore_dir != \"없음\" and scout_top >= 80",
       "text": "[SCOUTING] They are close to whatever is out there. The fragments are starting to line up."
     },
     {
@@ -6047,36 +6172,52 @@
           "label": "대성공",
           "effects": [
             {
-              "set": "exb_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(1000, exb_n + max(0, exp_n + 30 - 100)) : exb_n"
+              "set": "exr_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exr_n + 30 * xs_r) : exr_n"
             },
             {
-              "set": "exp_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(100, exp_n + 30) : exp_n"
+              "set": "ext_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, ext_n + 30 * xs_t) : ext_n"
             },
             {
-              "set": "exb_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(1000, exb_w + max(0, exp_w + 30 - 100)) : exb_w"
+              "set": "exh_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exh_n + 30 * xs_h) : exh_n"
             },
             {
-              "set": "exp_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(100, exp_w + 30) : exp_w"
+              "set": "exr_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exr_w + 30 * xs_r) : exr_w"
             },
             {
-              "set": "exb_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(1000, exb_s + max(0, exp_s + 30 - 100)) : exb_s"
+              "set": "ext_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, ext_w + 30 * xs_t) : ext_w"
             },
             {
-              "set": "exp_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(100, exp_s + 30) : exp_s"
+              "set": "exh_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exh_w + 30 * xs_h) : exh_w"
             },
             {
-              "set": "exb_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(1000, exb_e + max(0, exp_e + 30 - 100)) : exb_e"
+              "set": "exr_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exr_s + 30 * xs_r) : exr_s"
             },
             {
-              "set": "exp_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(100, exp_e + 30) : exp_e"
+              "set": "ext_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, ext_s + 30 * xs_t) : ext_s"
+            },
+            {
+              "set": "exh_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exh_s + 30 * xs_h) : exh_s"
+            },
+            {
+              "set": "exr_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exr_e + 30 * xs_r) : exr_e"
+            },
+            {
+              "set": "ext_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, ext_e + 30 * xs_t) : ext_e"
+            },
+            {
+              "set": "exh_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exh_e + 30 * xs_h) : exh_e"
             },
             {
               "set": "morale",
@@ -6090,36 +6231,52 @@
           "label": "성공",
           "effects": [
             {
-              "set": "exb_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(1000, exb_n + max(0, exp_n + 18 - 100)) : exb_n"
+              "set": "exr_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exr_n + 18 * xs_r) : exr_n"
             },
             {
-              "set": "exp_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(100, exp_n + 18) : exp_n"
+              "set": "ext_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, ext_n + 18 * xs_t) : ext_n"
             },
             {
-              "set": "exb_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(1000, exb_w + max(0, exp_w + 18 - 100)) : exb_w"
+              "set": "exh_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exh_n + 18 * xs_h) : exh_n"
             },
             {
-              "set": "exp_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(100, exp_w + 18) : exp_w"
+              "set": "exr_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exr_w + 18 * xs_r) : exr_w"
             },
             {
-              "set": "exb_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(1000, exb_s + max(0, exp_s + 18 - 100)) : exb_s"
+              "set": "ext_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, ext_w + 18 * xs_t) : ext_w"
             },
             {
-              "set": "exp_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(100, exp_s + 18) : exp_s"
+              "set": "exh_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exh_w + 18 * xs_h) : exh_w"
             },
             {
-              "set": "exb_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(1000, exb_e + max(0, exp_e + 18 - 100)) : exb_e"
+              "set": "exr_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exr_s + 18 * xs_r) : exr_s"
             },
             {
-              "set": "exp_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(100, exp_e + 18) : exp_e"
+              "set": "ext_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, ext_s + 18 * xs_t) : ext_s"
+            },
+            {
+              "set": "exh_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exh_s + 18 * xs_h) : exh_s"
+            },
+            {
+              "set": "exr_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exr_e + 18 * xs_r) : exr_e"
+            },
+            {
+              "set": "ext_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, ext_e + 18 * xs_t) : ext_e"
+            },
+            {
+              "set": "exh_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exh_e + 18 * xs_h) : exh_e"
             }
           ],
           "inject": "Steady progress through rough country."
@@ -6128,36 +6285,52 @@
           "label": "실패",
           "effects": [
             {
-              "set": "exb_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(1000, exb_n + max(0, exp_n + 5 - 100)) : exb_n"
+              "set": "exr_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exr_n + 5 * xs_r) : exr_n"
             },
             {
-              "set": "exp_n",
-              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(100, exp_n + 5) : exp_n"
+              "set": "ext_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, ext_n + 5 * xs_t) : ext_n"
             },
             {
-              "set": "exb_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(1000, exb_w + max(0, exp_w + 5 - 100)) : exb_w"
+              "set": "exh_n",
+              "expr": "explore_dir == \"북 산맥\" ? min(1000, exh_n + 5 * xs_h) : exh_n"
             },
             {
-              "set": "exp_w",
-              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(100, exp_w + 5) : exp_w"
+              "set": "exr_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exr_w + 5 * xs_r) : exr_w"
             },
             {
-              "set": "exb_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(1000, exb_s + max(0, exp_s + 5 - 100)) : exb_s"
+              "set": "ext_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, ext_w + 5 * xs_t) : ext_w"
             },
             {
-              "set": "exp_s",
-              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(100, exp_s + 5) : exp_s"
+              "set": "exh_w",
+              "expr": "explore_dir == \"서 숲\" ? min(1000, exh_w + 5 * xs_h) : exh_w"
             },
             {
-              "set": "exb_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(1000, exb_e + max(0, exp_e + 5 - 100)) : exb_e"
+              "set": "exr_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exr_s + 5 * xs_r) : exr_s"
             },
             {
-              "set": "exp_e",
-              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(100, exp_e + 5) : exp_e"
+              "set": "ext_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, ext_s + 5 * xs_t) : ext_s"
+            },
+            {
+              "set": "exh_s",
+              "expr": "explore_dir == \"남 평원\" ? min(1000, exh_s + 5 * xs_h) : exh_s"
+            },
+            {
+              "set": "exr_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exr_e + 5 * xs_r) : exr_e"
+            },
+            {
+              "set": "ext_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, ext_e + 5 * xs_t) : ext_e"
+            },
+            {
+              "set": "exh_e",
+              "expr": "explore_dir == \"동 강가\" ? min(1000, exh_e + 5 * xs_h) : exh_e"
             },
             {
               "set": "morale",

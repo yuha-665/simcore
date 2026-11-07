@@ -43,7 +43,7 @@ const share = (col) => POLICY.slice(0, -1).reduceRight(
 //   위협 = 치울 거리 — 방향마다 둥지 한 자리, 치우면 더 깊은 곳의 다음 것이 나온다(순환).
 //   자원 = 특산품이 될 재료 — 땅에 묻힌 수가 정해져 있다(한정·영구). 탐사로 찾은 것만 특산품이 된다 — 서사로 찾은 건 자원지(sites).
 //   지형 = 활용할 땅 — 땅은 무한하지 않다(한정·영구). 숨은 장소(폐허·나루터·옛 수로)는 "고쳐 쓰는 땅"이라 여기에 합쳤다.
-//   [방향키, 변수, 지역명, 눈에 보이는 것, 가중치 [자원, 지형, 위협]] — 가중치가 그 방향의 정체성이다
+//   [방향키, 키(exp_ 뒤 한 글자 — 게이지는 exr_·ext_·exh_ + 키), 지역명, 눈에 보이는 것, 가중치 [자원, 지형, 위협]] — 가중치가 그 방향의 정체성이다
 //   (북은 험해서 위협, 서는 숲이라 자원, 남은 땅 자체가 자산이라 지형, 동은 반반).
 const EXPLORE = [
   ['북 산맥', 'exp_n', '칼날 능선', '가파른 맨바위와 녹지 않는 눈. 몬스터가 내려오는 길이다.', [2, 1, 3]],
@@ -136,36 +136,53 @@ const lackDays = (x, s) => `${s} >= 0 ? (${x} <= 0 and ${s} == 0 ? span : 0)`
 
 // 한정 자리 총수 (자원 7 + 지형 8) — 영토 파악 %의 분모. 둥지는 순환이라 안 센다
 const FINITE_TOTAL = EXPLORE.reduce((a, [, v]) => a + RES[v.slice(4)].length + TER[v.slice(4)].length, 0);
-// 방향 하나의 현황 — 자원·지형을 얼마나 건졌고, 둥지가 살아 있는지, 지금 얼마나 훑었는지.
-// 무엇을 찾았는지(이름)는 특산품·개척지 목록에 있다 — 여러 개라 한 칸에 안 들어간다.
-const foundExpr = (k) => `"자원 " + res_${k} + "/${RES[k].length} · 지형 " + ter_${k} + "/${TER[k].length}"`
-  + ` + (lair_on_${k} ? " · 둥지 " + (lairname_${k} != "" ? lairname_${k} : "이름 없음") + "(세력 " + lair_${k} + ")" : "")`
-  + ` + (exp_${k} >= 100 ? " · 정리 중" : (exp_${k} > 0 ? " · 훑는 중 " + exp_${k} + "%" : ""))`;
-// 100%에 닿은 방향이 무엇을 내놓나 — 그 방향에 **남은 것** 중에서 가중치로 고른다.
-//   자원·지형은 다 나오면 빠지고, 위협은 그 방향에 살아 있는 둥지가 없을 때만 — 그래서 한정 자리가 다 나온 뒤에도 척후가 할 일이 남는다.
-//   부호화: 110 + 자원 자리 · 120 + 지형 자리 · 130 둥지 · 140 막힘(남은 것 없음 + 둥지가 살아 있음)
-//   굴림은 xroll 하나를 나눠 쓴다 — 식 안에서 rand()를 여러 번 부르면 갈래마다 따로 굴러 확률이 어긋난다.
-const pickExpr = (k, [wr, wt, wh]) => {
-  const WR = `(res_${k} < ${RES[k].length} ? ${wr} : 0)`;
-  const WT = `(ter_${k} < ${TER[k].length} ? ${wt} : 0)`;
-  const WH = `(lair_on_${k} ? 0 : ${wh})`;
-  const TOT = `(${WR} + ${WT} + ${WH})`;
-  const R = `((xroll - 1) % max(1, ${TOT}))`;
-  return `${TOT} == 0 ? 140 : (${R} < ${WR} ? 110 + res_${k} : (${R} < ${WR} + ${WT} ? 120 + ter_${k} : 130))`;
+// ── 종류별 게이지 (2026-11-07, 유저 결정 "비율로 나눠 쌓기") ──
+// §16은 자리 수만 따로 셌고 진척 게이지는 방향마다 하나였다 — 100%가 되면 자원·지형·둥지 중 하나를 가중치로 뽑아서,
+// 지형이 하나 나오면 자원 하나 몫의 진척이 그리로 갔다(유저 "자원이랑 지형이 여전히 같이 할당량을 분배받고 있다").
+// 이제 게이지가 종류마다 따로다 — exr_* 자원 · ext_* 지형 · exh_* 둥지. 척후 진척은 그 방향 가중치 비율로 갈려 셋에 동시에 쌓인다
+// (서 숲 3:2:1이면 하루 7% → 3.5 · 2.3 · 1.2). 다 나온 종류와 둥지가 살아 있는 동안의 둥지 몫은 비율에서 빠져 남은 쪽으로 간다 —
+// 전체 발견 속도는 옛 판과 같다. 게이지는 float: int면 쪼갠 몫이 매번 반올림돼 척후가 적을 때 1.2%가 0이나 1로 뭉개진다.
+//   게이지는 100을 넘어도 그대로 쌓인다(천장 GAUGE_MAX — "한 달 뒤" 330%면 발견 셋). 발견 하나가 100을 꺼낸다.
+//   그 턴에 무엇이 나왔는지는 방향마다 칸 하나(xfind_*)에 적는다 — 칸이 하나라 한 방향에서 한 턴에 하나만 나온다
+//   (자원 → 지형 → 둥지 순. 밀린 것은 100 이상으로 기다렸다 다음 턴에). 부호: 110 + 자원 자리 · 120 + 지형 자리 · 130 둥지 · 140 막힘.
+const GAUGE_MAX = 1000;
+const KIND_GAUGE = { r: 'exr', t: 'ext', h: 'exh' };
+// 그 종류가 지금 진척을 받는 몫의 무게 — 자원·지형은 남은 자리가 있을 때, 둥지는 살아 있는 둥지가 없을 때
+const kindW = (k, [wr, wt, wh]) => ({
+  r: `(res_${k} < ${RES[k].length} ? ${wr} : 0)`,
+  t: `(ter_${k} < ${TER[k].length} ? ${wt} : 0)`,
+  h: `(lair_on_${k} ? 0 : ${wh})`,
+});
+// 그 방향에서 그 종류가 받는 몫(0~1). 셋 다 0이면(자원·지형이 다 나왔는데 둥지가 살아 있다) 둥지 게이지가 통째로 받는다 —
+//   그때의 둥지 게이지는 찾을 것을 재는 게 아니라 "막힘"을 잰다. 100에 닿으면 막힘 통지(140).
+const shareExpr = (k, w, kind) => {
+  const W = kindW(k, w), TOT = `(${W.r} + ${W.t} + ${W.h})`;
+  return kind === 'h' ? `(${TOT} == 0 ? 1 : ${W.h} / ${TOT})` : `(${TOT} == 0 ? 0 : ${W[kind]} / ${TOT})`;
 };
-// 이월 (2026-10-18, 유저 결정) — 100을 넘친 진척은 버리지 않고 exb_*에 둔다. "한 달 뒤"(7%×30 = 210%)는 발견 둘에 10%가 남는다.
-//   발견은 여전히 한 턴에 하나라(이벤트가 한 번씩만 돈다) 이월 칸에 100이 남으면 진척을 100으로 세워 다음 턴에 마저 고른다.
-//   천장은 백스톱일 뿐이다 — 한 방향에서 나올 것은 유한하고, 막힘이 이월 칸을 비운다.
-const EXB_MAX = 1000;
-// 이번 정산에 그 방향 척후가 쌓는 진척 — 건진 게 있는 방향은 지리를 아니까 조금씩 빨라진다(다섯 번까지)
-const gainExpr = (dir, k) => `(explore_dir == ${JSON.stringify(dir)}`
-  + ` ? round(scout_men * (0.6 + min(5, res_${k} + ter_${k} + lairs_${k}) * 0.1)) * span : 0)`;
-// 판정·소문이 지금 훑는 방향을 n만큼 민다 — 넘친 몫은 이월 칸으로. 발견 부호(100↑)는 안 건드린다.
-//   이월 칸을 먼저 — 효과는 차례로 적용되므로 진척을 먼저 밀면 넘친 몫을 셀 옛 값이 사라진다.
+const pctTxt = (g) => `(${g} >= 100 ? "정리 중" : floor(${g}) + "%")`;
+// 방향 하나의 현황 — 자원·지형을 얼마나 건졌고 각각 얼마나 훑었는지, 둥지가 살아 있는지.
+// 무엇을 찾았는지(이름)는 특산품·개척지 목록에 있다 — 여러 개라 한 칸에 안 들어간다.
+const foundExpr = (k) => {
+  const liveR = `res_${k} < ${RES[k].length}`, liveT = `ter_${k} < ${TER[k].length}`;
+  return `"자원 " + res_${k} + "/${RES[k].length}" + (${liveR} and exr_${k} > 0 ? " (" + ${pctTxt(`exr_${k}`)} + ")" : "")`
+    + ` + " · 지형 " + ter_${k} + "/${TER[k].length}" + (${liveT} and ext_${k} > 0 ? " (" + ${pctTxt(`ext_${k}`)} + ")" : "")`
+    + ` + (lair_on_${k} ? " · 둥지 " + (lairname_${k} != "" ? lairname_${k} : "이름 없음") + "(세력 " + lair_${k} + ")"`
+    + ` + (${liveR} or ${liveT} ? "" : " — 길을 막고 있다")`
+    + ` : (exh_${k} > 0 ? " · 둥지 찾는 중 " + ${pctTxt(`exh_${k}`)} : ""))`;
+};
+// 지금 훑는 방향의 게이지만 — "자원 35% · 지형 12% · 둥지 8%". 다 나온 종류·살아 있는 둥지는 뺀다(구분자는 앞에 뭐가 있을 때만, 식에 trim이 없다)
+const scoutTxt = (k) => {
+  const liveR = `res_${k} < ${RES[k].length}`, liveT = `ter_${k} < ${TER[k].length}`, liveH = `not lair_on_${k}`;
+  return `(${liveR} ? "자원 " + ${pctTxt(`exr_${k}`)} : "")`
+    + ` + (${liveT} ? (${liveR} ? " · " : "") + "지형 " + ${pctTxt(`ext_${k}`)} : "")`
+    + ` + (${liveH} ? (${liveR} or ${liveT} ? " · " : "") + "둥지 " + ${pctTxt(`exh_${k}`)} : "")`
+    + ` + (${liveR} or ${liveT} or ${liveH} ? "" : "둥지가 길을 막음")`;
+};
+// 판정·소문이 지금 훑는 방향을 n만큼 민다 — 종류별 몫(xs_*)대로 갈라서. 100을 넘친 몫도 게이지에 그대로 남는다.
 const pushFx = (n) => EXPLORE.flatMap(([d, v2]) => {
-  const k = v2.slice(4), on = `explore_dir == ${JSON.stringify(d)} and ${v2} < 100`;
-  return [{ set: `exb_${k}`, expr: `${on} ? min(${EXB_MAX}, exb_${k} + max(0, ${v2} + ${n} - 100)) : exb_${k}` },
-    { set: v2, expr: `${on} ? min(100, ${v2} + ${n}) : ${v2}` }];
+  const k = v2.slice(4), on = `explore_dir == ${JSON.stringify(d)}`;
+  return Object.entries(KIND_GAUGE).map(([kind, g]) =>
+    ({ set: `${g}_${k}`, expr: `${on} ? min(${GAUGE_MAX}, ${g}_${k} + ${n} * xs_${kind}) : ${g}_${k}` }));
 });
 // 찾은 지형 중 개간지 수 — 자리 순서가 고정이라 "몇 개 찾았나"로 어느 쓰임까지 나왔는지 안다
 const landFarmExpr = EXPLORE.flatMap(([, v]) => {
@@ -650,25 +667,26 @@ const S = {
     // 지형 자체(북=산, 서=숲, 남=평원, 동=강)는 영지 중앙에서 눈으로 보인다. 그건 고정이다.
     // 변주되는 것은 그 안에서 "무엇이 나오느냐"다. 그래야 매 판 같은 전개가 안 된다.
     //
-    // ⚠ 진척도 변수 하나가 세 가지 일을 겸한다.
-    //     0~99    한 번 훑는 중 (척후가 쌓는 값)
-    //     100     보고 대기 — 이월 칸에 한 번 더 찾을 몫이 남았다 (다음 턴에 고른다). 100에 닿는 턴에는 바로 고르므로 머물지 않는다
-    //     110+i 자원 자리 i · 120+i 지형 자리 i · 130 둥지 · 140 막힘 — 그 턴의 발견 이벤트가 보고 이월 몫(exb_*)으로 되돌린다.
-    //   ⚠ 되돌리기는 이벤트 효과에서 한다 — 이벤트는 앞 이벤트의 효과를 보고 평가되므로, 안 되돌리면 같은 턴에
-    //     다음 자리(자원 개수 +1 → 110 + 다음 i)가 연달아 터진다. onTurn의 ">= 110 → 0"은 안전망이다.
+    // 게이지는 종류마다 따로다 (2026-11-07 — 위 KIND_GAUGE 주석). 진척 게이지 exr_*·ext_*·exh_*는 100을 넘어도 쌓이고,
+    // 그 턴에 나온 것은 방향마다 칸 하나(xfind_*)에 적는다: 0 없음 · 110+i 자원 자리 i · 120+i 지형 자리 i · 130 둥지 · 140 막힘.
+    //   ⚠ 칸 비우기는 이벤트 효과에서 한다 — 이벤트는 앞 이벤트의 효과를 보고 평가되므로, 안 비우면 같은 턴에
+    //     다음 자리(자원 개수 +1 → 110 + 다음 i)가 연달아 터진다. onTurn은 매 턴 칸을 새로 적는다.
     //   한 방향을 계속 파도 된다 — 자원·지형이 다 나와도 둥지가 순환한다. 옛 판의 "다 훑음"(척후가 영영 할 일 없음)은 없다.
-    //   자리 순서는 고정이다(옛 판의 시작점 굴림 o_*는 폐지) — 판마다 다른 건 "어느 종류가 먼저 나오느냐"(가중치 굴림)다.
+    //   자리 순서는 고정이다(옛 판의 시작점 굴림 o_*는 폐지) — 판마다 다른 건 서사가 짓는 이름이다.
     { id: 'explore_dir', label: '탐사 방향', type: 'enum', cmd: '탐사',
       enum: ['없음', '북 산맥', '서 숲', '남 평원', '동 강가'], init: '없음',
       desc: 'Where the scouts are currently working. Set it when the narration sends them somewhere; '
         + '"없음" means they are kept home.' },
-    ...EXPLORE.map(([dir, v]) => ({
-      id: v, label: `${dir.slice(0, 1)} 탐사`, type: 'int', init: 0, min: 0, max: 140,
-    })),
-    // 100을 넘친 진척 (이월) — 시스템 전용. 보조 계약표(allow)에 없다
-    ...EXPLORE.map(([dir, v]) => ({
-      id: `exb_${v.slice(4)}`, label: `(내부) ${dir.slice(0, 1)} 이월 진척`, type: 'int', init: 0, min: 0, max: EXB_MAX,
-    })),
+    // 종류별 진척 게이지 + 그 턴에 나온 것 — 시스템 전용. 보조 계약표(allow)에 없다
+    ...EXPLORE.flatMap(([dir, v]) => {
+      const k = v.slice(4), d = dir.slice(0, 1);
+      return [
+        { id: `exr_${k}`, label: `${d} 자원 탐사`, type: 'float', init: 0, min: 0, max: GAUGE_MAX },
+        { id: `ext_${k}`, label: `${d} 지형 탐사`, type: 'float', init: 0, min: 0, max: GAUGE_MAX },
+        { id: `exh_${k}`, label: `${d} 둥지 탐사`, type: 'float', init: 0, min: 0, max: GAUGE_MAX },
+        { id: `xfind_${k}`, label: `(내부) ${d} 이번 발견`, type: 'int', init: 0, min: 0, max: 140 },
+      ];
+    }),
     ...EXPLORE.flatMap(([dir, v]) => {
       const k = v.slice(4), d = dir.slice(0, 1);
       return [
@@ -687,8 +705,7 @@ const S = {
           desc: `Name of the ${dir} lair (see DISCOVERIES).` },
       ];
     }),
-    // 종류 고르기 굴림 (탐사 정산이 매 턴 새로 굴린다) · 현상금·출정이 노리는 둥지 — 등급 효과가 차례로 적용되는 동안 대상이 안 바뀌게 먼저 굳힌다
-    { id: 'xroll', label: '(내부) 탐사 굴림', type: 'int', init: 1, min: 1, max: 1000 },
+    // 현상금·출정이 노리는 둥지 — 등급 효과가 차례로 적용되는 동안 대상이 안 바뀌게 먼저 굳힌다
     { id: 'hunt_target', label: '(내부) 토벌 대상', type: 'text', init: '', maxLength: 2 },
 
     // ── 안전 ──
@@ -918,8 +935,27 @@ const S = {
     { id: 'survey', label: '영토 파악', expr: `round(finds * 100 / ${FINITE_TOTAL}) + "%"` },
     { id: 'scouting', label: '탐사 진척',
       expr: EXPLORE.reduceRight(
-        (acc, [dir, v]) => `explore_dir == ${JSON.stringify(dir)} ? (${v} >= 100 ? "정리 중" : ${v} + "%") : (${acc})`,
+        (acc, [dir, v]) => `explore_dir == ${JSON.stringify(dir)} ? ${scoutTxt(v.slice(4))} : (${acc})`,
         '"보내지 않음"') },
+    // 지금 훑는 방향 — 이번 정산에 척후가 쌓는 진척(건진 게 있는 방향은 지리를 아니까 조금씩 빨라진다, 다섯 번까지)과
+    // 그걸 종류별로 가르는 몫. 정산(onTurn)과 답사·소문(pushFx)이 같은 몫을 읽는다
+    { id: 'xgain', label: '(내부) 척후 진척',
+      expr: EXPLORE.reduceRight((acc, [dir, v]) => {
+        const k = v.slice(4);
+        return `explore_dir == ${JSON.stringify(dir)} ? round(scout_men * (0.6 + min(5, res_${k} + ter_${k} + lairs_${k}) * 0.1)) * span : (${acc})`;
+      }, '0') },
+    ...Object.keys(KIND_GAUGE).map((kind) => ({
+      id: `xs_${kind}`, label: `(내부) ${{ r: '자원', t: '지형', h: '둥지' }[kind]} 몫`,
+      expr: EXPLORE.reduceRight((acc, [dir, v, , , w]) =>
+        `explore_dir == ${JSON.stringify(dir)} ? ${shareExpr(v.slice(4), w, kind)} : (${acc})`, '0'),
+    })),
+    // 가장 많이 훑은 게이지 (지금 방향, 찾을 게 남은 종류만) — "가까워졌다" 지시문
+    { id: 'scout_top', label: '(내부) 가장 가까운 발견',
+      expr: EXPLORE.reduceRight((acc, [dir, v]) => {
+        const k = v.slice(4);
+        return `explore_dir == ${JSON.stringify(dir)} ? max(res_${k} < ${RES[k].length} ? exr_${k} : 0,`
+          + ` ter_${k} < ${TER[k].length} ? ext_${k} : 0, lair_on_${k} ? 0 : exh_${k}) : (${acc})`;
+      }, '0') },
     // 둥지 — 세력 합이 위협 목표에 얹히고(threat_goal), 현상금·출정은 가장 센 것을 노린다(같으면 북·서·남·동 순)
     { id: 'lair_sum', label: '둥지 세력 합', expr: EXPLORE.map(([, v]) => `lair_${v.slice(4)}`).join(' + ') },
     { id: 'lair_top', label: '가장 센 둥지',
@@ -1325,18 +1361,21 @@ const S = {
       // 인구 변동은 비율이라 열흘치를 한 번에 곱하면 몰살이 된다 — 닷새분까지만 몰아서 친다.
       { set: 'pop', expr: 'max(0, pop + ((surplus > 4 and fame >= 12 and pop < cap ? round(min(surplus * 0.2, 5)) : 0)'
         + ' - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5) - round(pop * 0.04) * min(lack_food, 5))' },
-      // ── 탐사 진척 (v2, §16) ──
-      // 종류 고르기 굴림 — 반드시 진척도 규칙보다 **먼저** (같은 턴에 pickExpr가 이 값을 읽는다)
-      { set: 'xroll', expr: 'rand(1, 1000)' },
-      // ① 결과 구간(>= 110)은 0으로 — 발견 이벤트가 이미 되돌렸어야 한다. 안전망이다.
-      // ② 척후 인원만큼 쌓고(gainExpr), 100을 넘친 몫은 이월 칸에 — 이월 칸을 먼저 센다(진척 규칙이 옛 값을 바꾸기 전에).
-      // ③ 쌓은 값이 100에 닿으면 **그 턴에** 남은 것 중에서 고른다(pickExpr) — 같은 턴의 발견 이벤트가 그 값을 보고 터진다.
-      //   (옛 판은 100에 세워 두고 다음 턴에 골랐다 — 발견 장면이 두 응답 뒤로 밀렸다. 2026-10-18 유저 결정으로 당김)
-      ...EXPLORE.flatMap(([dir, v, , , w]) => {
-        const k = v.slice(4), g = gainExpr(dir, k);
+      // ── 탐사 진척 (종류별 게이지, 2026-11-07) ──
+      // ① 척후 진척(xgain)을 종류별 몫(xs_*)대로 쌓는다 — 지금 훑는 방향에만. 다 나온 종류의 게이지는 0으로(남은 몫은 버린다).
+      //   둥지가 살아 있는 동안 둥지 게이지는 몫이 0이라 멈춰 있다 — 치우면 거기서 다시 찬다.
+      // ② 100에 닿은 게이지가 있으면 **그 턴에** 칸(xfind_*)에 적는다 — 같은 턴의 발견 이벤트가 보고 터진다.
+      //   칸이 하나라 한 방향에서 한 턴에 하나 — 자원 → 지형 → 둥지 순이고, 밀린 것은 다음 턴에. 척후를 불러들여도 이미 찬 것은 나온다.
+      ...EXPLORE.flatMap(([dir, v]) => {
+        const k = v.slice(4), on = `explore_dir == ${JSON.stringify(dir)}`;
+        const liveR = `res_${k} < ${RES[k].length}`, liveT = `ter_${k} < ${TER[k].length}`;
         return [
-          { set: `exb_${k}`, expr: `${v} >= 110 ? exb_${k} : min(${EXB_MAX}, exb_${k} + max(0, ${v} + ${g} - 100))` },
-          { set: v, expr: `${v} >= 110 ? 0 : (${v} + ${g} >= 100 ? ${pickExpr(k, w)} : ${v} + ${g})` },
+          { set: `exr_${k}`, expr: `${liveR} ? min(${GAUGE_MAX}, exr_${k} + (${on} ? xgain * xs_r : 0)) : 0` },
+          { set: `ext_${k}`, expr: `${liveT} ? min(${GAUGE_MAX}, ext_${k} + (${on} ? xgain * xs_t : 0)) : 0` },
+          { set: `exh_${k}`, expr: `min(${GAUGE_MAX}, exh_${k} + (${on} ? xgain * xs_h : 0))` },
+          { set: `xfind_${k}`, expr: `${liveR} and exr_${k} >= 100 ? 110 + res_${k}`
+            + ` : (${liveT} and ext_${k} >= 100 ? 120 + ter_${k}`
+            + ` : (exh_${k} >= 100 ? (lair_on_${k} ? (${liveR} or ${liveT} ? 0 : 140) : 130) : 0))` },
         ];
       }),
       // 둥지는 두면 자란다 — 하루 1/20 확률로 +1 (며칠을 건너뛰면 그만큼 높게, 스무 날이면 확실히). 천장 LAIR_MAX
@@ -1403,19 +1442,19 @@ const S = {
       { set: 'drift_adm', expr: '0' }, { set: 'drift_out', expr: '0' },
     ],
     // ── 발견 (v2, §16) ──
-    // 어느 종류의 어느 자리가 열렸는지는 onTurn이 이미 정했다(exp_* 부호). 여기는 그걸 서사에게 넘기는 자리다.
+    // 어느 종류의 어느 자리가 열렸는지는 onTurn이 이미 정했다(xfind_* 칸). 여기는 그걸 서사에게 넘기는 자리다.
     // 물건 이름은 여기서 안 정한다 — 계약과 같다. 시스템은 "무엇이 나올 차례"까지, 그게 뭔지는 서사가 짓고 보조가 목록에 옮긴다.
-    // 효과는 개수와 부호 되돌리기뿐이다(⚠ 되돌리기가 없으면 같은 턴에 다음 자리 이벤트가 연달아 터진다 — 변수 블록 ⚠ 참고).
+    // 효과는 개수 · 그 게이지에서 100 꺼내기 · 칸 비우기뿐이다(⚠ 칸을 안 비우면 같은 턴에 다음 자리 이벤트가 연달아 터진다 — 변수 블록 ⚠ 참고).
     // 자원·지형: once — 한 자리는 한 번만. 둥지: 정본(방향마다 첫 것 — 북은 둘째까지)은 once, 그 뒤는 몇 번이고.
-    events: EXPLORE.flatMap(([dir, v, place]) => {
-      const k = v.slice(4);
-      // 되돌리기 = 이월 몫 꺼내기. 100 이상 남았으면 진척을 100(보고 대기)에 세워 다음 턴에 하나 더 — 부호(110↑)는 다시 안 생긴다
-      const back = [{ set: v, expr: `min(100, exb_${k})` }, { set: `exb_${k}`, expr: `max(0, exb_${k} - 100)` }];
+    events: EXPLORE.flatMap(([dir, ev, place]) => {
+      const k = ev.slice(4), v = `xfind_${k}`;
+      // 꺼내기 — 100을 넘친 몫은 그 게이지에 남아 다음 발견으로 간다
+      const back = (g) => [{ set: `${g}_${k}`, expr: `max(0, ${g}_${k} - 100)` }, { set: v, expr: '0' }];
       const tail = ' 이름이 붙지 않으면 기록에 남지 않는다.';
       const hint = (h) => ` 예컨대 ${h} — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라.`;
       const res = RES[k].map((h, i) => ({
         id: `find_${k}_res_${i + 1}`, once: true, when: `${v} == ${110 + i}`,
-        effects: [{ set: `res_${k}`, expr: `res_${k} + 1` }, ...back],
+        effects: [{ set: `res_${k}`, expr: `res_${k} + 1` }, ...back('exr')],
         notify: `[탐사 · ${dir} · 자원] ${place}에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. `
           + `무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라.${tail} 캐거나 거두기 시작하면 그 값은 시스템이 매긴다.${hint(h)}`,
       }));
@@ -1423,7 +1462,7 @@ const S = {
         const canon = TER_CANON[k]?.[i];
         return {
           id: `find_${k}_ter_${i + 1}`, once: true, when: `${v} == ${120 + i}`,
-          effects: [{ set: `ter_${k}`, expr: `ter_${k} + 1` }, ...back],
+          effects: [{ set: `ter_${k}`, expr: `ter_${k} + 1` }, ...back('ext')],
           notify: canon
             ? `[탐사 · ${dir} · 지형] ${place}에서 ${TER_USE[use][0]}. 정체는 이미 정해져 있다 — ${canon} `
               + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라.'
@@ -1433,7 +1472,7 @@ const S = {
       });
       // 둥지 — 세력은 3~4에서 시작해 그 방향에서 앞서 나온 수만큼 세진다(깊은 곳의 것). 이름은 서사가 짓고 보조가 lairname_*에
       const lairFx = [{ set: `lair_${k}`, expr: `clamp(3 + lairs_${k} + rand(0, 1), 3, ${LAIR_MAX})` },
-        { set: `lair_on_${k}`, expr: 'true' }, { set: `lairs_${k}`, expr: `lairs_${k} + 1` }, { set: `lairname_${k}`, expr: '""' }, ...back];
+        { set: `lair_on_${k}`, expr: 'true' }, { set: `lairs_${k}`, expr: `lairs_${k} + 1` }, { set: `lairname_${k}`, expr: '""' }, ...back('exh')];
       const lairTail = ' 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다.';
       const lairs = LAIR_CANON[k].map((canon, j) => ({
         id: `find_${k}_lair_${j + 1}`, once: true, when: `${v} == 130 and lairs_${k} == ${j}`,
@@ -1441,7 +1480,7 @@ const S = {
         notify: `[탐사 · ${dir} · 위협] ${place}에서 거기 사는 것과 마주쳤다. 정체는 이미 정해져 있다 — ${canon} `
           + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라. 그 무리나 둥지에 이름을 붙여라.' + lairTail,
       }));
-      // 정본 뒤 — 정본 이벤트가 이미 터졌으면 부호를 되돌려 놓아서 여기는 같은 턴에 안 걸린다
+      // 정본 뒤 — 정본 이벤트가 이미 터졌으면 칸을 비워 놓아서 여기는 같은 턴에 안 걸린다
       lairs.push({
         id: `find_${k}_lair_more`, when: `${v} == 130`,
         effects: lairFx,
@@ -1449,7 +1488,7 @@ const S = {
           + `이 방향에 사는 것(${LAIR_KIN[k]}) 가운데 무엇이 몇이나 되는지 이번 장면에서 정하고 이름을 붙여라.` + lairTail,
       });
       const blocked = {
-        id: `find_${k}_blocked`, when: `${v} == 140`, effects: [{ set: v, expr: '0' }, { set: `exb_${k}`, expr: '0' }],   // 막힘은 이월도 비운다 — 안 비우면 매 턴 막힘 통지
+        id: `find_${k}_blocked`, when: `${v} == 140`, effects: [{ set: v, expr: '0' }, { set: `exh_${k}`, expr: '0' }],   // 막힘은 둥지 게이지를 통째로 비운다 — 넘친 몫이 남으면 매 턴 막힘 통지
         notify: `[탐사 · ${dir}] 척후가 더 깊이 들어가지 못했다 — 알려진 둥지가 길목을 막고 있다. 그것을 치워야 그 너머를 훑을 수 있다.`,
       };
       // 토벌 — 세력이 0이 된 턴(현상금·출정·서사 속 전투 어느 쪽이든). 몬스터를 치운 땅은 북쪽 변경이 세는 단 하나의 보고다 [원본]
@@ -2001,7 +2040,7 @@ const S = {
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 4, 0, 100)' }, { set: 'gold', expr: 'max(0, gold - 10 - rand(0, 20))' }],
           notify: '[주막이 부서졌다] 모험가 패거리끼리 술값인지 전리품 몫인지로 붙었다. 탁자 몇 개와 누군가의 이 몇 개가 '
             + '나갔다. 수리비는 영주 앞으로 청구서가 왔다 — 누가 먼저 칼을 뽑았는지는 이번 장면에서 정하라.' },
-        // 사냥에서 돌아온 모험가가 척후가 가는 쪽 이야기를 푼다 — 그 방향 답사가 한 걸음 빨라진다 (넘친 몫은 이월 — pushFx)
+        // 사냥에서 돌아온 모험가가 척후가 가는 쪽 이야기를 푼다 — 그 방향 답사가 한 걸음 빨라진다 (종류별 몫대로 — pushFx)
         { id: 'adv_rumor', weight: 2, cooldown: 30,
           omen: '사냥에서 돌아온 모험가들이 척후가 가는 쪽 길을 두고 수군거린다.',
           when: `${QUIET} and guild >= 1 and explore_dir != "없음"`,
@@ -2101,11 +2140,11 @@ const S = {
     // ── 탐사 ──
     // 시스템만 아는 사실이다 — 척후가 어디까지 훑었는지는 서사 어디에도 안 적혀 있다.
     { id: 'scouting_on', when: 'explore_dir != "없음"',
-      text: '[SCOUTING] Scouts are working {explore_dir} — {scouting} of the ground covered. '
+      text: '[SCOUTING] Scouts are working {explore_dir} — how close each kind of find is: {scouting}. '
         + 'What they bring back is fragments, not answers: a track, a smell on the wind, a shape seen at distance. '
         + 'Do not let them deliver the find itself until the system says they have. What the Baron sees with his '
         + 'own eyes may stand as a lead — a thing noted in the ledger, not yet a discovery.' },
-    { id: 'scouting_close', when: 'explore_dir != "없음" and (exp_n >= 80 or exp_w >= 80 or exp_s >= 80 or exp_e >= 80)',
+    { id: 'scouting_close', when: 'explore_dir != "없음" and scout_top >= 80',
       text: '[SCOUTING] They are close to whatever is out there. The fragments are starting to line up.' },
     // 둥지 (§16) — 시스템만 아는 사실이다: 세력과 자라는 속도는 서사 어디에도 안 적혀 있다.
     //   세력 척도를 말로 준다 — 없으면 "고블린 굴 하나쯤"을 셋이서 한 장면에 쓸어 버린다(치울 거리가 사라진다).
@@ -2254,8 +2293,7 @@ const S = {
       roll: 'rand(1, 20)',
       mod: 'round(d_scout) + round(scout_men * 0.2)',
       vs: 13,
-      // 진척은 지금 훑는 방향(explore_dir)에만 붙는다. 보고 대기(100)·부호(110↑)는 안 건드린다 — exp_*의 100 이상은
-      // 발견 정산용 부호화 구간이라 밀면 깨진다. 넘친 몫은 이월 칸으로 (pushFx) — 그 턴 정산에서 바로 발견이 고른다.
+      // 진척은 지금 훑는 방향(explore_dir)에만, 종류별 몫대로 갈라 붙는다 (pushFx). 100을 넘기면 그 턴 정산에서 바로 발견이 나온다.
       grades: [
         { when: 'total >= vs + 5', label: '대성공',
           effects: [
@@ -3163,6 +3201,7 @@ console.log('\n━━ 탐사 ━━');
 
   // 속도: 배분에 따라 첫 발견까지 몇 턴(하루씩) 걸리나 — 100에 닿는 그 턴에 발견이 나온다(2026-10-18)
   const finds = (v, k) => v[`res_${k}`] + v[`ter_${k}`] + v[`lairs_${k}`];
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
   for (const pol of POLICY.map((p) => p[0])) {
     let t = fresh({ labor_policy: pol, explore_dir: '남 평원' });
     const men = look(t)('scout_men');   // 붕괴 전 시작 시점 기준
@@ -3171,39 +3210,51 @@ console.log('\n━━ 탐사 ━━');
     console.log(`  ${pol}  척후 ${String(men).padStart(2)}명 → 남쪽 첫 발견 ${turns >= 120 ? '120턴+' : turns + '턴째'}`);
   }
 
-  // 종류 분포 — 남쪽 첫 발견 400회. 가중치 [자원 1 · 지형 3 · 위협 1] → 20 · 60 · 20%
-  const tally = { 자원: 0, 지형: 0, 위협: 0, 없음: 0 };
-  for (let seed = 0; seed < 400; seed++) {
-    const v = step(fresh({ explore_dir: '남 평원', exp_s: 100 }), {}, 'r', seed).state.vars;
-    tally[v.res_s ? '자원' : v.ter_s ? '지형' : v.lairs_s ? '위협' : '없음']++;
+  // 종류별 게이지 (2026-11-07) — 하루치 진척이 가중치 비율로 갈려 셋에 동시에 쌓인다. 남 [자원 1 · 지형 3 · 둥지 1]
+  {
+    const t = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원' }), {}, 'sp1', 0).state, v = t.vars;
+    const sum = v.exr_s + v.ext_s + v.exh_s;
+    ok('하루치가 1 : 3 : 1로 갈린다', sum > 0 && Number.isInteger(Math.round(sum * 1e6) / 1e6) && near(v.ext_s, v.exr_s * 3) && near(v.exh_s, v.exr_s),
+      `하루 ${sum.toFixed(1)}% → 자원 ${v.exr_s.toFixed(2)} · 지형 ${v.ext_s.toFixed(2)} · 둥지 ${v.exh_s.toFixed(2)} · 표시 "${look(t)('scouting')}"`);
   }
-  const pct = (n) => Math.round(n / 4);
-  ok('남쪽 첫 발견 400회 — 가중치대로 지형이 대표', !tally.없음 && pct(tally.지형) >= 50 && pct(tally.지형) <= 70
-    && pct(tally.자원) >= 12 && pct(tally.위협) >= 12, `자원 ${pct(tally.자원)}% · 지형 ${pct(tally.지형)}% · 위협 ${pct(tally.위협)}%`);
 
-  // 한 턴에 하나만 — 이벤트가 부호를 안 되돌리면 자원 +1 → 다음 자리 이벤트가 같은 턴에 연달아 터진다
-  let one = true;
-  for (let seed = 0; seed < 60; seed++) {
-    const v = step(fresh({ explore_dir: '서 숲', exp_w: 100 }), {}, 'one', seed).state.vars;
-    if (finds(v, 'w') !== 1 || v.exp_w >= 100 || v.exb_w !== 0) one = false;
+  // 지형이 나와도 자원 게이지는 그대로 — 옛 판은 게이지가 하나라 지형 발견이 자원 몫까지 비웠다
+  {
+    const o = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', exr_s: 50, ext_s: 99 }), {}, 'ind', 0);
+    const v = o.state.vars;
+    ok('지형 발견 → 자원 게이지는 안 비고 계속 쌓인다', v.ter_s === 1 && v.res_s === 0 && v.exr_s > 50 && v.ext_s > 0 && v.ext_s < 100,
+      `지형 ${v.ter_s} · 자원 게이지 50 → ${v.exr_s.toFixed(1)} · 지형 게이지 99 → ${v.ext_s.toFixed(1)}`);
   }
-  ok('한 번에 하나 — 60회 모두 찾은 수 합 1 · 남은 진척 100 미만', one, one ? '연달아 터짐 없음' : '같은 턴에 둘 이상');
+
+  // 한 턴에 하나 — 셋이 다 찼어도 방향마다 칸이 하나라 자원 → 지형 → 둥지 순으로 하나씩
+  {
+    let t = fresh({ explore_dir: '없음', exr_w: 100, ext_w: 100, exh_w: 100 });
+    const per = [];
+    for (let i = 0; i < 4; i++) {
+      const [r0, t0, l0] = [t.vars.res_w, t.vars.ter_w, t.vars.lairs_w];
+      t = step(t, { skip_day: 0 }, 'one', i).state;
+      per.push((t.vars.res_w > r0 ? '자원' : '') + (t.vars.ter_w > t0 ? '지형' : '') + (t.vars.lairs_w > l0 ? '둥지' : '') || '-');
+    }
+    ok('셋 다 100 → 턴마다 하나씩 (자원 → 지형 → 둥지)', per.join(' ') === '자원 지형 둥지 -' && t.vars.xfind_w === 0, per.join(' · '));
+  }
 
   // 100에 닿는 그 턴에 발견 (옛 판은 100에 세워 두고 다음 턴에 골랐다 — 발견 장면이 두 응답 뒤로 밀렸다)
   {
-    const o = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', exp_s: 95 }), {}, 'now', 0);
+    const o = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', ext_s: 98 }), {}, 'now', 0);
     const n = notes(o).find((x) => x.startsWith('[탐사 · 남 평원'));
-    ok('95% + 하루 → 그 턴에 발견 · 통지 · 넘친 몫은 남음', finds(o.state.vars, 's') === 1 && n && o.state.vars.exp_s > 0 && o.state.vars.exp_s < 100,
-      `찾은 수 ${finds(o.state.vars, 's')} · 남은 진척 ${o.state.vars.exp_s}% · ${n ? n.slice(0, 24) + '…' : '(통지 없음)'}`);
+    ok('98% + 하루 → 그 턴에 발견 · 통지 · 넘친 몫은 남음', finds(o.state.vars, 's') === 1 && n && o.state.vars.ext_s > 0 && o.state.vars.ext_s < 100,
+      `찾은 수 ${finds(o.state.vars, 's')} · 남은 진척 ${o.state.vars.ext_s.toFixed(1)}% · ${n ? n.slice(0, 24) + '…' : '(통지 없음)'}`);
   }
 
-  // 한 달 뒤 — 넘친 몫은 이월 칸에 남아 다음 턴에 하나씩 마저 나온다. 그 사이 척후를 불러들여도 이미 찾은 건 보고된다
+  // 한 달 뒤 — 넘친 몫은 게이지에 남아 다음 턴에 하나씩 마저 나온다. 그 사이 척후를 불러들여도 이미 찬 것은 보고된다
   {
-    // 곳간을 채워 둔다 — 빈 곳간으로 30일을 건너뛰면 그 사이 사람이 줄어 척후가 쌓는 몫 자체가 준다(이월과 무관)
-    let o = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', food: 5000, water: 5000, gold: 2000 }), { skip_day: 30 }, 'mo', 0);
+    // 곳간을 채워 둔다 — 빈 곳간으로 30일을 건너뛰면 그 사이 사람이 줄어 척후가 쌓는 몫 자체가 준다
+    const o = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', food: 5000, water: 5000, gold: 2000 }), { skip_day: 60 }, 'mo', 0);
     let t = o.state;
-    const total = 100 + t.vars.exp_s + t.vars.exb_s;   // 그 턴에 하나(100)를 꺼냈다
-    const first = finds(t.vars, 's');
+    const g0 = { r: t.vars.exr_s, t: t.vars.ext_s, h: t.vars.exh_s }, first = finds(t.vars, 's');
+    // 앞으로 더 나올 수 — 자원·지형은 남은 자리까지, 둥지는 하나(나오면 살아 있어 멈춘다)
+    const want = first + Math.min(Math.floor(g0.r / 100), RES.s.length - t.vars.res_s)
+      + Math.min(Math.floor(g0.t / 100), TER.s.length - t.vars.ter_s) + (t.vars.lair_on_s ? 0 : Math.min(1, Math.floor(g0.h / 100)));
     t.vars.explore_dir = '없음';
     const per = [first];
     for (let i = 1; i <= 8; i++) {
@@ -3212,30 +3263,33 @@ console.log('\n━━ 탐사 ━━');
       per.push(finds(t.vars, 's') - before);
     }
     const got = finds(t.vars, 's');
-    ok('한 달(30일) 뒤 — 쌓인 만큼 발견이 나온다 (옛 판은 100%에서 잘려 하나뿐)', total >= 200 && first === 1
-      && got === Math.floor(total / 100) && t.vars.exp_s === total % 100 && t.vars.exb_s === 0 && per.every((x) => x <= 1),
-      `쌓인 진척 ${total}% → 발견 ${got}개 (턴별 ${per.join('·')}) · 남은 ${t.vars.exp_s}%`);
+    ok('두 달(60일) 뒤 — 쌓인 만큼 발견이 나온다 · 한 턴에 하나', first === 1 && got >= 3 && got === want && per.every((x) => x <= 1),
+      `발견 ${got}개 (턴별 ${per.join('·')}) · 남은 게이지 자원 ${t.vars.exr_s.toFixed(0)} · 지형 ${t.vars.ext_s.toFixed(0)} · 둥지 ${t.vars.exh_s.toFixed(0)}`);
   }
 
-  // 막힘은 이월 칸을 비운다 — 안 비우면 매 턴 "길목을 막고" 통지
+  // 막힘은 둥지 게이지를 비운다 — 안 비우면 매 턴 "길목을 막고" 통지
   {
-    const o = step(fresh({ explore_dir: '남 평원', exp_s: 100, exb_s: 250, res_s: RES.s.length, ter_s: TER.s.length, lair_on_s: true, lair_s: 3 }),
+    const o = step(fresh({ explore_dir: '남 평원', exh_s: 250, res_s: RES.s.length, ter_s: TER.s.length, lair_on_s: true, lair_s: 3 }),
       { skip_day: 0 }, 'bl', 0);
-    ok('막힘 → 진척·이월 모두 0', notes(o).some((n) => n.includes('길목을 막고')) && o.state.vars.exp_s === 0 && o.state.vars.exb_s === 0,
-      `진척 ${o.state.vars.exp_s} · 이월 ${o.state.vars.exb_s}`);
+    ok('막힘 → 둥지 게이지 0', notes(o).some((n) => n.includes('길목을 막고')) && o.state.vars.exh_s === 0 && o.state.vars.xfind_s === 0,
+      `둥지 게이지 ${o.state.vars.exh_s}`);
+    // 둥지가 살아 있어도 자원·지형이 남았으면 막힘이 아니다 — 둥지 게이지만 멈춘다
+    const o2 = step(fresh({ explore_dir: '남 평원', exh_s: 250, lair_on_s: true, lair_s: 3 }), { skip_day: 0 }, 'bl', 1);
+    ok('찾을 게 남았으면 막힘 없음 · 둥지 게이지는 멈춤', !notes(o2).some((n) => n.includes('길목을 막고')) && o2.state.vars.exh_s === 250,
+      `둥지 게이지 250 → ${o2.state.vars.exh_s}`);
   }
 
-  // 🧭 집중 답사가 100을 넘기면 넘친 몫도 남고 발견은 그 턴에 (같은 날 — 척후 하루치 없이 판정 몫만)
+  // 🧭 집중 답사도 종류별 몫대로 — 남 지형 몫 3/5. 100을 넘기면 넘친 몫도 남고 발견은 그 턴에 (같은 날 — 판정 몫만)
   {
     let pass = true; const seen = [];
     for (let seed = 0; seed < 12; seed++) {
-      const a = engine.toggleAction(S, fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', exp_s: 96, food: 500 }), 'act_survey').state;
+      const a = engine.toggleAction(S, fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', ext_s: 99, food: 500 }), 'act_survey').state;
       const o = step(a, { skip_day: 0 }, 'sv', seed);
       const g = { 대성공: 30, 성공: 18, 실패: 5 }[o.state.meta.lastCheck?.grade];
       seen.push(o.state.meta.lastCheck?.grade);
-      if (!g || finds(o.state.vars, 's') !== 1 || o.state.vars.exp_s !== 96 + g - 100) pass = false;
+      if (!g || finds(o.state.vars, 's') !== 1 || !near(o.state.vars.ext_s, 99 + g * 0.6 - 100) || !near(o.state.vars.exr_s, g * 0.2)) pass = false;
     }
-    ok('집중 답사 96% + 판정 → 그 턴에 발견 · 넘친 몫 보존', pass, [...new Set(seen)].join('·'));
+    ok('집중 답사 → 몫대로 갈림 · 99% 지형은 그 턴에 발견 · 넘친 몫 보존', pass, [...new Set(seen)].join('·'));
   }
 
   // 한 방향을 끝까지 — 자원·지형이 다 나와도 척후 일이 남는다(둥지). 둥지가 살아 있고 남은 것도 없으면 막힘
@@ -3282,8 +3336,8 @@ console.log('\n━━ 탐사 ━━');
 
   // 둥지 — 발견(세력 3~4) → 보조는 못 올림 → 깎이면 토벌 → 다음 것은 더 세다
   {
-    // 북쪽 자원·지형이 다 나왔다 치고 100 → 반드시 둥지 (정본: 고블린)
-    let o = step(fresh({ explore_dir: '북 산맥', exp_n: 100, res_n: RES.n.length, ter_n: TER.n.length }), {}, 'lr', 0);
+    // 북쪽 자원·지형이 다 나왔다 치고 둥지 게이지 100 → 둥지 (정본: 고블린)
+    let o = step(fresh({ explore_dir: '북 산맥', exh_n: 100, res_n: RES.n.length, ter_n: TER.n.length }), {}, 'lr', 0);
     let t = o.state;
     const gob = notes(o).find((n) => n.includes('[탐사 · 북 산맥 · 위협]'));
     ok('북 첫 둥지 = 정본 고블린 · 세력 3~4 · 깃발', gob && gob.includes('고블린') && t.vars.lair_on_n && t.vars.lair_n >= 3 && t.vars.lair_n <= 4,
@@ -3300,12 +3354,12 @@ console.log('\n━━ 탐사 ━━');
     ok('서사 속 전투 −5(상한) → 세력 0 → 토벌 통지 · 깃발 내림 · 명성 +2 · 모르웬 +2',
       clr && !t.vars.lair_on_n && t.vars.lair_n === 0 && t.vars.fame >= fame0 + 2 && t.vars.rel_n >= rel0 + 2,
       `깃발 ${t.vars.lair_on_n} · 명성 ${fame0}→${t.vars.fame} · 모르웬 ${rel0}→${t.vars.rel_n}`);
-    t.vars.exp_n = 100; t.vars.explore_dir = '북 산맥';
+    t.vars.exh_n = 100; t.vars.explore_dir = '북 산맥';
     o = step(t, {}, 'lr', 3); t = o.state;
     const har = notes(o).find((n) => n.includes('[탐사 · 북 산맥 · 위협]'));
     ok('북 둘째 둥지 = 정본 하피 · 세력 4~5 (깊은 곳)', har && har.includes('하피') && t.vars.lair_n >= 4 && t.vars.lair_n <= 5,
       `세력 ${t.vars.lair_n} · ${har ? har.slice(0, 40) + '…' : '(통지 없음)'}`);
-    t.vars.lair_n = 0; t.vars.lair_on_n = false; t.vars.exp_n = 100;
+    t.vars.lair_n = 0; t.vars.lair_on_n = false; t.vars.exh_n = 100;
     o = step(t, {}, 'lr', 4); t = o.state;
     const more = notes(o).find((n) => n.includes('[탐사 · 북 산맥 · 위협]'));
     ok('셋째부터는 서사가 정한다 ("이 방향에 사는 것") · 세력 5~6', more && more.includes('또 다른 것') && more.includes('고블린·하피')
@@ -3349,20 +3403,20 @@ console.log('\n━━ 탐사 ━━');
     const pre = engine.sendPhase(S, fresh(), { rng: seededRng('cn', 0, 's') }).promptBlock;
     const leak = KEY_WORDS.filter((w) => pre.includes(w));
     ok('0턴 프롬프트 정본 유출 없음', !leak.length, leak.join(', ') || '없음');
-    // 서쪽 — 자원이 다 나오고 둥지가 살아 있으면 반드시 지형 → 첫 지형은 정본 수원지
-    const o = step(fresh({ explore_dir: '서 숲', exp_w: 100, res_w: RES.w.length, lair_on_w: true, lair_w: 3 }), {}, 'cn', 1);
+    // 서쪽 지형 게이지 100 → 첫 지형은 정본 수원지
+    const o = step(fresh({ explore_dir: '서 숲', ext_w: 100, lair_on_w: true, lair_w: 3 }), {}, 'cn', 1);
     const vein = notes(o).find((n) => n.includes('[탐사 · 서 숲 · 지형]'));
     ok('서쪽 첫 지형 = 정본 취수구(수맥) · 서사가 먼저 찾았으면 본줄기', vein && vein.includes('취수구') && vein.includes('수맥')
       && vein.includes('본줄기') && o.state.vars.ter_w === 1, vein ? vein.slice(0, 64) + '…' : '(통지 없음)');
     for (const [dir, k, word] of [['남 평원', 's', '오크'], ['서 숲', 'w', '거미'], ['동 강가', 'e', '리자드맨']]) {
-      const o2 = step(fresh({ explore_dir: dir, [`exp_${k}`]: 100, [`res_${k}`]: RES[k].length, [`ter_${k}`]: TER[k].length }), {}, 'cn', 2);
+      const o2 = step(fresh({ explore_dir: dir, [`exh_${k}`]: 100, [`res_${k}`]: RES[k].length, [`ter_${k}`]: TER[k].length }), {}, 'cn', 2);
       const n2 = notes(o2).find((n) => n.includes(`[탐사 · ${dir} · 위협]`));
       ok(`${dir} 첫 둥지 = 정본 ${word}`, n2 && n2.includes(word), n2 ? n2.slice(0, 44) + '…' : '(통지 없음)');
     }
-    const ruin = notes(step(fresh({ explore_dir: '북 산맥', exp_n: 100, res_n: RES.n.length, lair_on_n: true, lair_n: 3 }), {}, 'cn', 3))
+    const ruin = notes(step(fresh({ explore_dir: '북 산맥', ext_n: 100, lair_on_n: true, lair_n: 3 }), {}, 'cn', 3))
       .find((n) => n.includes('[탐사 · 북 산맥 · 지형]'));
     ok('북 지형 = 폐허 (유저 배치)', ruin && ruin.includes('사람 손이 닿았던 자리') && ruin.includes('산성'), ruin ? ruin.slice(0, 40) + '…' : '(통지 없음)');
-    const ferry = notes(step(fresh({ explore_dir: '동 강가', exp_e: 100, res_e: RES.e.length, ter_e: 1, lair_on_e: true, lair_e: 3 }), {}, 'cn', 4))
+    const ferry = notes(step(fresh({ explore_dir: '동 강가', ext_e: 100, ter_e: 1, lair_on_e: true, lair_e: 3 }), {}, 'cn', 4))
       .find((n) => n.includes('[탐사 · 동 강가 · 지형]'));
     ok('동 둘째 지형 = 옛 나루터 (유저 배치)', ferry && ferry.includes('나루터'), ferry ? ferry.slice(0, 40) + '…' : '(통지 없음)');
   }
@@ -3533,13 +3587,13 @@ for (const t of S.party.tabs) {
   ok('비용 지출 (금 -80 · 식량 -150)', v2.gold === before.gold - 80 && v2.food === before.food - 150, `gold ${before.gold}→${v2.gold} food ${before.food}→${v2.food}`);
   ok('등급 효과 반영 (사기 변동)', v2.morale !== before.morale, `morale ${before.morale}→${v2.morale}`);
   ok('프롬프트에 [판정] 줄', /\[판정\]|잔치 판정/.test(sp.promptBlock), sp.promptBlock.match(/.*잔치 판정.*/)?.[0]?.slice(0, 60) ?? '(없음)');
-  // 집중 답사 — 현재 방향에만 진척이 붙고, 이미 정산 구간(>=100)은 안 건드린다
+  // 집중 답사 — 현재 방향에만 진척이 붙는다
   let t2 = engine.initState(S); t2.meta.setupDone = true;
-  t2.vars.exp_s = 40; t2.vars.exp_n = 105; t2.vars.explore_dir = '남 평원';
+  t2.vars.ext_s = 40; t2.vars.ext_n = 40; t2.vars.explore_dir = '남 평원';
   t2.meta.armed.act_survey = true;
   const sp2 = engine.sendPhase(S, t2, { rng: seededRng('p4', 2, 's') });
-  ok('답사 진척은 현 방향(남)에만', sp2.state.vars.exp_s > 40 && sp2.state.vars.exp_n === 105,
-    `남 40→${sp2.state.vars.exp_s} · 북(정산 구간) 105→${sp2.state.vars.exp_n}`);
+  ok('답사 진척은 현 방향(남)에만', sp2.state.vars.ext_s > 40 && sp2.state.vars.ext_n === 40,
+    `남 지형 40→${sp2.state.vars.ext_s} · 북 지형 40→${sp2.state.vars.ext_n}`);
 }
 
 // ── 공사 큐 검증 (P4-2) — 등록 → 추적 → 완공일 정리 → 통지 합류 ──

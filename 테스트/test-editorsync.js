@@ -70,8 +70,28 @@ loadIntoEditor(A);
 editor.setSchema(Object.assign({}, A, { meta:{name:'영지v2'} }));
 ck('수정하면 dirty', editorIsDirty());
 const parsed = editor.getSchema();
-schema = parsed; editorChaId = currentChaId; editorLoadedSig = sig(parsed);
+schema = parsed; editorChaId = currentChaId; editorBaseSig = sig(parsed); editorLoadedSig = editorSig();   // runInstall과 같은 순서
 ck('설치 후 dirty 해제', !editorIsDirty());
+ck('설치 후 배너 없음', !editorDiffersFromInstalled());
+
+// 10. ★ v1.21.4 — 빈 칸이 빠진 설치본(생성기 봇: 템플릿 상태창이라 statusUI.groups가 없다)을 번들로 넣고 편집기에 실음.
+//     편집기는 실을 때 groups: []를 채운다. 옛 판은 그 차이를 "아직 반영 안 됨"으로 봐서 [지금 적용]을 한 번 더 눌러야 했다
+const RAW = { simcore:'0.1', meta:{name:'베리디아'}, vars:[{id:'gold',type:'int'}], statusUI:{mode:'template'} };
+schema = RAW; currentChaId = 'chaV';
+loadIntoEditor(RAW);
+ck('편집기는 빈 칸을 채운다 (목도 진짜처럼)', Array.isArray(editorContent.statusUI.groups) && !('groups' in schema.statusUI));
+ck('groups 없는 설치본을 실어도 dirty 아님', !editorIsDirty());
+ck('groups 없는 설치본을 실어도 배너 없음', !editorDiffersFromInstalled());
+syncEditorToChar();
+ck('패널 다시 열어도 그대로 (다시 싣지 않음)', name() === '베리디아' && !editorDiffersFromInstalled());
+editor.setSchema(Object.assign({}, editor.getSchema(), { meta:{name:'베리디아 수정'} }));
+ck('손대면 배너', editorIsDirty() && editorDiffersFromInstalled());
+loadIntoEditor(B);
+ck('설치본이 아닌 것을 실으면 배너 (손대지 않아도)', !editorIsDirty() && editorDiffersFromInstalled());
+loadIntoEditor(RAW); schema = Object.assign({}, RAW, { meta:{name:'다음 번들'} });
+ck('설치본이 바뀌면 배너 (되읽기가 늦을 때)', editorDiffersFromInstalled());
+syncEditorToChar();
+ck('손대지 않았으면 새 설치본을 따라가고 배너 없음', name() === '다음 번들' && !editorDiffersFromInstalled());
 
 let p=0,f=0;
 for (const [ok,n,x] of R) { console.log(ok?'PASS':'FAIL', n, ok?'':'→ '+x); ok?p++:f++; }
@@ -81,11 +101,13 @@ process.exit(f?1:0);
 
 const harness = `
 let editorContent = null;
+// 진짜 편집기처럼 실을 때 빈 칸을 채운다 (editor.js normalize의 statusUI.groups 한 줄만 흉내) — v1.21.4 헛배너 재현용
+const fill = (x) => { const c = JSON.parse(JSON.stringify(x)); c.statusUI = c.statusUI || { mode: 'auto', groups: [] }; c.statusUI.groups = c.statusUI.groups || []; return c; };
 const createSchemaEditor = (base) => {
-  editorContent = JSON.parse(JSON.stringify(base));
+  editorContent = fill(base);
   return {
     getSchema: () => JSON.parse(JSON.stringify(editorContent)),
-    setSchema: (x) => { editorContent = JSON.parse(JSON.stringify(x)); },
+    setSchema: (x) => { editorContent = fill(x); },
   };
 };
 let schema = null, currentChaId = null;

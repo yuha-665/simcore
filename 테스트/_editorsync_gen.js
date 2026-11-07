@@ -1,16 +1,19 @@
 
 let editorContent = null;
+// 진짜 편집기처럼 실을 때 빈 칸을 채운다 (editor.js normalize의 statusUI.groups 한 줄만 흉내) — v1.21.4 헛배너 재현용
+const fill = (x) => { const c = JSON.parse(JSON.stringify(x)); c.statusUI = c.statusUI || { mode: 'auto', groups: [] }; c.statusUI.groups = c.statusUI.groups || []; return c; };
 const createSchemaEditor = (base) => {
-  editorContent = JSON.parse(JSON.stringify(base));
+  editorContent = fill(base);
   return {
     getSchema: () => JSON.parse(JSON.stringify(editorContent)),
-    setSchema: (x) => { editorContent = JSON.parse(JSON.stringify(x)); },
+    setSchema: (x) => { editorContent = fill(x); },
   };
 };
 let schema = null, currentChaId = null;
   let editor = null;
   let editorChaId = null;      // 편집기 내용이 어느 캐릭터 기준인지
-  let editorLoadedSig = null;  // 편집기에 불러온 시점의 내용 서명 (이후 손댔는지 판정용)
+  let editorLoadedSig = null;  // 편집기에 불러온 직후, 편집기가 빈 칸을 채운 뒤의 서명 (이후 손댔는지 판정용)
+  let editorBaseSig = null;    // 그때 불러온 원본의 서명 (설치본을 불러왔는지 판정용 — 위와 따로 둔다, v1.21.4)
   const BLANK_SCHEMA = () => ({
     simcore: '0.1', meta: { name: '새 시뮬레이션' }, vars: [], statusUI: { mode: 'auto', groups: [] },
   });
@@ -30,6 +33,15 @@ let schema = null, currentChaId = null;
   function editorIsDirty() {
     return !!editor && editorLoadedSig !== null && editorSig() !== editorLoadedSig;
   }
+  /** 편집기 내용이 설치본과 다른가 (더티 배너) — 손댔거나, 설치본이 아닌 것을 불러왔을 때만.
+   *  편집기는 실을 때 빈 칸(statusUI.groups·rules.events …)을 채우므로 편집기 내용과 설치본을 글자로 대면 늘 다르다 (v1.21.4 —
+   *  생성기 봇(베리디아)은 번들을 넣을 때마다 [지금 적용]을 한 번 더 눌러야 배너가 사라졌다. 적용은 이미 끝난 뒤였다). */
+  function editorDiffersFromInstalled() {
+    if (!editor) return false;
+    const installed = sig(schema ?? BLANK_SCHEMA());
+    if (editorSig() === installed) return false;
+    return editorIsDirty() || editorBaseSig !== installed;
+  }
   /** 편집기에 스키마를 싣고 기준선을 갱신 */
   function loadIntoEditor(next) {
     // 캐릭터가 바뀌었으면 편집기를 새로 만든다 (v1.16.3) — 인스턴스가 전역이라 캐릭터별 상태(캐릭터 정보 캐시·보낼 것 선택·설정집·
@@ -45,7 +57,8 @@ let schema = null, currentChaId = null;
     const copy = JSON.parse(JSON.stringify(next));
     editor.setSchema(copy);
     editorChaId = currentChaId;
-    editorLoadedSig = sig(copy);
+    editorBaseSig = sig(copy);
+    editorLoadedSig = editorSig();
   }
   /**
    * 현재 캐릭터에 스키마 설치 (공용 — [설치] 버튼, 세이브 가져오기 부트스트랩).
@@ -134,7 +147,8 @@ let schema = null, currentChaId = null;
     if (!r.ok) { rep.innerHTML = `<span class="status-bad">${escapeText(r.msg)}</span>`; return; }
     // 방금 설치한 내용 = 이 캐릭터의 설치본 → 편집기 기준선을 여기로 맞춘다 (더 이상 dirty 아님)
     editorChaId = currentChaId;
-    editorLoadedSig = sig(parsed);
+    editorBaseSig = sig(parsed);
+    editorLoadedSig = editorSig();
     rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
     renderPanel();
   }
@@ -165,7 +179,8 @@ let schema = null, currentChaId = null;
     if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
     editor = createSchemaEditor(base);
     editorChaId = currentChaId;
-    editorLoadedSig = sig(base);
+    editorBaseSig = sig(base);
+    editorLoadedSig = editorSig();
   }
   /**
    * ⚠ 사고 방지 (2026-07-24 영지봇 스키마 소실 사건): 편집기는 전역이라 캐릭터를 바꾸거나
@@ -178,7 +193,7 @@ let schema = null, currentChaId = null;
   function syncEditorToChar() {
     if (!editor) return;
     if (editorChaId !== currentChaId) { loadIntoEditor(schema ?? BLANK_SCHEMA()); return; }
-    if (!editorIsDirty() && sig(schema ?? BLANK_SCHEMA()) !== editorLoadedSig) {
+    if (!editorIsDirty() && sig(schema ?? BLANK_SCHEMA()) !== editorBaseSig) {
       loadIntoEditor(schema ?? BLANK_SCHEMA());
     }
   }
@@ -240,8 +255,28 @@ loadIntoEditor(A);
 editor.setSchema(Object.assign({}, A, { meta:{name:'영지v2'} }));
 ck('수정하면 dirty', editorIsDirty());
 const parsed = editor.getSchema();
-schema = parsed; editorChaId = currentChaId; editorLoadedSig = sig(parsed);
+schema = parsed; editorChaId = currentChaId; editorBaseSig = sig(parsed); editorLoadedSig = editorSig();   // runInstall과 같은 순서
 ck('설치 후 dirty 해제', !editorIsDirty());
+ck('설치 후 배너 없음', !editorDiffersFromInstalled());
+
+// 10. ★ v1.21.4 — 빈 칸이 빠진 설치본(생성기 봇: 템플릿 상태창이라 statusUI.groups가 없다)을 번들로 넣고 편집기에 실음.
+//     편집기는 실을 때 groups: []를 채운다. 옛 판은 그 차이를 "아직 반영 안 됨"으로 봐서 [지금 적용]을 한 번 더 눌러야 했다
+const RAW = { simcore:'0.1', meta:{name:'베리디아'}, vars:[{id:'gold',type:'int'}], statusUI:{mode:'template'} };
+schema = RAW; currentChaId = 'chaV';
+loadIntoEditor(RAW);
+ck('편집기는 빈 칸을 채운다 (목도 진짜처럼)', Array.isArray(editorContent.statusUI.groups) && !('groups' in schema.statusUI));
+ck('groups 없는 설치본을 실어도 dirty 아님', !editorIsDirty());
+ck('groups 없는 설치본을 실어도 배너 없음', !editorDiffersFromInstalled());
+syncEditorToChar();
+ck('패널 다시 열어도 그대로 (다시 싣지 않음)', name() === '베리디아' && !editorDiffersFromInstalled());
+editor.setSchema(Object.assign({}, editor.getSchema(), { meta:{name:'베리디아 수정'} }));
+ck('손대면 배너', editorIsDirty() && editorDiffersFromInstalled());
+loadIntoEditor(B);
+ck('설치본이 아닌 것을 실으면 배너 (손대지 않아도)', !editorIsDirty() && editorDiffersFromInstalled());
+loadIntoEditor(RAW); schema = Object.assign({}, RAW, { meta:{name:'다음 번들'} });
+ck('설치본이 바뀌면 배너 (되읽기가 늦을 때)', editorDiffersFromInstalled());
+syncEditorToChar();
+ck('손대지 않았으면 새 설치본을 따라가고 배너 없음', name() === '다음 번들' && !editorDiffersFromInstalled());
 
 let p=0,f=0;
 for (const [ok,n,x] of R) { console.log(ok?'PASS':'FAIL', n, ok?'':'→ '+x); ok?p++:f++; }

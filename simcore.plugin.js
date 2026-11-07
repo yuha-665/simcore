@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.21.3
-//@display-name SimCore (시뮬 엔진) v1.21.3 🧩 채팅에서도 미리보기처럼
+//@version 1.21.4
+//@display-name SimCore (시뮬 엔진) v1.21.4 💾 번들 뒤에 [지금 적용]이 안 뜬다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.21.4 ───────────────────────────────────────────────
+// **💾 번들 뒤에 [지금 적용]이 안 뜬다.** 유저 제보(2026-11-07, 베리디아): "왜 번들은 항상 가져오기 한 다음에 [지금 적용]까지 해야 적용되나 — 버그인가."
+// 적용은 [번들 가져와 교체]에서 이미 끝났다(⚙simcore가 캐릭터에 들어가고 시스템도 그걸로 돈다). 남은 건 더티 배너의 헛경보였다:
+// 편집기는 스키마를 실을 때 빈 칸을 채운다(normalize — statusUI.groups·rules.events 따위). 배너는 그 채운 작업본과 설치본(채우기 전)을
+// 글자로 대서, 빈 칸이 하나라도 빠진 스키마(생성기로 만든 봇 — 베리디아는 템플릿 상태창이라 groups가 없다)는 넣을 때마다 "아직 반영 안 됨"이 떴다.
+// [지금 적용]은 groups: [] 하나를 더 써 넣고 배너를 지웠을 뿐이다. 같은 이유로 dirty 판정(손댔나)도 갓 실은 편집기를 "손댄 것"으로 보고 있었다.
+// - [패널] 작업본 기준선을 둘로 — 불러온 원본의 서명(editorBaseSig, 설치본과 대는 쪽)과 편집기가 채운 뒤의 서명(editorLoadedSig, 손댔나를 보는 쪽).
+//   배너는 손댔거나 설치본이 아닌 것을 불러왔을 때만(editorDiffersFromInstalled). 편집기(editor.js)는 안 건드렸다 — 테스트 하니스 다수가 그 소스를 잘라 돈다(금지 #8).
+// - [증명] test-editorsync.js — 목 편집기도 진짜처럼 빈 칸을 채우게 하고, groups 없는 설치본을 실은 뒤 배너·dirty가 안 뜨는지 / 손대면 뜨는지 / 다른 걸 실으면 뜨는지.
 //
 // ── v1.21.3 ───────────────────────────────────────────────
 // **🧩 채팅에서도 미리보기처럼.** 커뮤니티 제보(2026-11-03): "상태창 커스텀 HTML을 2열 이상 그리드로 짜면 플러그인 결과창에선 깔끔한데 채팅에선 찌그러진다,
@@ -45444,7 +45454,8 @@ count(목록)  has(목록, "항목")</pre>
   // 블록 편집기 (봇 편집 탭 첫 진입 시 생성)
   let editor = null;
   let editorChaId = null;      // 편집기 내용이 어느 캐릭터 기준인지
-  let editorLoadedSig = null;  // 편집기에 불러온 시점의 내용 서명 (이후 손댔는지 판정용)
+  let editorLoadedSig = null;  // 편집기에 불러온 직후, 편집기가 빈 칸을 채운 뒤의 서명 (이후 손댔는지 판정용)
+  let editorBaseSig = null;    // 그때 불러온 원본의 서명 (설치본을 불러왔는지 판정용 — 위와 따로 둔다, v1.21.4)
   const BLANK_SCHEMA = () => ({
     simcore: '0.1', meta: { name: '새 시뮬레이션' }, vars: [], statusUI: { mode: 'auto', groups: [] },
   });
@@ -45464,6 +45475,15 @@ count(목록)  has(목록, "항목")</pre>
   function editorIsDirty() {
     return !!editor && editorLoadedSig !== null && editorSig() !== editorLoadedSig;
   }
+  /** 편집기 내용이 설치본과 다른가 (더티 배너) — 손댔거나, 설치본이 아닌 것을 불러왔을 때만.
+   *  편집기는 실을 때 빈 칸(statusUI.groups·rules.events …)을 채우므로 편집기 내용과 설치본을 글자로 대면 늘 다르다 (v1.21.4 —
+   *  생성기 봇(베리디아)은 번들을 넣을 때마다 [지금 적용]을 한 번 더 눌러야 배너가 사라졌다. 적용은 이미 끝난 뒤였다). */
+  function editorDiffersFromInstalled() {
+    if (!editor) return false;
+    const installed = sig(schema ?? BLANK_SCHEMA());
+    if (editorSig() === installed) return false;
+    return editorIsDirty() || editorBaseSig !== installed;
+  }
   /** 편집기에 스키마를 싣고 기준선을 갱신 */
   function loadIntoEditor(next) {
     // 캐릭터가 바뀌었으면 편집기를 새로 만든다 (v1.16.3) — 인스턴스가 전역이라 캐릭터별 상태(캐릭터 정보 캐시·보낼 것 선택·설정집·
@@ -45479,7 +45499,8 @@ count(목록)  has(목록, "항목")</pre>
     const copy = JSON.parse(JSON.stringify(next));
     editor.setSchema(copy);
     editorChaId = currentChaId;
-    editorLoadedSig = sig(copy);
+    editorBaseSig = sig(copy);
+    editorLoadedSig = editorSig();
   }
   /**
    * 현재 캐릭터에 스키마 설치 (공용 — [설치] 버튼, 세이브 가져오기 부트스트랩).
@@ -45568,7 +45589,8 @@ count(목록)  has(목록, "항목")</pre>
     if (!r.ok) { rep.innerHTML = `<span class="status-bad">${escapeText(r.msg)}</span>`; return; }
     // 방금 설치한 내용 = 이 캐릭터의 설치본 → 편집기 기준선을 여기로 맞춘다 (더 이상 dirty 아님)
     editorChaId = currentChaId;
-    editorLoadedSig = sig(parsed);
+    editorBaseSig = sig(parsed);
+    editorLoadedSig = editorSig();
     rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
     renderPanel();
   }
@@ -45701,7 +45723,8 @@ count(목록)  has(목록, "항목")</pre>
       setFirstInstallGuideDismissed,
     });
     editorChaId = currentChaId;
-    editorLoadedSig = sig(base);
+    editorBaseSig = sig(base);
+    editorLoadedSig = editorSig();
   }
   /**
    * ⚠ 사고 방지 (2026-07-24 영지봇 스키마 소실 사건): 편집기는 전역이라 캐릭터를 바꾸거나
@@ -45714,7 +45737,7 @@ count(목록)  has(목록, "항목")</pre>
   function syncEditorToChar() {
     if (!editor) return;
     if (editorChaId !== currentChaId) { loadIntoEditor(schema ?? BLANK_SCHEMA()); return; }
-    if (!editorIsDirty() && sig(schema ?? BLANK_SCHEMA()) !== editorLoadedSig) {
+    if (!editorIsDirty() && sig(schema ?? BLANK_SCHEMA()) !== editorBaseSig) {
       loadIntoEditor(schema ?? BLANK_SCHEMA());
     }
   }
@@ -45822,8 +45845,7 @@ count(목록)  has(목록, "항목")</pre>
     const warnEls = [document.getElementById('sc-editor-warn'), document.getElementById('sc-work-warn')].filter(Boolean);
     for (const warnEl of warnEls) {
       const cur = editorSig();
-      const installed = sig(schema ?? BLANK_SCHEMA());
-      if (editor && cur !== null && cur !== installed) {
+      if (editor && cur !== null && editorDiffersFromInstalled()) {
         let editorSummary = '확인할 수 없어요.';
         let installedSummary = schema ? '확인할 수 없어요.' : '아직 설치되지 않았어요.';
         try {

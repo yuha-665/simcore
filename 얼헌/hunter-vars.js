@@ -23,6 +23,8 @@ const { diagnose } = SC.require('diagnose');
 const engine = SC.require('engine');
 const { seededRng } = SC.require('rng');
 const { evaluate, truthy } = SC.require('expr');
+const { MORE_BAND, MORE_STAFF, MORE_HOSTILE, MORE_EVENTS, MORE_EVENT_ROLL, dlcLore, KR_NAMES, MORE_NAMES,
+  DLC_PARTY_NAMES } = require('./hunter-dlc');
 
 // 중첩 3항을 괄호로 안전하게 — [[조건, 값], ...] + 마지막 기본값
 const chain = (pairs, last) => pairs.reduceRight((acc, [c, v]) => `(${c} ? ${v} : ${acc})`, last);
@@ -311,6 +313,16 @@ const S = {
     { id: 'alter_on', label: '수위 확장', type: 'bool', init: true, cmd: '수위',
       desc: '유저 정책값 (원본 alterNSFW 토글 승계). 끄면 확장 수위 이미지 팩이 잠긴다 '
         + '(기본 팩은 그대로). 시작 후 바꾸려면 /수위.' },
+    // DLC 스위치 (P11) — 남이 만든 에셋 모듈을 쓰는 판만 켠다. 번들 하나에 다 실려 있어서 끈 판엔
+    // 이름을 안 내보내는 게 이 스위치의 일이다: 모듈 없이 태그가 나가면 이미지가 없거나 엉뚱한
+    // 에셋에 유사 매칭된다. 기본 꺼짐 — 새 채팅마다 켜기 싫으면 편집기에서 초기값을 켠다.
+    { id: 'dlc_outfit', label: 'DLC 더 많은 복장', type: 'bool', init: false, cmd: 'DLC복장',
+      desc: '유저 정책값. 더 많은 복장 모듈을 켠 판만 켠다. 켜면 복장 이미지 팩이 열린다. 켜려면 /DLC복장 on.' },
+    { id: 'dlc_kr', label: 'DLC 한국 헌터', type: 'bool', init: false, cmd: 'DLC한국',
+      desc: '유저 정책값. 한국의 추가 헌터들 모듈을 켠 판만 켠다. 켜면 그 인물들 이미지 팩이 열린다. 켜려면 /DLC한국 on.' },
+    { id: 'dlc_more', label: 'DLC 어나더', type: 'bool', init: false, cmd: 'DLC어나더',
+      desc: '유저 정책값. 더 많은 헌터들 어나더 모듈 둘을 켠 판만 켠다. 켜면 그 인물들 이미지 팩과 '
+        + '랭크별 명단이 열린다. 켜려면 /DLC어나더 on.' },
     // 성신의 가호 — 정책 2종. 축복은 전원 고정, 대가의 주인공 적용만 선택 (유저 판정 2026-09-01)
     // 기본 꺼짐 (유저 판정 2026-09-02) — 원작 세계에 없는 개그 장치라 옵트인. 켜는 턴에 즉시
     // 점화된다 (boon_prev -7 시계 그대로).
@@ -412,6 +424,12 @@ const S = {
     ...[1, 2, 3, 4].map((n) => ({
       id: `party${n}`, label: `파티원 ${n}`, type: 'enum', init: '없음',
       enum: ['없음', ...PARTY_NAMES],
+      desc: 'Set from the party panel only — never change this yourself.' })),
+    // DLC 동료 슬롯 (P11) — 후보 칩은 enum 전부가 깔린다. 기본 슬롯에 섞으면 DLC 없는 판에도 잠긴
+    // 칩이 83개 늘어서, 스위치를 켠 판에만 보이는 탭으로 뗐다.
+    ...[1, 2, 3, 4].map((n) => ({
+      id: `party_d${n}`, label: `DLC 파티원 ${n}`, type: 'enum', init: '없음',
+      enum: ['없음', ...DLC_PARTY_NAMES],
       desc: 'Set from the party panel only — never change this yourself.' })),
   ],
 
@@ -997,6 +1015,13 @@ const S = {
       id: `npc_${band.toLowerCase()}`, when: BAND_WHEN[band],
       text: `${band}-Rank hunters natural to encounter now: ${roster(arr)}`,
     })),
+    // DLC 어나더 명단 (P11) — 표는 hunter-dlc.js. 기본 명단과 같은 랭크 게이트에 스위치만 더 건다.
+    ...Object.entries(MORE_BAND).map(([band, arr]) => ({
+      id: `dlc_more_${band.toLowerCase()}`, when: `dlc_more and ${BAND_WHEN[band]}`,
+      text: `More ${band}-Rank hunters natural to encounter now: ${roster(arr)}`,
+    })),
+    { id: 'dlc_more_staff', when: 'dlc_more',
+      text: `More figures met by function, not rank: ${roster(MORE_STAFF)}` },
     { id: 'npc_s_far', when: 'lic_n <= 4',
       text: 'S-Rank celebrities everyone knows from media and HunterNet (distant figures, not walk-ons): '
         + '박준호 · 백휘성 · 임진태 · 하월영(검귀) · 제이크 밀러 · 한지원.' },
@@ -1006,18 +1031,30 @@ const S = {
       text: `Party member accompanying the protagonist: {party${n}} — present in scenes by default `
         + '(dialogue, combat role, opinions per their profile) until the narrative parts ways.',
     })),
+    ...[1, 2, 3, 4].map((n) => ({
+      id: `party_dlc_${n}`, when: `(dlc_kr or dlc_more) and party_d${n} != '없음'`,
+      text: `Party member accompanying the protagonist: {party_d${n}} — present in scenes by default `
+        + '(dialogue, combat role, opinions per their profile) until the narrative parts ways.',
+    })),
     { id: 'npc_staff', when: 'true',
       text: `Institutional figures met by function, not rank: ${roster(NPC_STAFF)}` },
     { id: 'npc_hostile', when: 'faction_on',
       text: `Hostile figures (use sparingly, for tension arcs): ${roster(NPC_HOSTILE)} `
         + '— factions: 상태창 불신론자 (anti-System extremists) · 이계 숭배단 (Gate-worship cult).' },
+    { id: 'dlc_more_hostile', when: 'dlc_more and faction_on',
+      text: `More hostile figures, no faction (use sparingly, for tension arcs): ${roster(MORE_HOSTILE)}` },
     // ── 이미지 명령 규칙 (원본 Image Command Instructions 승계 — 어휘는 assets 팩이 준다) ──
+    // "이름만"은 안 된다 (P11에서 발견): 감정 없는 에셋이 없고 표시 정규식도 감정까지 있어야 잡는다.
+    // 라우터 줄 — 국세청·여섯 원소 DLC는 ⚡ Lua면 모듈이 본문 보고 직접 태그를 단다. 없으면 모델이
+    // 그 인물을 명단 밖 엑스트라로 보고 Male/Female을 겹쳐 찍는다.
     { id: 'img_rules', when: 'true',
       text: 'Image rules: whenever a listed character appears, is spotlighted, or speaks, put one '
         + '<img="…"> tag in that character\'s paragraph — one tag per character, even if none were '
-        + 'shown last turn. Base tag is the name alone; append an emotion only when their state '
-        + 'visibly shifts. NEVER print an image for the protagonist/user. Characters not in the '
-        + 'lists are extras: use <img="Male"> or <img="Female"> only, no emotion.' },
+        + 'shown last turn. A tag is the name plus their current emotion (default when neutral); '
+        + 'the name alone shows nothing unless their pack says so. NEVER print an image for the '
+        + 'protagonist/user. Characters not in the lists are extras: use <img="Male"> or '
+        + '<img="Female"> only, no emotion. Characters whose images a module draws itself '
+        + '(router-owned assets) get no tag from you at all.' },
   ],
 
   updater: {
@@ -1196,6 +1233,9 @@ const S = {
       { id: 'members', label: '파티 편성', roster: 'allies',
         note: '동료 명부에 오른 헌터만 편성할 수 있어요 — 영입(모집글·섭외)은 이야기에서.',
         slots: [{ var: 'party1' }, { var: 'party2' }, { var: 'party3' }, { var: 'party4' }] },
+      { id: 'dlc', label: 'DLC 동료', roster: 'allies', when: 'dlc_kr or dlc_more',
+        note: 'DLC 헌터 전용 슬롯이에요 — 동료 명부에 오른 사람만 편성돼요.',
+        slots: [{ var: 'party_d1' }, { var: 'party_d2' }, { var: 'party_d3' }, { var: 'party_d4' }] },
       { id: 'map', label: '게이트 지도', fab: '🗺️',
         template: `
 <div class="hmap">
@@ -1387,16 +1427,19 @@ const S = {
       // 팩 하나로 접었다: 복장을 필수 칸으로 두면 인물+복장 구조라 감정 팩(인물만 필수)과
       // 구조 공존하고, 감정 어휘도 한 번만 실린다 (원본은 절마다 감정 51종 전문 반복 — 3배 길이).
       // "평상시 = 태그 없음(기본 복장)"은 이 팩을 안 쓰는 것 — 기본 1장은 감정 팩 담당.
+      // 신판 8951장 기준 어휘 (P11) — 옛 이름은 유사 매칭으로 붙어도 후보가 2~3개라 세부 복장이 섞인다.
+      // /DLC복장으로 잠근다: 번들이 복장판·기본판 두 벌이던 걸 이 스위치 하나로 합쳤다.
       {
         id: 'outfits',
-        source: '얼헌 추가 복장 에셋 모듈 (Casual/Homewear/Underwear Guidelines)',
+        source: '얼헌 추가 복장 에셋 모듈 (Casual/Homewear/Underwear/Swimsuit/Nude Guidelines)',
         sep: ' ', format: '<img="{name}">', verify: false,
+        when: 'dlc_outfit',
         // 인물별 보유 목록·끝번호(1/2)·세부번호(2-1 등)는 usage에 안 싣는다 — 원본 지침부터
         // "로어북 참조"고, 그 인물별 표기는 추가 모듈 로어북이 이름 키워드로 띄운다.
         // 여기는 불변 규칙만 (매 턴 실리는 한 줄 — 200자 린트).
-        usage: '환복이 명시될 때만 — 평상시는 태그 없음(기본 복장). Casual은 사적·친밀 상황만'
-          + '(공무·초면 금지), Homewear는 자택, Underwear는 속옷. 보유·끝번호(1추움/2더움)·'
-          + '세부번호는 로어북 표기대로만. School uniform=Choi Yu-na 등하교, '
+        usage: '환복이 명시될 때만(평상시는 char_emotions). Casual은 사적·친밀 상황만'
+          + '(공무·초면 금지), Homewear는 자택, Underwear·Swimsuit·nude는 그 차림만. '
+          + '보유·끝번호(1추움/2더움)·세부번호는 로어북대로. School uniform=Choi Yu-na 등하교, '
           + 'Underworld Samurai=Sasaki Yua 전투.',
         slots: [
           { id: 'who', label: '인물', values: [
@@ -1406,14 +1449,16 @@ const S = {
             'Lim Seol-hee', 'Joo Ah-ram', 'Oh Ha-na', 'Kim Min-soo', 'Im Jin-tae',
             'Na Sun-young', 'Chae Ha-yoon', 'Lee Ha-eun', 'Yoon Mirae', 'Rivea',
             'Song Ha-neul', 'Ha Wol-young', 'Choi Yu-na', 'Lee Ji-hye', 'Alice Croft',
+            'Haru Ito',
           ], fallback: 'Go Eun-bi' },
           { id: 'outfit', label: '복장', values: [
             'Casual clothes', 'Casual clothes1', 'Casual clothes2',
-            'Casual clothes 2-1', 'Casual clothes 2-2',
-            'Homewear', 'Homewear1', 'Homewear2', 'Underwear',
-            'School uniform', 'School uniform1', 'School uniform2', 'Underworld Samurai',
+            'Casual clothes 1', 'Casual clothes 1-1', 'Casual clothes 1-2', 'Casual clothes 1-3',
+            'Casual clothes 2', 'Casual clothes 2-1', 'Casual clothes 2-2', 'Casual clothes 2-3',
+            'Homewear', 'Homewear1', 'Homewear2', 'Underwear', 'Swimsuit', 'nude',
+            'School uniform1', 'School uniform2', 'Underworld Samurai',
           ], fallback: 'Casual clothes' },
-          { id: 'emo', label: '감정', optional: true, values: [
+          { id: 'emo', label: '감정', values: [
             'acting coy', 'angry', 'annoyed', 'aroused', 'blushing shyly', 'bored', 'bridling',
             'chuunibyou', 'confused', 'contemptuous', 'coughing', 'crying with eyes closed',
             'crying with eyes open', 'curious', 'default', 'depressed', 'determined',
@@ -1422,7 +1467,7 @@ const S = {
             'middle finger', 'nervous pouting', 'nervous', 'pouting', 'proud', 'sad', 'serious',
             'smile', 'smirk', 'smug', 'sniggering', 'stupefied', 'surprised', 'suspicious',
             'thinking', 'worried', 'disgusted', 'scared', 'excited', 'relieved', 'laughing',
-            'pleading', 'imminent kiss', 'kiss', 'after kiss', 'cheek', 'cheek pulling', 'headpat',
+            'pleading', 'imminent kiss', 'kiss', 'after kiss', 'cheek pulling', 'headpat',
           ], fallback: 'default' },
         ],
       },
@@ -1433,7 +1478,8 @@ const S = {
         // v1.4.0 문구 수정 — "감정이 크게 움직이면"이 콜드 스타트를 만들던 실사고
         // (배포 유저 "에셋이 안 든다" + 제작자 실기 "0장이다가 한두 번 나오면 그 뒤로 잘 나옴").
         // 감정 칸을 예외가 아니라 기본 동작으로: 발화마다 대화문 앞에 이름+감정.
-        usage: '인물이 등장하거나 말할 때마다 대화문 앞에 1장 — 이름+지금 감정으로. 감정을 못 고르겠으면 이름만(기본 표정).',
+        // 감정은 필수 칸 (P11) — 이름만 쓴 태그는 에셋도 표시 정규식도 없어서 이미지가 안 나온다.
+        usage: '인물이 등장하거나 말할 때마다 대화문 앞에 1장 — 이름+지금 감정으로. 감정을 못 고르겠으면 default.',
         slots: [
           { id: 'who', label: '인물', values: [
             'Kang Min-hyuk', 'Kim Min-soo', 'Min Chae-rin', 'Baek Hwi-Sung', 'Song Ha-neul',
@@ -1447,7 +1493,7 @@ const S = {
             'Yoo Jin-seong', 'Kwon Do-yoon', 'Ahn Do-hyun', 'Shin Woo-hyun', 'Baek Eun-ha',
             'Park Hye-in', 'Lee So-yoon', 'Choi Tae-hyun',
           ] },
-          { id: 'emo', label: '감정', optional: true, values: [
+          { id: 'emo', label: '감정', values: [
             'acting coy', 'angry', 'annoyed', 'aroused', 'blushing shyly', 'bored', 'bridling',
             'chuunibyou', 'confused', 'contemptuous', 'coughing', 'crying with eyes closed',
             'crying with eyes open', 'curious', 'default', 'depressed', 'determined',
@@ -1459,6 +1505,25 @@ const S = {
             'pleading',
           ], fallback: 'default' },
         ],
+      },
+      // DLC 인물 팩 (P11) — 인물 칸만 둔다. 감정 어휘를 팩마다 또 실으면 턴마다 550자가 는다.
+      // {emo}는 칸 없는 자리표시자라 검증이 막는다 — 대문자 글자로 적고 usage가 뜻을 말한다.
+      {
+        id: 'dlc_more_hunters',
+        source: '더 많은 헌터들 어나더 모듈 + 추가 에셋 모듈',
+        sep: ' ', format: '<img="{name} EMOTION">', verify: false,
+        when: 'dlc_more',
+        usage: '인물이 등장하거나 말할 때마다 대화문 앞에 1장. EMOTION은 char_emotions의 emo 값 하나 — 못 고르겠으면 default.',
+        slots: [{ id: 'who', label: '인물', values: MORE_NAMES }],
+      },
+      // 한국 헌터는 인물당 스탠딩 1장 — 감정을 붙여도 모듈 정규식이 잘라 내니 안내만 이름으로 맞춘다
+      {
+        id: 'dlc_kr_hunters',
+        source: '한국의 추가 헌터들 모듈',
+        sep: ' ', format: '<img="{name}">', verify: false,
+        when: 'dlc_kr',
+        usage: '인물이 등장하거나 말할 때마다 대화문 앞에 1장. 인물당 이미지가 한 장뿐이라 감정 없이 이름만.',
+        slots: [{ id: 'who', label: '인물', values: KR_NAMES }],
       },
       {
         id: 'extra_char',
@@ -1895,23 +1960,24 @@ console.log('\n━━ 전리품 — 드랍 순간을 여는 이벤트 ━━');
 console.log('\n━━ P5 — 에셋 팩 (원본 이미지 지침 이관) ━━');
 {
   const pk = (id) => S.assets.packs.find((p) => p.id === id);
-  ok('팩 5종 (체위·확장수위·복장·감정·엑스트라)', S.assets.packs.length === 5,
+  ok('팩 7종 (체위·확장수위·복장·감정·DLC 둘·엑스트라)', S.assets.packs.length === 7,
     S.assets.packs.map((p) => p.id).join(','));
-  // 복장 팩 (2026-08-30 추가 복장 모듈) — 원본 지침 3절을 팩 하나로
-  ok('복장 팩 — 인물 30 · 복장 13 · 감정 57(생략 가능)',
-    pk('outfits').slots[0].values.length === 30
-    && pk('outfits').slots[1].values.length === 13
-    && pk('outfits').slots[2].values.length === 57 && pk('outfits').slots[2].optional === true, '');
-  ok('복장 팩은 감정 팩보다 앞 (필수 2칸 → 1칸 공존 순서)',
+  // 복장 팩 (2026-08-30 추가 복장 모듈 · P11 신판 어휘) — 원본 지침 절들을 팩 하나로
+  ok('복장 팩 — 인물 31 · 복장 20 · 감정 56(필수) · /DLC복장 게이트',
+    pk('outfits').slots[0].values.length === 31
+    && pk('outfits').slots[1].values.length === 20
+    && pk('outfits').slots[2].values.length === 56 && !pk('outfits').slots[2].optional
+    && pk('outfits').when === 'dlc_outfit', '');
+  ok('복장 팩은 감정 팩보다 앞 (필수 3칸 → 2칸 공존 순서)',
     S.assets.packs.findIndex((p) => p.id === 'outfits')
       < S.assets.packs.findIndex((p) => p.id === 'char_emotions'), '');
   ok('복장 규칙 핵심이 지침에 있음 (세부는 로어북 위임)', /로어북.*School uniform.*Underworld Samurai/s
     .test(pk('outfits').usage), '');
   ok('복장 usage 200자 린트 통과', pk('outfits').usage.length <= 200, String(pk('outfits').usage.length));
-  ok('감정 팩 — 인물 48 · 감정 51 (감정은 생략 가능 칸)',
+  ok('감정 팩 — 인물 48 · 감정 51 (감정은 필수 칸 — 이름만 쓴 태그는 표시가 안 된다)',
     pk('char_emotions').slots[0].values.length === 48
     && pk('char_emotions').slots[1].values.length === 51
-    && pk('char_emotions').slots[1].optional === true, '');
+    && !pk('char_emotions').slots[1].optional, '');
   ok('체위 팩 — 여성 28 · 체위 56', pk('sexual_scene_positions').slots[0].values.length === 28
     && pk('sexual_scene_positions').slots[1].values.length === 56, '');
   ok('확장 팩 — 행위 59 · alter_on 게이트', pk('sexual_scene_alter_nsfw').slots[1].values.length === 59
@@ -1928,6 +1994,119 @@ console.log('\n━━ P5 — 에셋 팩 (원본 이미지 지침 이관) ━━'
   t.vars.alter_on = false;
   const p2 = engine.sendPhase(S, t, { rng: seededRng('as', 2, 's') }).promptBlock;
   ok('/수위 끄면 확장 어휘만 빠진다', !p2.includes('paizuri') && p2.includes('missionary sex'), '');
+}
+
+console.log('\n━━ P11 — DLC 호환 (스위치·팩·명단·슬롯·정규식) ━━');
+{
+  const pk = (id) => S.assets.packs.find((p) => p.id === id);
+  const SWITCHES = ['dlc_outfit', 'dlc_kr', 'dlc_more'];
+  const allOn = { dlc_outfit: true, dlc_kr: true, dlc_more: true };
+  const prompt = (set = {}, n = 1) => {
+    const t = fresh();
+    Object.assign(t.vars, set);
+    return engine.sendPhase(S, t, { rng: seededRng('dlc', n, 's') }).promptBlock;
+  };
+  const off = prompt();
+  const on = prompt(allOn, 2);
+  ok('스위치 3종 — 기본 꺼짐 · 보조 AI가 못 건드린다',
+    SWITCHES.every((id) => fresh().vars[id] === false)
+    && !S.updater.allow.some((a) => SWITCHES.includes(a.id)), '');
+  ok('끈 판엔 DLC 이름·복장 어휘가 없다 (모듈 없는 사람에게 이름이 나가면 이미지가 깨진다)',
+    !/Ahn Ye-bin|안예빈|Han So-mi|Casual clothes|dlc_/.test(off), '');
+  ok('켠 판엔 팩 셋이 다 실린다', on.includes('Ahn Ye-bin') && on.includes('Han So-mi') && on.includes('Casual clothes 2-1'), '');
+  const single = prompt({ dlc_kr: true }, 3);
+  ok('스위치는 따로 논다', single.includes('Han So-mi') && !single.includes('Ahn Ye-bin') && !single.includes('Casual clothes'), '');
+  console.log('    프롬프트 글자수 — 끔', off.length, '· 복장', prompt({ dlc_outfit: true }).length, '· 한국', single.length,
+    '· 어나더', prompt({ dlc_more: true }).length, '· 전부', on.length);
+
+  const cmd = (line) => engine.applyChatCommands(S, fresh(), line, seededRng('dlc', 4, 's')).vars;
+  ok('채팅 명령으로 켠다 — 상태창 명령 모음이 알려 주는 그 문법',
+    cmd('/DLC복장 on').dlc_outfit === true && cmd('/DLC한국 on').dlc_kr === true && cmd('/DLC어나더 on').dlc_more === true, '');
+  const old = fresh();
+  for (const id of [...SWITCHES, 'party_d1']) delete old.vars[id];
+  engine.reconcileState(S, old);
+  ok('스위치가 없던 옛 채팅도 꺼진 채로 열린다', old.vars.dlc_more === false && old.vars.party_d1 === '없음', '');
+
+  // 이름 표 — 팩은 모듈 에셋 이름과 1:1이어야 하고, 명단 한 사람이 두 줄이면 안 된다
+  ok('이름 표 — 어나더 90 · 한국 36 · 겹침 없음', MORE_NAMES.length === 90 && KR_NAMES.length === 36
+    && new Set([...MORE_NAMES, ...KR_NAMES, ...pk('char_emotions').slots[0].values]).size === 174, '');
+  ok('DLC 파티 후보 83 — 기본 후보와 안 겹친다', DLC_PARTY_NAMES.length === 83
+    && new Set([...DLC_PARTY_NAMES, ...PARTY_NAMES]).size === 83 + PARTY_NAMES.length
+    && DLC_PARTY_NAMES.every((n) => /^[가-힣 ]+$/.test(n)), '');
+  ok('어나더 팩이 감정 어휘를 빌려 오는 자리가 살아 있다',
+    pk('dlc_more_hunters').usage.includes(pk('char_emotions').id) && pk('dlc_more_hunters').usage.length <= 200, '');
+
+  // 명단 — 기본 명단과 같은 랭크 게이트, 적대는 적대 세력 정책을 따른다
+  const eUser = prompt({ dlc_more: true }, 5);
+  ok('E유저 — 어나더 E·D 명단만', eUser.includes('원지희') && eUser.includes('박인준')
+    && !eUser.includes('이가윤') && !eUser.includes('양재희'), '');
+  const aUser = prompt({ dlc_more: true, license: 'A' }, 6);
+  ok('A유저 — 어나더 B·A·S 명단', aUser.includes('안예빈') && aUser.includes('양재희')
+    && !aUser.includes('원지희') && !aUser.includes('이가윤'), '');
+  ok('적대 명단은 /적대세력을 따른다', eUser.includes('도진우')
+    && !prompt({ dlc_more: true, faction_on: false }, 7).includes('도진우'), '');
+  ok('한국 헌터 명단은 안 싣는다 — 모듈 상시 로어북과 두 벌이 된다', !single.includes('C-Rank Supporter-Analyst'), '');
+
+  // 슬롯 — 스위치를 켠 판에만 보이고, 끈 판 편성창은 그대로
+  const partyMod = SC.require('party');
+  const tabsOf = (set) => { const t = fresh(); Object.assign(t.vars, set); return partyMod.partyView(S, t).tabs.map((x) => x.id); };
+  ok('DLC 동료 탭 — 스위치 켠 판에만', !tabsOf({}).includes('dlc') && tabsOf({ dlc_kr: true }).includes('dlc')
+    && tabsOf({ dlc_more: true }).includes('dlc'), '');
+  ok('기본 슬롯 후보는 그대로 32명', fresh() && S.vars.find((v) => v.id === 'party1').enum.length === 33, '');
+  const seat = fresh();
+  Object.assign(seat.vars, { dlc_more: true, party_d1: '안예빈' });
+  const seated = engine.sendPhase(S, seat, { rng: seededRng('dlc', 8, 's') }).promptBlock;
+  ok('DLC 파티원도 동행 지시문이 뜬다', seated.includes('Party member accompanying the protagonist: 안예빈'), '');
+  seat.vars.dlc_more = false;
+  ok('스위치를 끄면 동행 지시문도 멈춘다 (빈 이미지 태그를 부르지 않게)',
+    !engine.sendPhase(S, seat, { rng: seededRng('dlc', 9, 's') }).promptBlock.includes('안예빈'), '');
+
+  // 정규식 — 카드 editoutput → 모듈 editoutput → 표시. 번들 정규식 그대로 태운다
+  const rx = JSON.parse(fs.readFileSync(__P('얼헌-정규식-심코어판.json'), 'utf8')).data;
+  const byName = (c) => rx.find((r) => r.comment === c);
+  const outs = rx.filter((r) => r.type === 'editoutput' && r.in);
+  const cardOut = (tag) => outs.reduce((s, r) => s.replace(new RegExp(r.in, 'g'), r.out), tag);
+  const show = new RegExp(byName('에셋 디스플레이').in);
+  const emos = pk('char_emotions').slots[1].values;
+  const base = pk('char_emotions').slots[0].values;
+  const shown = (tag) => show.test(cardOut(tag));
+  ok('찐빠 수정 8종이 전부 켜져 있다 — 복장 번들의 비활성 우회가 필요 없다',
+    [1, 2, 3, 4, 5, 6, 7, 8].every((n) => byName(`에셋 찐빠 수정${n}`).type === 'editoutput'), '');
+  ok('기본 인물 × 감정 전부 표시', base.every((w) => emos.every((e) => shown(`<img="${w} ${e}">`))), '');
+  ok('어나더 × 감정 전부 표시', MORE_NAMES.every((w) => emos.every((e) => shown(`<img="${w} ${e}">`))), '');
+  const out = pk('outfits').slots;
+  ok('복장 × 인물 × 감정 전부 표시 (예전엔 수정6이 지웠다)',
+    out[0].values.every((w) => out[1].values.every((o) => out[2].values.every((e) => shown(`<img="${w} ${o} ${e}">`)))), '');
+  ok('한국 헌터 태그는 수정6을 통과해 모듈 정규식에 닿는다',
+    KR_NAMES.every((w) => cardOut(`<img="${w}">`) === `<img="${w}">` && cardOut(`<img="${w} smile">`) === `<img="${w} smile">`), '');
+  ok('이름만 쓴 태그는 default로 고쳐진다 (진행 중인 채팅 기록 대비)',
+    [...base, ...MORE_NAMES].every((w) => cardOut(`<img="${w}">`) === `<img="${w} default">` && show.test(`<img="${w} default">`)), '');
+  ok('엑스트라는 그대로', cardOut('<img="Male">') === '<img="Male">' && cardOut('<img="Female smile">') === '<img="Female">', '');
+  ok('지어낸 이름은 지운다', ['Yoon Seo-ah smile', 'Unknown Person angry', 'smile', 'Go Eun-bix smile']
+    .every((n) => cardOut(`<img="${n}">`) === ''), '');
+
+  // 모듈 손질 (번들 전용 로어북) — 동작 실측은 리수 실제 코드로 따로 했다 (모듈 실물이 리포에 없다), 여기는 모양을 지킨다
+  const lore = dlcLore();
+  const eventLore = lore.filter((e) => e.alwaysActive);
+  const sheetLore = lore.filter((e) => e.key && e.mode === 'normal');
+  ok('손질 항목 — 폴더 1 · 이벤트 26 · 시트 36쌍', lore.filter((e) => e.mode === 'folder').length === 1
+    && eventLore.length === 26 && sheetLore.length === 72 && lore.length === 99, String(lore.length));
+  ok('항목 id가 겹치지 않는다 (리수 목록이 id로 그린다)', new Set(lore.map((e) => e.id)).size === lore.length, '');
+  const eventRate = 1 - MORE_EVENTS.reduce((p, [, n]) => p * (1 - n / MORE_EVENT_ROLL), 1);
+  ok('어나더 이벤트 턴당 5% 이하', eventRate <= 0.05, eventRate.toFixed(4));
+  console.log(`    어나더 이벤트 — 원래 ${(100 * (1 - MORE_EVENTS.reduce((p, [, n]) => p * (1 - n / 500), 1))).toFixed(1)}% → ${(100 * eventRate).toFixed(1)}%`);
+  ok('이벤트 항목은 주사위만 바꾼다', eventLore.every((e) => new RegExp(
+    `^@@inject_lore 🌟 이벤트 - [^\\n]+\\n@@inject_replace \\{\\{roll::500\\}\\}\\n\\{\\{roll::${MORE_EVENT_ROLL}\\}\\}$`).test(e.content)), '');
+  const pairs = [];
+  for (let i = 0; i < sheetLore.length; i += 2) pairs.push([sheetLore[i], sheetLore[i + 1]]);
+  ok('시트 여닫기가 짝이 맞고 조건이 같다 — 한쪽만 붙으면 #if가 안 닫힌다', pairs.every(([a, b]) => a.key === b.key
+    && a.content.endsWith('{{#if 0}}') && b.content.endsWith('{{/if}}') && a.content.includes('@@inject_prepend')
+    && a.content.split('\n')[0] === b.content.split('\n')[0]
+    && a.content.match(/@@exclude_keys .*/)[0] === b.content.match(/@@exclude_keys .*/)[0]), '');
+  ok('낱개 키에 전체 이름이 없다 — 있으면 진짜 등장한 턴에도 시트가 지워진다', sheetLore.every((e) => {
+    const whole = e.content.match(/@@exclude_keys (.*)/)[1].split(',');
+    return whole.length === 2 && e.key.split(',').length === 2 && !e.key.split(',').some((k) => whole.includes(k));
+  }), '');
 }
 
 console.log('\n━━ P2 — NPC 랭크 게이팅 ━━');

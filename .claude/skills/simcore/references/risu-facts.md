@@ -99,8 +99,16 @@ RisuAI main 소스로 확인 (`ChatBody.svelte` · `translator.ts`, 2026-09-21. 
   반드시 짧은 user 턴을 덧붙일 것
 - `"Plugin calls are blocked by the caller."` = 보조모델이 `pluginmodel:::`일 때 `blockPlugins` 가드.
   **`allowPlugins: true`로 공식 옵트인 가능**
+- `"Unknown Plugin detected…"`(`pluginProviderNotFound`, 리수가 낸다) = 모델이 `customV3ProviderMetaStore`에 있어 형식은 Plugin인데 `pluginV2.providers`에 실행 함수가 없는 상태.
+  플러그인 켜기·끄기·임포트·업데이트·삭제가 부르는 `loadPlugins()` → `loadV2Plugin`이 `providers.clear()`로 V3 것까지 비우고 메타 목록은 남긴다. 프로바이더 플러그인이 그 이름을 다시 등록하기 전이면 이 오류다.
+  메타에도 없으면 `getModelInfo` 폴백(OpenAICompatible, 화면에 `pluginmodel:::`가 붙어 보임)이라 다른 오류가 난다. 페이지를 새로 열면 두 목록이 다시 맞는다.
+  리스바드 0.9.86은 `v3PluginInstances.map`이 순회 중 splice해서 플러그인을 하나 걸러 재시작을 건너뛴다 — 건너뛴 프로바이더는 새로고침 전까지 이 상태다 (공식 main은 복사본 순회로 수정됨).
+  문구로 빌드를 가린다: 공식 main은 `Please`, 리스바드·포켓리스 1.8.1은 `please` (2026-11-01 실측)
 - 클래식 경로에서 `otherAx`는 `db.seperateModelsForAxModels`가 켜져 있으면 `db.seperateModels.otherAx`를
   쓰고, 아니면 `db.subModel`. **`submodel`에는 그런 분리 키가 없다**
+  그래서 **보조 모델 분리를 켜면 심코어의 두 경로가 다른 칸을 볼 수 있다** — 직접 호출(`runLLMModel` `submodel`)은 [보조 모델] 버튼만 보고, 루아 브리지(`axLLM`)는 OtherAx 칸이 차 있으면 그쪽을 본다. 루아는 `requestChatData`를 지나므로 폴백 목록(`db.fallbackModels.otherAx`)도 탄다.
+  OtherAx가 비어 있는데 루아가 되면 같은 모델이 같은 `providers.get`을 지난 것이라 직접 호출 실패는 그 순간의 상태다. OtherAx가 차 있으면 루아 성공은 [보조 모델] 버튼에 대한 증거가 아니다.
+  [연결 테스트]는 `aux_model_mode`가 lua여도 직접 경로만 시험한다. auto는 `blocked by the caller`일 때만 브리지로 넘어가므로 Unknown Plugin으로는 자동 전환되지 않는다 (2026-11-01 소스 확인)
 - **`runLLMModel`엔 출력 상한이 없다** (v3.svelte.ts — 위 4개 인자만 `requestChatDataMain`으로 넘기고,
   거기서 `targ.maxTokens = arg.maxTokens ?? db.maxResponse`라 항상 **메인과 같은 db.maxResponse**로 나간다.
   모드별 분리 파라미터 설정도 없음). 상한을 걸 유일한 통로는 `registerBodyIntercepter`
@@ -392,6 +400,18 @@ char라 전부 걸러진다. (`runLLMModel`은 1.8.1에선 replacer 루프가 �
   둘이 어긋나면 "있다고 보는데 지우지는 못하는" 구멍이 생긴다. 붙일 땐 있던 것을 걷어내고 새로 붙인다(멱등).
   같은 꼴의 위험: `⚙simcore` 로어 주석 · `⟦simcore:gen⟧` 센티널 · 에셋 태그 — 전부 완성형으로 볼 것.
 - **리수 권한 팝업 z-index = 50** (커뮤니티 제보 2026-09-06). 메인 DOM에 그 이상을 얹는 플러그인은 권한 동의를 막는다. SimCore는 메인 DOM에 요소를 안 넣고(상태창은 메시지 안, z-index ≤5), 패널·편집기는 플러그인 iframe 안이라 무관. 컨테이너가 떠 있는 동안 alertConfirm이 가려지는 건 별개 문제(규칙 #6).
+
+## ★ `@@inject_lore` — 로어북 항목이 다른 활성 로어북을 고친다, 모듈 항목도 (얼헌 DLC 호환, 포켓리스 1.8.1·리스바드 0.9.86 실행 검증)
+
+`lorebook.svelte.ts`: 활성 항목 중 `inject.lore`인 것을 걸러 프롬프트에서 빼고, 남은 활성 항목에서 `source === location`(대상의 comment 정확 일치)을 찾아 고친다. 카드·채팅·모듈 로어북이 한 목록이라 **카드 로어북이 모듈 항목을 고칠 수 있다** — 번들만으로 남의 모듈 동작을 고치는 유일한 통로.
+
+- `@@inject_lore 이름` = 뒤에 덧붙임 / `+ @@inject_prepend` = 앞에 / `+ @@inject_replace 찾을글자` = 첫 일치 치환 (`String.replace`, 공백 하나로 잇는다). 항목 본문이 넣을 글이다.
+- 시점: **활성화 뒤, CBS 평가 앞.** 대상 원문은 CBS가 안 풀린 채다 — `{{roll::500}}`을 바꿀 수 있고 `{{#if 0}}`…`{{/if}}`로 감싸 비울 수 있다. 활성화 자체는 못 막는다.
+- 대상이 안 떠 있으면 조용히 아무 일도 없고, 고치는 항목의 글자는 프롬프트에 안 실린다 — 모듈을 안 켠 판에 비용이 0이다.
+- 데코레이터 인자는 `,`로 나뉜다. 이름의 공백은 괜찮고 쉼표는 안 된다. 본문은 앞뒤를 `trim`한다.
+- 여닫기를 두 항목에 나누면 **활성 조건을 똑같이** 둘 것 — `{{#if 0}}`만 붙으면 안 닫힌다. 로어는 항목마다 따로 평가되니 번져도 그 항목 안이다.
+- 키 스캔: 포켓리스 1.8.1은 `messages.slice(messages.length - depth)`라 메시지 수가 스캔 깊이보다 적은 채팅 초반엔 음수 인덱스로 뒤쪽 몇 개만 본다. 리스바드는 `Math.max(0, …)`로 고쳤다. `@@exclude_keys`도 같은 범위를 본다.
+- 소스를 읽기만 하지 말고 돌릴 수 있다: 소스맵에서 lorebook·parser·cbs를 꺼내 TS 트랜스파일 → 화면 라이브러리는 빈 Proxy → `loadLoreBookV3Prompt`와 `risuChatParser`가 Node에서 그대로 돈다.
 
 ## ★ 로어북 가져오기 파일 형식 (포켓리스 1.8.1 소스 — v1.16.0 봇 제작이 쓴다)
 

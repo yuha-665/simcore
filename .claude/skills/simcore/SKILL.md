@@ -35,7 +35,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 | 테스트 | `simcore\테스트\test-*.js` (실측 **120종** — 2026-10-31) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
 | 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.20.0 ①). 가짜 실행 파일로 도는 `테스트/test-clibridge.js`. 배포판 = `node tools/cli-bridge/pack.js` → `배포\SimCore-bridge.zip`(bat·js·사용법 README.txt, 고치면 다시 만들 것) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
-| **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
+| **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · `hunter-dlc.js` (남의 DLC 호환 이름표 — 위 둘이 같이 읽는다) · `build-bundle.js` (배포 번들 조립) · 설계 `docs/design-얼헌-개조.md` |
 | 배포글 | `simcore\배포\*.html` (패치 공지·가이드 11탄·후기·설치 안내) |
 | 설계 문서 | `simcore\docs\design-*.md` (시간·시나리오레이터·에셋 슬롯·편성표·모듈 애드온·UI 크롬·**비밀**(`design-비밀.md`, §9 미결: SECTIONS 패치 합류·새 시작 페이지 단계 강제 열기/닫기)…) + `docs\ai-mistakes.md` |
 | 이 스킬 | `simcore\.claude\skills\simcore\` — 리포에 같이 산다. 기능이 자라면 같이 고친다 |
@@ -69,7 +69,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
   같이 자란다** — 여덟 번 올린 끝에 "붙여넣기 상식선" **128KB** 하나로 못 박았다 (현재 96.5KB). 넘으면 상한을 올리지 말고 규격서에서 뺄 걸 찾는다.
 - PowerShell에서 한글 파일에 `Set-Content`/`-replace` 금지(인코딩 깨짐) — Edit 도구나 `node -e`로. 커밋 메시지에 `"` 넣지 말 것.
 - **유저에게 "다시 임포트하세요"를 반드시 말할 것.** 파일만 고치면 리수에서 도는 건 옛 빌드다.
-  얼헌은 한 단계 더 — `헌터-신안.json` 재설치 + **개조 번들 재추출(리수에서만 가능)**까지 해야 배포본이 바뀐다.
+  얼헌은 한 단계 더 — 배포본은 번들이라 `hunter-vars.js` → `convert-import.js` → **`build-bundle.js`**까지 돌려야 바뀐다 (리수 내보내기 불필요, §P11).
 
 ## 상세 문서
 

@@ -19,6 +19,7 @@
 // 산출: 얼헌-로어북-심코어판.json · 얼헌-정규식-심코어판.json (리수에 그대로 임포트)
 const fs = require('fs');
 const path = require('path');
+const { KR_NAMES, MORE_NAMES } = require('./hunter-dlc');
 const SRC = (f) => path.resolve(__dirname, '..', '얼헌 개조용', f);
 const OUT = (f) => path.resolve(__dirname, f);
 
@@ -112,6 +113,21 @@ for (const s of rx.data) {
   if (RX_REMOVE.has(String(s.comment || ''))) rxRemoved.push(s.comment);
   else rxKept.push(s);
 }
+// ── DLC 호환 (P11) — 이름표는 hunter-dlc.js 한 벌 ──
+// 수정6은 이름×감정 화이트리스트라 어나더 태그 전부와 복장 태그 7천여 개를 지웠고, 복장 번들은
+// 수정4~7을 꺼서 우회했다. 이름만 검사로 바꾼다: 감정·복장 어휘는 표시 정규식이 고르고,
+// 여기는 지어낸 이름을 지우는 일만 한다.
+const alt = (names) => names.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+rxKept.find((s) => s.comment === '에셋 찐빠 수정6').in =
+  `<img="(?!(?:${alt([...NPC_FLAGS, ...KR_NAMES, ...MORE_NAMES])}|Female|Male)(?: [^"]*)?")[^"]+">`;
+// 이름만 쓴 태그 → default. 옛 지시문이 "기본은 이름만"이라 가르쳐서 진행 중인 채팅 기록에 남아 있고,
+// 모델은 기록을 따라 쓴다 — 지시문만 고쳐서는 그 채팅의 이미지가 안 돌아온다. 한국 헌터는 모듈 정규식 몫.
+rxKept.splice(rxKept.findIndex((s) => s.comment === '에셋 찐빠 수정7') + 1, 0, {
+  comment: '에셋 찐빠 수정8',
+  in: `<img="(${alt([...NPC_FLAGS, ...MORE_NAMES])})">`,
+  out: '<img="$1 default">',
+  type: 'editoutput', ableFlag: false,
+});
 const rxOut = { ...rx, data: rxKept };
 fs.writeFileSync(OUT('얼헌-정규식-심코어판.json'), JSON.stringify(rxOut, null, 1));
 

@@ -285,6 +285,18 @@ SafeElement에 있는 것(전부 프록시 경유 await): appendChild/remove류,
 `querySelectorAll` → SafeClassArray(`at(i)`·`length()` — 메서드다), `getBoundingClientRect()`.
 **입력창 value를 채우는 API는 없다** — "입력에 넣기"는 불가, 대신 sendChat(아래)으로 바로 보낸다.
 
+## ★ 플러그인 업데이트 버튼 — `//@update-url` (리스바드 0.9.71·포켓리스 1.8.1 소스, 2026-11-07 — v1.21.5가 쓴다)
+
+`plugins.svelte.ts` importPlugin · `pluginUpdate.ts` · `PluginSettings.svelte`:
+- **머리말 파서는 파일의 모든 줄을 본다** (`jsFile.split('\n')`를 끝까지 돌며 `line.startsWith('//@…')`). 본문에 줄머리 `//@`가 있으면 그것도 머리말이다.
+- `//@update-url <주소>` — `split(' ')[1]`이라 주소에 공백 불가, **https 아니면 임포트 거부**. 있으면 `//@version` 필수(없으면 거부), 버전은 0.0.1 이상.
+  `//@version` 줄 끝까지가 **앞 500바이트 안**이어야 한다(밖이면 거부 — 확인이 앞 512바이트만 받기 때문). `//@link <https 주소> <글>`은 목록에 링크 아이콘.
+- **확인 시점 = 설정 → 플러그인 화면이 그려질 때** (`{#await checkPluginUpdate(plugin)}`). 그 주소를 브라우저 `fetch`로 `Range: bytes=0-512`·`cache:'no-store'` 받아
+  `//@version\s+(\S+)`를 대고, 높으면 그 줄에 초록 버튼. 결과는 세션 캐시(같은 주소·더 높은 버전이면 다시 안 받음). **자동 설치는 없다 — 버튼을 눌러야 한다.**
+- 누르면 `fetchNative`로 전체를 받아 `importPlugin(source, { isUpdate: true, originalPluginName })` — **`//@name`이 다르면 거부**, 같으면 확인창 없이 그 자리를 통째로 갈아 끼운다.
+  새 `pluginData`라 **`realArg`(@arg 값)가 기본값('' / 0)으로 돌아간다** — 손 임포트도 같은 길이라 원래 그렇다. pluginStorage는 그대로.
+- 주소는 로그인 없이 받히고 CORS가 열린 곳이어야 한다(확인은 브라우저 fetch) — raw.githubusercontent.com은 된다. 비공개 리포·드라이브 공유 링크는 안 된다.
+
 ## ★ 플러그인 권한 — 거부가 영구 저장된다 (mainDom·sendChat 등 6종)
 
 `fetchLogs / db / mainDom / replacer / provider / sendChat` 6종. 확인창은 **alertConfirm**이라

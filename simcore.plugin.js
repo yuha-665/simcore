@@ -1,14 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 1.21.4
-//@display-name SimCore (시뮬 엔진) v1.21.4 💾 번들 뒤에 [지금 적용]이 안 뜬다
+//@version 1.21.5
+//@display-name SimCore (시뮬 엔진) v1.21.5 🔔 플러그인 목록에서 바로 업데이트
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
+//@link https://github.com/yuha-665/simcore-release SimCore 배포처
+//@update-url https://raw.githubusercontent.com/yuha-665/simcore-release/main/simcore.plugin.js
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+// ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.21.5 ───────────────────────────────────────────────
+// **🔔 플러그인 목록에서 바로 업데이트.** 유저(2026-11-07): "생각보다 업데이트가 잦아서" — 배포용 공개 리포 yuha-665/simcore-release를 두고
+// 머리말에 `//@update-url`(그 리포의 raw 파일)과 `//@link`(리포 페이지)를 달았다. 리스바드·포켓리스(1.8.1)는 설정 → 플러그인 화면을 열 때마다
+// 그 주소의 앞 512바이트만 받아 `//@version`을 대 보고, 높으면 그 줄에 초록 업데이트 버튼을 띄운다(누르면 전체를 받아 같은 이름 자리에 갈아 끼운다).
+// - 이 줄이 든 판을 **한 번은 손으로** 임포트해야 그다음부터 버튼이 뜬다. 업데이트도 손 임포트처럼 @arg 두 개를 기본값으로 되돌린다(리수 importPlugin — 같은 길이다).
+//   pluginStorage(스냅샷·백업·설정)는 그대로다.
+// - 리수가 거부하는 머리말: update-url이 https가 아니거나 버전이 없음 / `//@version`이 앞 512바이트 밖 / 업데이트 판의 `//@name`이 다름 — test-bundle이 핀으로 잡는다.
+// - 배포는 `node tools/release.js` — 빌드·바이트 대조·버전 증가를 확인하고 옆 폴더 simcore-release에 올린다. 올리는 순간 모든 사용자에게 버튼이 뜨므로 집 실기 뒤에만.
 //
 // ── v1.21.4 ───────────────────────────────────────────────
 // **💾 번들 뒤에 [지금 적용]이 안 뜬다.** 유저 제보(2026-11-07, 베리디아): "왜 번들은 항상 가져오기 한 다음에 [지금 적용]까지 해야 적용되나 — 버그인가."

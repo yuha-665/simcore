@@ -40,6 +40,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 | 설계 문서 | `simcore\docs\design-*.md` (시간·시나리오레이터·에셋 슬롯·편성표·모듈 애드온·UI 크롬·**비밀**(`design-비밀.md`, §9 미결: SECTIONS 패치 합류·새 시작 페이지 단계 강제 열기/닫기)…) + `docs\ai-mistakes.md` |
 | 이 스킬 | `simcore\.claude\skills\simcore\` — 리포에 같이 산다. 기능이 자라면 같이 고친다 |
 | 임포트용 사본 | `E:\0.리수봇\플러그인\simcore.plugin.js` — 번들 갱신 시 여기도 같이 교체 |
+| **배포 리포 (공개)** | `yuha-665/simcore-release` — 번들 하나 + README. 이 리포 **옆 폴더** `../simcore-release`에 clone (다른 자리면 `SIMCORE_RELEASE_DIR`). 플러그인 머리말 `//@update-url`이 여기 raw 파일을 가리켜 사용자 리수에 업데이트 버튼이 뜬다 (v1.21.5). 올리기 = `node tools/release.js` |
 | ⚠ 손대지 말 것 | `simcore\이전판\` (백업), `dist\`·`playground.html` (빌드 산출물) |
 
 **소스를 고쳤으면** `node build.js` → `dist\simcore.plugin.js`를 번들 자리에 복사.
@@ -70,6 +71,10 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 - PowerShell에서 한글 파일에 `Set-Content`/`-replace` 금지(인코딩 깨짐) — Edit 도구나 `node -e`로. 커밋 메시지에 `"` 넣지 말 것.
 - **유저에게 "다시 임포트하세요"를 반드시 말할 것.** 파일만 고치면 리수에서 도는 건 옛 빌드다.
   얼헌은 한 단계 더 — 배포본은 번들이라 `hunter-vars.js` → `convert-import.js` → **`build-bundle.js`**까지 돌려야 바뀐다 (리수 내보내기 불필요, §P11).
+- **배포 = `node tools/release.js`** (v1.21.5~) — 빌드·바이트 대조·머리말·test-bundle·버전 증가를 확인하고 배포 리포에 커밋·푸시한다
+  (`--dry` 확인만, `--no-push` 커밋까지). **올리는 순간 모든 사용자에게 업데이트 버튼이 뜬다 — 집 실기 뒤에만.** 커밋·푸시(비공개 리포)와 배포(공개 리포)는 다른 일이다:
+  유저가 "커밋푸쉬"라고 하면 비공개 리포까지만. 배포는 유저가 배포하자고 할 때.
+- **리수는 파일의 모든 줄에서 `//@`로 시작하는 줄을 머리말로 읽는다** — 본문·코어에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
 
 ## 상세 문서
 

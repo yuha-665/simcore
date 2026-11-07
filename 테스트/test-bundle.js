@@ -10,8 +10,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.21.4', src.includes('//@version 1.21.4'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.21\.4/.test(src), '');
+  ck('버전 1.21.5', src.includes('//@version 1.21.5'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1\.21\.5/.test(src), '');
+  // v1.21.5 — 업데이트 버튼. 리수(리스바드·포켓리스 plugins.svelte.ts importPlugin)가 거부하는 머리말을 그대로 옮겨 잰다:
+  // 모든 줄의 `//@`를 머리말로 읽는다 · update-url은 https · 그때 버전 필수 · `//@version` 줄 끝이 앞 500바이트 안 · link는 https
+  {
+    const heads = src.split('\n').filter((l) => l.startsWith('//@'));
+    const upd = heads.filter((l) => l.startsWith('//@update-url'));
+    const url = upd[0] ? upd[0].split(' ')[1] : '';
+    ck('update-url 한 줄 · 배포 리포 raw · https', upd.length === 1
+      && url === 'https://raw.githubusercontent.com/yuha-665/simcore-release/main/simcore.plugin.js', url);
+    const vAt = src.indexOf('//@version'), vLine = src.slice(vAt).split('\n')[0];
+    ck('//@version이 앞 512바이트 안 (리수 기준 500)', vAt >= 0 && Buffer.byteLength(src.slice(0, vAt) + vLine) <= 500,
+      `${Buffer.byteLength(src.slice(0, vAt) + vLine)}바이트`);
+    ck('//@link는 https', heads.filter((l) => l.startsWith('//@link')).every((l) => (l.split(' ')[1] || '').startsWith('https')), '');
+    // 머리말은 파일 맨 앞 덩어리에만 — 본문에 줄머리 `//@`가 생기면 리수가 머리말로 읽는다(이름·링크·주소가 바뀐다)
+    const lines = src.split('\n'); let i = 0; while (i < lines.length && lines[i].startsWith('//@')) i++;
+    ck('본문에 줄머리 //@ 없음', !lines.slice(i).some((l) => l.startsWith('//@')), `머리말 ${i}줄`);
+  }
   // v1.7.10 — 아틀리에 실사고: 번들 `regex`(통째 교체)로 퍼메 푸터 제거 3종을 실었더니 카드의 에셋 정규식까지 날아갔다.
   // `regexAdd`는 카드 정규식을 유지한 채 같은 comment만 갈아 끼우고 나머지를 뒤에 붙인다. 순수 함수라 소스에서 꺼내 돌린다.
   {

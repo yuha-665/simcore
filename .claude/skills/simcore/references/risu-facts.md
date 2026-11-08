@@ -297,6 +297,8 @@ SafeElement에 있는 것(전부 프록시 경유 await): appendChild/remove류,
   새 `pluginData`라 **`realArg`(@arg 값)가 기본값('' / 0)으로 돌아간다** — 손 임포트도 같은 길이라 원래 그렇다. pluginStorage는 그대로.
   → SimCore v1.22.1부터 칸에 적힌 값을 pluginStorage(`sim:arg:<키>`)에 기억하고 칸이 비면 그 값을 쓴다(`readArg`) — 설정 칸을 새로 읽는 자리는 반드시 `readArg`로.
 - 주소는 로그인 없이 받히고 CORS가 열린 곳이어야 한다(확인은 브라우저 fetch) — raw.githubusercontent.com은 된다. 비공개 리포·드라이브 공유 링크는 안 된다.
+- **실기 통과 (2026-11-08, 리스바드 0.9.71)** — 배포 리포에 v1.22.1을 올린 뒤 v1.21.5가 깔린 리스바드에서 초록 버튼이 떴고, 누르니 v1.22.1로 바뀌었다(save에 SimCore 한 벌).
+  save `secrets/credentials.json`의 realArg가 `"aux_model_mode": ""`·`"module_assets": ""`로 돌아간 것까지 확인했다. 위에 적은 소스 동작 그대로다.
 
 ## ★ 플러그인 권한 — 거부가 영구 저장된다 (mainDom·sendChat 등 6종)
 

@@ -28,7 +28,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ck('등록이 던져도 부팅이 안 죽는다 (옛 리수엔 이 훅 이름이 없다)',
     /try \{\s*await Risuai\.addRisuReplacer\('afterRequest'/.test(src), '');
   ck('★ 떼기는 그대로 — beforeRequest의 전 타입 마커 제거가 남아 있다',
-    /if \(m && typeof m\.content === 'string'\) m\.content = stripMarkers\(m\.content\);/.test(src), '');
+    // v1.22.1 — 표지가 든 메시지만 손댄다(남의 요청 끝 공백까지 자르던 것). 표지가 든 메시지는 여전히 전 타입에서 뗀다
+    /if \(m && typeof m\.content === 'string' && m\.content\.includes\('⟦'\)\) m\.content = stripMarkers\(m\.content\);/.test(src), '');
   ck('번역 요청에서만 번호를 기억한다', src.includes("if (type === 'translate') { try { trFound = trFindMarker(messages); }"), '');
   ck('버전이 v1.10.2 이상', /\/\/@version 1\.([2-9]\d\.\d+|1[1-9]\.\d+|10\.([2-9]|\d\d))/.test(adapter), '');
   ck('체인지로그에 v1.10.2 항목', adapter.includes('── v1.10.2 ─'), '');

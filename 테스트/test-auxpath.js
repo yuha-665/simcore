@@ -27,8 +27,8 @@ const Risuai = {
 let lastAux = { status: '', raw: '', applied: 0 };
 ${src.slice(a1, a2)}
 ${src.slice(b1, b2)}
-module.exports = { getAuxPath, setAuxPath, resolveAuxMode, schemaFingerprint, bridgeIsStale, bridgeSchemaSig,
-  _setArg: (v) => { argValue = v; }, _store: store, _resetCache: () => { auxPathCache = undefined; } };
+module.exports = { getAuxPath, setAuxPath, resolveAuxMode, schemaFingerprint, bridgeIsStale, bridgeSchemaSig, readArg, argLabel,
+  _setArg: (v) => { argValue = v; }, _store: store, _resetCache: () => { auxPathCache = undefined; readArg.saved = {}; } };
 `;
 const out = require('path').join(__dirname, '_auxpath_gen.js');
 fs.writeFileSync(out, harness, 'utf8');
@@ -65,6 +65,38 @@ const SCHEMA_B = { vars: [{ id: 'hp', type: 'int', label: 'HP' }, { id: 'gold', 
   M._setArg('auto');
   M._resetCache();
   ck('재시작 후에도 판정 유지', (await M.resolveAuxMode()) === 'lua');
+
+  // ── 업데이트해도 설정이 남는다 (v1.22.1) — 리수는 업데이트·손 임포트 때 @arg 칸을 비운다 ──
+  M._setArg('off');
+  await M.resolveAuxMode();
+  ck('적힌 값은 저장소에 기억된다', M._store.get('sim:arg:aux_model_mode') === 'off', String(M._store.get('sim:arg:aux_model_mode')));
+  M._setArg('');           // 업데이트로 칸이 비었다
+  M._resetCache();         // 새 판으로 다시 켜졌다
+  ck('★ 칸이 비면 지난 설정(off)을 이어 쓴다', (await M.resolveAuxMode()) === 'off');
+  const kept = await M.readArg('aux_model_mode');
+  ck('이어 쓰는 중이라고 표시한다', kept.from === 'kept' && M.argLabel(kept).includes('지난 설정'), M.argLabel(kept));
+  M._setArg('auto');       // 기본으로 돌아가려면 기본값을 직접 적는다
+  await M.resolveAuxMode();
+  M._setArg('');
+  M._resetCache();
+  ck('★ 기본값(auto)을 적으면 그것도 기억 — 비워도 auto', (await M.resolveAuxMode()) === 'lua' && M._store.get('sim:arg:aux_model_mode') === 'auto',
+    String(M._store.get('sim:arg:aux_model_mode')));
+  M._setArg('luaa');       // 오타
+  ck('모르는 값은 예전처럼 기본값(auto)으로, 기억하지 않는다',
+    (await M.readArg('aux_model_mode')).value === 'auto' && M._store.get('sim:arg:aux_model_mode') === 'auto', '');
+  ck('모르는 값 표시', M.argLabel(await M.readArg('aux_model_mode')).includes("'luaa'는 모르는 값"), '');
+  M._setArg(' Lua ');
+  ck('대소문자·공백은 예전처럼 너그럽게', (await M.readArg('aux_model_mode')).value === 'lua', '');
+  // module_assets — 이미지가 모듈에 사는 봇. 업데이트마다 꺼지던 칸
+  M._setArg('on');
+  ck('module_assets on 기억', (await M.readArg('module_assets')).value === 'on' && M._store.get('sim:arg:module_assets') === 'on', '');
+  M._setArg('');
+  M._resetCache();
+  ck('★ 업데이트로 칸이 비어도 module_assets는 on 그대로', (await M.readArg('module_assets')).value === 'on', '');
+  M._store.delete('sim:arg:module_assets');
+  ck('기억이 없으면 기본값 off', (await M.readArg('module_assets')).value === 'off' && (await M.readArg('module_assets')).from === 'default', '');
+  M._setArg('auto');
+  M._resetCache();
 
   // ── 브리지 노후 감지 ──
   const sigA = M.schemaFingerprint(SCHEMA_A);

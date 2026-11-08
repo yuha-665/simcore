@@ -1,9 +1,9 @@
 //@name simcore
 //@api 3.0
-//@version 1.22.0
-//@display-name SimCore (시뮬 엔진) v1.22.0 🎨 상태창 꾸미기가 봇을 보고 디자인
-//@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
-//@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
+//@version 1.22.1
+//@display-name SimCore (시뮬 엔진) v1.22.1 🔧 업데이트해도 설정 두 칸이 남는다
+//@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
+//@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
 //@update-url https://raw.githubusercontent.com/yuha-665/simcore-release/main/simcore.plugin.js
 //
@@ -12,6 +12,15 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.22.1 ───────────────────────────────────────────────
+// **🔧 업데이트해도 설정 두 칸이 남는다 + 남의 요청은 안 다듬는다.** 배포 전 점검(2026-11-08, 유저 "다른 버그는 없나").
+// - [어댑터] 리수는 업데이트(🔔 버튼)·손 임포트 때 @arg 값을 빈칸으로 되돌린다. 버튼이 생기면 업데이트가 잦아져
+//   module_assets=on(이미지가 모듈에 사는 봇)은 업데이트마다 이미지가 사라진다 → 칸에 적힌 값을 pluginStorage(`sim:arg:<키>`)에 기억하고
+//   칸이 비면 그 값을 이어 쓴다(`readArg`). 기본으로 돌아가려면 기본값(auto·off)을 직접 적는다 — 그것도 기억된다. 모르는 값은 예전처럼 기본값.
+//   패널 [보조 모델] 상태줄이 "칸이 비어 있어 지난 설정을 이어 씀"을 보여 준다. 머리말 @arg 설명에 "비워 두면 지난 설정".
+// - [어댑터] beforeRequest의 표지 떼기가 **모든 요청의 모든 메시지**에 돌아 끝 공백까지 잘랐다 — 심코어가 없는 봇·남의 플러그인 요청까지.
+//   금지 #1(우리 턴이 아닌 요청은 안 만진다)에 어긋나서 `⟦`가 든 메시지만 손대게 했다. 표지가 든 메시지는 예전과 같다.
 //
 // ── v1.22.0 ───────────────────────────────────────────────
 // **🎨 상태창 꾸미기가 봇을 보고 디자인한다.** 유저(2026-11-08): "상태창을 처음 만들 때나 꾸미기를 시킬 때 CSS가 AI가 딴 것처럼 딱딱하다 —
@@ -40276,6 +40285,44 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     console.log('[simcore] 보조모델 경로 판정:', v === 'bridge' ? '차단 → 루아 브리지' : '직접 호출 가능');
   }
 
+  // ── 플러그인 설정 두 칸 기억 (v1.22.1) ──────────────────────
+  // 리수는 업데이트(🔔 버튼)와 손 임포트 때 @arg 값을 기본값('')으로 되돌린다 (importPlugin이 pluginData를 새로 만든다 — risu-facts).
+  // 버튼이 생기면 업데이트가 잦아져서 module_assets=on(이미지가 모듈에 사는 봇)은 업데이트마다 이미지가 사라진다.
+  // 그래서 칸에 **적힌** 값을 pluginStorage(업데이트에도 남는다)에 기억해 두고, 칸이 비어 있으면 그 값을 이어 쓴다.
+  // 기본값으로 돌아가려면 칸에 기본값(auto·off)을 직접 적는다 — 그것도 기억된다. 모르는 값은 예전처럼 기본값으로 읽고 기억하지 않는다.
+  // 목록은 함수 안에 둔다 — 최상위 const는 부팅 순서에 따라 TDZ에 걸린다 (v1.0.7 스코프 사고와 같은 유형).
+  function argChoices(key) {
+    return key === 'aux_model_mode' ? ['auto', 'aux', 'lua', 'off'] : key === 'module_assets' ? ['off', 'on'] : [''];
+  }
+  /** @returns {{ value: string, from: 'typed'|'kept'|'default'|'invalid', raw: string }} */
+  async function readArg(key) {
+    const choices = argChoices(key);
+    const saved = (readArg.saved ??= {}); // 이번 실행에서 저장소에 이미 적어 둔 값 — 같은 값이면 저장소를 다시 안 건드린다
+    let raw = '';
+    try { raw = String((await Risuai.getArgument(key)) ?? '').trim().toLowerCase(); } catch { raw = ''; } // 'Lua '·' lua' 도 (v1.14.10)
+    const storeKey = `sim:arg:${key}`;
+    if (raw && choices.includes(raw)) {
+      if (saved[key] !== raw) {
+        try { await Risuai.pluginStorage.setItem(storeKey, raw); saved[key] = raw; } catch { /* 기억 못 해도 이번 값은 쓴다 */ }
+      }
+      return { value: raw, from: 'typed', raw };
+    }
+    if (!raw) {
+      try {
+        const kept = await Risuai.pluginStorage.getItem(storeKey);
+        if (kept && choices.includes(kept)) return { value: kept, from: 'kept', raw };
+      } catch { /* 저장소를 못 읽으면 기본값 */ }
+    }
+    return { value: choices[0], from: raw ? 'invalid' : 'default', raw };
+  }
+  /** 패널 표시용 — 칸이 비어 지난 값을 이어 쓰는 중이면 그렇다고 말한다 */
+  function argLabel(r) {
+    if (r.from === 'kept') return `${r.value} (칸이 비어 있어 지난 설정을 이어 씀 — 업데이트하면 리수가 칸을 비운다)`;
+    if (r.from === 'invalid') return `'${r.raw}'는 모르는 값 → ${r.value}`;
+    if (r.from === 'default') return `${r.value}(기본)`;
+    return r.value;
+  }
+
   /**
    * 이번 턴에 쓸 경로를 결정한다.
    * 설정값이 aux/lua/off면 그 지시를 따르고, auto(기본)면 판정 결과를 따른다.
@@ -40283,7 +40330,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
    * @returns 'aux' | 'lua' | 'off'
    */
   async function resolveAuxMode() {
-    const arg = String((await Risuai.getArgument('aux_model_mode')) || 'auto').trim().toLowerCase(); // 'Lua '·' lua' 도 (v1.14.10)
+    const arg = (await readArg('aux_model_mode')).value; // 칸이 비면 지난 설정 (v1.22.1)
     if (arg === 'aux' || arg === 'lua' || arg === 'off') return arg;
     return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
   }
@@ -41267,8 +41314,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (n) console.log(`[simcore] 장기기억 요약 요청에 이야기 시각 ${n}개`);
       } catch (e) { console.log('[simcore] 요약 시각 도장 실패:', e?.message ?? e); }
     }
+    // 표지가 든 메시지만 손댄다 (v1.22.1) — 전엔 모든 요청의 모든 메시지에 stripMarkers를 돌려 끝 공백까지 잘랐다.
+    // 심코어가 없는 봇·남의 플러그인 요청까지 다듬는 것이라 금지 #1(우리 턴이 아닌 요청은 안 만진다)에 어긋났다. 잘린 꼬리도 '⟦'로 시작한다
     for (const m of messages ?? []) {
-      if (m && typeof m.content === 'string') m.content = stripMarkers(m.content);
+      if (m && typeof m.content === 'string' && m.content.includes('⟦')) m.content = stripMarkers(m.content);
     }
     if (trFound) { try { trRemember(messages, trFound); } catch (e) { console.log('[simcore] 번역 마커 기억 실패:', e?.message ?? e); } }
     if (type !== 'model') return messages;   // 우리 턴이 아닌 요청엔 아무것도 얹지 않는다
@@ -41410,8 +41459,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   async function moduleAssetsOn(fresh) {
     if (fresh) moduleAssetsMode = null;   // 편집기 버튼 경로 — 방금 설정을 바꿨을 수 있다
     if (moduleAssetsMode === null) {
-      try { moduleAssetsMode = String((await Risuai.getArgument('module_assets')) || 'off').toLowerCase(); }
-      catch { moduleAssetsMode = 'off'; }
+      // 칸이 비면 지난 설정 (v1.22.1) — 업데이트마다 칸이 비어 모듈 이미지가 사라지던 것. readArg는 안에서 오류를 삼킨다
+      moduleAssetsMode = (await readArg('module_assets')).value;
     }
     return moduleAssetsMode === 'on';
   }
@@ -46525,14 +46574,14 @@ count(목록)  has(목록, "항목")</pre>
         mentionGateWarning();
     }
     // 모드/브리지 상태는 비동기로 뒤에 덧붙임
-    Promise.all([Risuai.getArgument('aux_model_mode'), Risuai.getCharacter(), resolveAuxMode(), getAuxPath()])
+    Promise.all([readArg('aux_model_mode'), Risuai.getCharacter(), resolveAuxMode(), getAuxPath()])
       .then(([m, char, resolved, path]) => {
         const pathTxt = path === 'bridge' ? '차단 확인됨 → 브리지 경유'
           : path === 'direct' ? '직접 호출 가능 확인됨' : '아직 판정 전 (첫 턴에 자동 판정)';
         let bridgeTxt = hasLuaBridge(char) ? '설치됨' : '없음';
         if (bridgeIsStale(char, schema)) bridgeTxt += ' ⚠ 현재 스키마와 불일치 — [루아 브리지 설치/갱신] 필요';
         if (auxInfoDiv) {
-          auxInfoDiv.textContent += `\n설정: ${m || 'auto(기본)'} → 이번 턴 경로: ${resolved}`
+          auxInfoDiv.textContent += `\n설정: ${argLabel(m)} → 이번 턴 경로: ${resolved}`
             + `\n환경 판정: ${pathTxt}`
             + `\nLua 브리지: ${bridgeTxt}`;
         }

@@ -24,7 +24,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ck('★ memory 요청만 도장을 찍는다 (타입 가드)', /if \(type === 'memory'\) \{\s*try \{\s*const n = await stampMemoryRequest\(messages\);/.test(src), '');
   ck('★ 도장이 공통 제거보다 먼저 (지운 뒤엔 번호가 없다)',
     src.indexOf('await stampMemoryRequest(messages)') > 0
-    && src.indexOf('await stampMemoryRequest(messages)') < src.indexOf("if (m && typeof m.content === 'string') m.content = stripMarkers(m.content);"), '');
+    && src.indexOf('await stampMemoryRequest(messages)') < src.indexOf("if (m && typeof m.content === 'string' && m.content.includes('⟦')) m.content = stripMarkers(m.content);"), '');
   ck('도장 실패는 삼킨다 (beforeRequest는 try 바깥 — 던지면 앱의 모든 요청이 죽는다)',
     /catch \(e\) \{ console\.log\('\[simcore\] 요약 시각 도장 실패:'/.test(src), '');
   ck('버전이 v1.18.3 이상', /\/\/@version 1\.(18\.([3-9]|\d\d)|(19|[2-9]\d)\.\d+)/.test(adapter), '');

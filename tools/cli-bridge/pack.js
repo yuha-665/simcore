@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // 다리 배포판 — 리포가 비공개라 플러그인 옆에 이 zip을 같이 올린다. 결과: 배포/SimCore-bridge.zip
+// v1.22.1~: tools/release.js가 다리 파일이 바뀌었을 때 이걸 돌려 공개 배포 리포 bridge/에 올린다 (프로톤에 따로 안 올린다).
 // 파일을 고치면 다시 만들 것 (test-clibridge가 zip 안의 파일이 소스와 같은지 본다).
 // 이름은 ASCII만 — 압축 프로그램에 따라 한글 파일 이름이 깨진다. README.txt는 메모장이 바로 읽게 BOM + CRLF로 담는다.
 const fs = require('fs');

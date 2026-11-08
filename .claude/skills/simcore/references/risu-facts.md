@@ -295,6 +295,7 @@ SafeElement에 있는 것(전부 프록시 경유 await): appendChild/remove류,
   `//@version\s+(\S+)`를 대고, 높으면 그 줄에 초록 버튼. 결과는 세션 캐시(같은 주소·더 높은 버전이면 다시 안 받음). **자동 설치는 없다 — 버튼을 눌러야 한다.**
 - 누르면 `fetchNative`로 전체를 받아 `importPlugin(source, { isUpdate: true, originalPluginName })` — **`//@name`이 다르면 거부**, 같으면 확인창 없이 그 자리를 통째로 갈아 끼운다.
   새 `pluginData`라 **`realArg`(@arg 값)가 기본값('' / 0)으로 돌아간다** — 손 임포트도 같은 길이라 원래 그렇다. pluginStorage는 그대로.
+  → SimCore v1.22.1부터 칸에 적힌 값을 pluginStorage(`sim:arg:<키>`)에 기억하고 칸이 비면 그 값을 쓴다(`readArg`) — 설정 칸을 새로 읽는 자리는 반드시 `readArg`로.
 - 주소는 로그인 없이 받히고 CORS가 열린 곳이어야 한다(확인은 브라우저 fetch) — raw.githubusercontent.com은 된다. 비공개 리포·드라이브 공유 링크는 안 된다.
 
 ## ★ 플러그인 권한 — 거부가 영구 저장된다 (mainDom·sendChat 등 6종)

@@ -150,6 +150,18 @@ async function boot() {
     ck('beforeRequest: 성한 마커도 제거', !out[1].content.includes('⟦simcore:0⟧'), JSON.stringify(out[1].content));
     ck('beforeRequest: 본문 보존', out[0].content === '지난 장면.', JSON.stringify(out[0].content));
   }
+  // ── beforeRequest: 표지 없는 메시지는 손대지 않는다 (v1.22.1) — 전엔 모든 요청의 모든 메시지 끝 공백을 잘랐다 ──
+  {
+    const tail = '심코어와 무관한 지시문.\n\n';
+    const msgs = [{ role: 'system', content: tail }, { role: 'assistant', content: '장면 끝.  ' }, { role: 'user', content: '계속\n' }];
+    for (const type of ['model', 'translate', 'memory', 'submodel']) {
+      const copy = msgs.map((m) => ({ ...m }));
+      const out = await hooks.beforeRequest(copy, type);
+      ck(`★ beforeRequest(${type}): 표지 없는 메시지는 끝 공백까지 그대로`,
+        out[0].content === tail && out[1].content === '장면 끝.  ' && out[2].content === '계속\n',
+        JSON.stringify(out.map((m) => m.content)));
+    }
+  }
 
   // ── 마커 유실 복구(4초)가 잘린 꼬리를 갈아 세운다 ──
   // 턴을 하나 굴린 뒤 그 메시지를 "잘린 채 저장된" 꼴로 망가뜨리고 복구 시도를 기다린다.

@@ -30,6 +30,44 @@ let lastAux = { status: '', raw: '', applied: 0 };
     console.log('[simcore] 보조모델 경로 판정:', v === 'bridge' ? '차단 → 루아 브리지' : '직접 호출 가능');
   }
 
+  // ── 플러그인 설정 두 칸 기억 (v1.22.1) ──────────────────────
+  // 리수는 업데이트(🔔 버튼)와 손 임포트 때 @arg 값을 기본값('')으로 되돌린다 (importPlugin이 pluginData를 새로 만든다 — risu-facts).
+  // 버튼이 생기면 업데이트가 잦아져서 module_assets=on(이미지가 모듈에 사는 봇)은 업데이트마다 이미지가 사라진다.
+  // 그래서 칸에 **적힌** 값을 pluginStorage(업데이트에도 남는다)에 기억해 두고, 칸이 비어 있으면 그 값을 이어 쓴다.
+  // 기본값으로 돌아가려면 칸에 기본값(auto·off)을 직접 적는다 — 그것도 기억된다. 모르는 값은 예전처럼 기본값으로 읽고 기억하지 않는다.
+  // 목록은 함수 안에 둔다 — 최상위 const는 부팅 순서에 따라 TDZ에 걸린다 (v1.0.7 스코프 사고와 같은 유형).
+  function argChoices(key) {
+    return key === 'aux_model_mode' ? ['auto', 'aux', 'lua', 'off'] : key === 'module_assets' ? ['off', 'on'] : [''];
+  }
+  /** @returns {{ value: string, from: 'typed'|'kept'|'default'|'invalid', raw: string }} */
+  async function readArg(key) {
+    const choices = argChoices(key);
+    const saved = (readArg.saved ??= {}); // 이번 실행에서 저장소에 이미 적어 둔 값 — 같은 값이면 저장소를 다시 안 건드린다
+    let raw = '';
+    try { raw = String((await Risuai.getArgument(key)) ?? '').trim().toLowerCase(); } catch { raw = ''; } // 'Lua '·' lua' 도 (v1.14.10)
+    const storeKey = `sim:arg:${key}`;
+    if (raw && choices.includes(raw)) {
+      if (saved[key] !== raw) {
+        try { await Risuai.pluginStorage.setItem(storeKey, raw); saved[key] = raw; } catch { /* 기억 못 해도 이번 값은 쓴다 */ }
+      }
+      return { value: raw, from: 'typed', raw };
+    }
+    if (!raw) {
+      try {
+        const kept = await Risuai.pluginStorage.getItem(storeKey);
+        if (kept && choices.includes(kept)) return { value: kept, from: 'kept', raw };
+      } catch { /* 저장소를 못 읽으면 기본값 */ }
+    }
+    return { value: choices[0], from: raw ? 'invalid' : 'default', raw };
+  }
+  /** 패널 표시용 — 칸이 비어 지난 값을 이어 쓰는 중이면 그렇다고 말한다 */
+  function argLabel(r) {
+    if (r.from === 'kept') return `${r.value} (칸이 비어 있어 지난 설정을 이어 씀 — 업데이트하면 리수가 칸을 비운다)`;
+    if (r.from === 'invalid') return `'${r.raw}'는 모르는 값 → ${r.value}`;
+    if (r.from === 'default') return `${r.value}(기본)`;
+    return r.value;
+  }
+
   /**
    * 이번 턴에 쓸 경로를 결정한다.
    * 설정값이 aux/lua/off면 그 지시를 따르고, auto(기본)면 판정 결과를 따른다.
@@ -37,7 +75,7 @@ let lastAux = { status: '', raw: '', applied: 0 };
    * @returns 'aux' | 'lua' | 'off'
    */
   async function resolveAuxMode() {
-    const arg = String((await Risuai.getArgument('aux_model_mode')) || 'auto').trim().toLowerCase(); // 'Lua '·' lua' 도 (v1.14.10)
+    const arg = (await readArg('aux_model_mode')).value; // 칸이 비면 지난 설정 (v1.22.1)
     if (arg === 'aux' || arg === 'lua' || arg === 'off') return arg;
     return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
   }
@@ -261,5 +299,5 @@ let lastAux = { status: '', raw: '', applied: 0 };
   }
 
 
-module.exports = { getAuxPath, setAuxPath, resolveAuxMode, schemaFingerprint, bridgeIsStale, bridgeSchemaSig,
-  _setArg: (v) => { argValue = v; }, _store: store, _resetCache: () => { auxPathCache = undefined; } };
+module.exports = { getAuxPath, setAuxPath, resolveAuxMode, schemaFingerprint, bridgeIsStale, bridgeSchemaSig, readArg, argLabel,
+  _setArg: (v) => { argValue = v; }, _store: store, _resetCache: () => { auxPathCache = undefined; readArg.saved = {}; } };

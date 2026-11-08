@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.21.5
-//@display-name SimCore (시뮬 엔진) v1.21.5 🔔 플러그인 목록에서 바로 업데이트
+//@version 1.22.0
+//@display-name SimCore (시뮬 엔진) v1.22.0 🎨 상태창 꾸미기가 봇을 보고 디자인
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,21 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.22.0 ───────────────────────────────────────────────
+// **🎨 상태창 꾸미기가 봇을 보고 디자인한다.** 유저(2026-11-08): "상태창을 처음 만들 때나 꾸미기를 시킬 때 CSS가 AI가 딴 것처럼 딱딱하다 —
+// 상태창 제작 스킬 같은 게 있으면 심코어에 내장할 수 있나." 리수 상태창 전용 스킬은 공개된 게 없어서 Hallmark(MIT)와 Anthropic
+// frontend-design(Apache-2.0)에서 상태창에 맞는 것만 골라 새로 썼다. **기본 모양(BASE_CSS)은 그대로** — 꾸미기를 시킬 때만 적용 (유저 결정).
+// - [편집기] 원인 넷을 고쳤다: ① 꾸미기 규격서에 봇 정보가 없었다 → 이름·설명 앞부분·로어북 항목 이름만 동봉(`designCtxText`, 📚 고르기·동봉 끄기를 따름)
+//   ② 분위기 칸이 비면 예시 문구("낡은 신문지 느낌…")가 요청처럼 실렸다 → 내장 생성에선 "봇 정보에서 골라 달라"로
+//   ③ "획일적인 AI 디자인 줄이기"가 실제로는 여섯 줄 요약이었다 → 디자인 지침(`STATUS_DESIGN_GUIDE`: 소재부터 · 계획 주석 먼저 ·
+//   흔한 기본값 목록 · 위계와 절제 · 대비 4.5:1·휴대폰 폭·기기 글꼴 바닥선, 배치 모드는 `STATUS_DESIGN_LAYOUT` 한 절 더)
+//   ④ 계획 없이 바로 CSS → 맨 위에 `/* 소재·색·글꼴·한 곳 */` 계획 주석을 먼저 쓰게. 주석은 렌더러(scopeCss)가 지워 채팅엔 안 나간다.
+// - [편집기] **재질 프리셋 10종**(`STATUS_MATERIALS` — 기록부·양피지·석간 신문·암실·단말기·설계도·텃밭 수첩·가마·스티커·한밤):
+//   Hallmark 테마의 재질·색을 상태창 클래스로 옮긴 것(oklch → hex, 웹폰트 → 기기 글꼴). 상태창 탭 [재질 프리셋] 버튼은 그대로 입히고
+//   (옛 레시피 다섯은 유리 블러·파랑→보라 그라데이션 같은 그 기본값이라 뺐다 — 이미 입힌 봇의 CSS는 그대로), 🎨 꾸미기의 [출발 재질]로 고르면
+//   생성 모델이 그 재질 위에서 이 봇에 맞게 변주한다. [그대로 입히기]·레시피 버튼도 이제 [꾸미기 되돌리기] 한 칸을 남긴다.
+// - 대비 4.5:1·채팅 CSS 규칙(중첩·자리표시자)·쓸 수 있는 클래스만은 `테스트/test-cssdesign.js`가 재질마다 잰다.
 //
 // ── v1.21.5 ───────────────────────────────────────────────
 // **🔔 플러그인 목록에서 바로 업데이트.** 유저(2026-11-07): "생각보다 업데이트가 잦아서" — 배포용 공개 리포 yuha-665/simcore-release를 두고
@@ -18071,16 +18086,247 @@ const CSS_SPEC_CLASSES = [
   ['.sim-log / .sim-log-item', '이번 턴 변화 로그'],
 ];
 
-const DESIGN_POLISH_PROMPT = [
-  '## 획일적인 AI 디자인 줄이기',
-  '- 요청한 장르와 분위기를 먼저 따르고, 흔한 AI 대시보드 형태를 기본값으로 삼지 마세요.',
-  '- 카드 중첩, 이유 없는 둥근 상자, 알약형 배지 남발을 피하세요.',
-  '- 장식용 그라데이션과 과한 그림자는 쓰지 말고 여백·글자·선·정렬로 위계를 만드세요.',
-  '- 기본·초점·처리 중·성공·경고·오류·비활성 상태를 색에만 의존하지 말고 구분하세요.',
-  '- 긴 텍스트, 빈 값, 모바일 폭과 글자 대비를 함께 점검하세요.',
+// ── 상태창 디자인 지침 (v1.22.0) ─────────────────────────────
+// 유저(2026-11-08): "상태창을 처음 만들 때나 꾸미기를 시킬 때 CSS가 AI가 딴 것처럼 딱딱하다."
+// 원인 넷 — ① 프롬프트에 봇 정보가 없어 어느 봇에나 맞는 기본값이 나왔다 ② 분위기 칸이 비면 예시 문구("낡은 신문지 느낌…")가
+// 그대로 실려 그쪽으로 쏠렸다 ③ "획일적인 AI 디자인 줄이기"가 Hallmark를 단다고 했지만 실제론 여섯 줄 요약뿐이었다 ④ 계획 없이 바로 CSS를 썼다.
+// 지침은 Hallmark(MIT, github.com/Nutlope/hallmark)와 Anthropic frontend-design(Apache-2.0, github.com/anthropics/skills)에서
+// 상태창에 해당하는 것만 골라 **새로 쓴** 것이다(원문 전재 아님 — SOURCES.md). 웹 페이지용(히어로·스크롤·사진)은 뺐고,
+// 채팅 사이에 매 턴 끼는 작은 창이라는 조건(웹폰트 차단·휴대폰 폭·밝은/어두운 테마)을 넣었다.
+// 기본 모양(render.js BASE_CSS)은 손대지 않는다 — 스킨 없는 기존 봇이 전부 달라 보이니까 (유저 결정, 같은 날).
+const DESIGN_FONT_SANS = '"Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif';
+const DESIGN_FONT_SERIF = '"Noto Serif KR", "Nanum Myeongjo", "AppleMyungjo", "Batang", serif';
+const DESIGN_FONT_MONO = 'ui-monospace, "D2Coding", Consolas, monospace';
+
+const STATUS_DESIGN_GUIDE = [
+  '## 디자인 지침 — 이 봇만의 상태창',
+  '### 1. 소재부터',
+  '- 이 상태창이 그 세계에 실제로 있는 물건이라면 무엇일지 먼저 정하세요 — 영지의 회계 장부, 길드 게시판에 핀으로 꽂힌 의뢰서, 함선 계기판, 학생 수첩, 연구 일지, 기획사 스케줄 보드처럼.',
+  '  색·글꼴·선·모서리는 그 물건의 재료(종이·가죽·금속·유리·천·화면)와 그 세계의 말투에서 나옵니다. 근거는 봇 정보·변수 이름·분위기 문구입니다.',
+  '- 분위기 문구가 방향을 정했으면 그게 우선입니다. 아래 "흔한 기본값"에 든 모양이라도 문구가 원하면 그대로 하세요. 문구가 비워 둔 부분에만 이 지침을 쓰세요.',
+  '### 2. 계획을 주석으로 먼저',
+  '- 규칙을 쓰기 전에 CSS 맨 위에 계획 주석 하나를 적으세요. 5줄 이내, 주석 안에 중괄호는 쓰지 마세요 (채팅에 그릴 때 시스템이 주석을 지웁니다):',
+  '  `/* 소재: … · 색: 바탕 #… 글자 #… 흐린 글자 #… 선 #… 강조 #… · 글꼴: … · 눈에 띄게 할 한 곳: … */`',
+  '- 적은 뒤 스스로 물어보세요: "다른 봇이 같은 요청을 했어도 똑같이 했을까?" 그렇다면 그 부분을 이 봇 쪽으로 고치세요.',
+  '### 3. 흔한 기본값 — 요청이 원하지 않으면 피하기',
+  '- 모든 걸 같은 둥근 상자·알약 배지로 감싸기, 상자 안의 상자, 어디에나 같은 흐린 그림자',
+  '- 파랑→보라(또는 아무 두 색) 그라데이션 게이지, 반투명 유리 + 블러(backdrop-filter), 네온 글로우',
+  '- 크림 바탕 + 명조 + 테라코타 강조, 거의 검정 바탕 + 형광 강조 하나 — 소재가 그걸 부를 때만',
+  '- 그룹 제목마다 자간 넓힌 대문자 라벨, 순서가 아닌데 붙인 번호(01·02), 줄마다 붙인 이모지 장식',
+  '- 모든 요소에 hover 효과·애니메이션, 계속 반짝이거나 도는 움직임',
+  '### 4. 위계와 절제',
+  '- 눈에 띄게 할 곳은 한 군데 — 게이지, 핵심 수치, 제목 줄 중 하나. 나머지는 조용히 두세요.',
+  '- 위계는 상자가 아니라 글자 크기·굵기·짙기, 여백, 선으로 만드세요. 선·테두리는 구분이나 묶음이라는 정보가 있을 때만.',
+  '- 모서리 반경은 한두 가지로, 소재에 맞게 (종이·금속은 각지게, 천·플라스틱은 둥글게).',
+  '- 그라데이션은 뜻이 있을 때만 (온도·위험도처럼 값이 오를수록 달라지는 것). 장식이면 단색으로.',
+  '- 다 쓰고 나면 장식 하나를 빼 보세요. 빼도 허전하지 않으면 원래 필요 없던 것입니다.',
+  '### 5. 상태창의 바닥선 (어기면 안 됨)',
+  '- 채팅 메시지 사이에 매 턴 끼는 작은 창입니다. 휴대폰 폭(360px)에서 줄이 넘치지 않게, 글자는 본문과 같거나 조금 작게(0.85~0.95em).',
+  '- 숫자에는 `font-variant-numeric: tabular-nums` (턴마다 값이 바뀌어도 자리가 안 흔들리게).',
+  '- 글자와 바탕의 대비는 4.5:1 이상. 흐린 글자도 이 선을 넘기세요 — 흐리게는 opacity가 아니라 색으로.',
+  '- 증가·감소·경고·잠김은 색만으로 가르지 말고 굵기·기호·선도 함께.',
+  `- 웹폰트는 막혀 있습니다. 기기에 있는 글꼴만 — 고딕: \`${DESIGN_FONT_SANS}\` / 명조: \`${DESIGN_FONT_SERIF}\` / 고정폭: \`${DESIGN_FONT_MONO}\`. 한 벌, 또는 분명히 다른 두 벌까지.`,
+];
+const STATUS_DESIGN_LAYOUT = [
+  '### 6. 배치',
+  '- 계획 주석은 `<style>` 블록 맨 위에 둡니다 (HTML 쪽엔 주석을 넣지 마세요).',
+  '- 배치도 그 물건을 따르세요 — 장부면 줄과 열, 계기판이면 계기 몇 개, 수첩이면 칸과 메모, 게시판이면 쪽지. 같은 카드를 격자로 늘어놓는 건 기본값입니다.',
+  '- 탭은 한 화면에 다 안 들어갈 때만. 항목이 적으면 한 장 안에서 위계로 나누는 편이 읽기 쉽습니다.',
 ];
 
-function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
+// 재질 프리셋 (v1.22.0) — Hallmark 테마(MIT © 2026 Hallmark contributors)의 재질·색을 상태창 클래스에 옮긴 것.
+// oklch → hex, 웹폰트 → 기기 글꼴. 쓰임 둘: ① 상태창 탭 [재질 프리셋] 버튼(그대로 입힘) ② 꾸미기 생성의 출발 재질(모델이 이 위에서 봇에 맞게 변주).
+// 글자 대비 4.5:1·채팅 CSS 규칙은 test-cssdesign이 지킨다. 새 재질을 넣으면 거기서 같이 검사된다.
+const DIFF_LIGHT = '.sim-log-diff.plus, .sim-card .d-up { color:#1d6b2a; }\n.sim-log-diff.minus, .sim-card .d-down { color:#9b2c1c; }';
+const DIFF_DARK = '.sim-log-diff.plus, .sim-card .d-up { color:#8fd694; }\n.sim-log-diff.minus, .sim-card .d-down { color:#ff9b85; }';
+const STATUS_MATERIALS = [
+  { id: 'ledger', name: '기록부', from: 'almanac', fit: '경영·영지·통계·관리',
+    brief: '참고서의 기록면 — 서늘한 석판색 테 안에 밝은 인쇄면, 남흑 잉크, 굵기 두 가지 괘선(머리 아래 굵은 선 하나, 줄 사이 실선), 각진 모서리, 숫자는 고정폭. 색은 자홍 하나를 게이지에만. 권위는 선과 숫자에서 나온다 — 회색 대시보드가 아니다.',
+    css: `.sim-status { background:#e5eaef; color:#060e15; border:1px solid #a1a9af; border-top:2px solid #2b343b; border-radius:0; font-family:${DESIGN_FONT_SANS}; --sim-pop-bg:#e5eaef; --sim-pop-fg:#060e15; --sim-tab-on-bg:#c4cbd2; --sim-tab-on-line:#2b343b; }
+.sim-status summary { color:#182027; opacity:1; }
+.sim-group { border-top:1px solid #a1a9af; padding-top:6px; }
+.sim-group-label { color:#3b434b; opacity:1; font-weight:600; }
+.sim-row { border-bottom:1px solid #c4cbd2; padding:2px 0; }
+.sim-label { color:#3b434b; opacity:1; }
+.sim-value { font-family:${DESIGN_FONT_MONO}; color:#060e15; }
+.sim-bar { background:#c4cbd2; border-radius:0; height:6px; }
+.sim-bar-fill { background:#970d63; border-radius:0; }
+.sim-badge, .sim-tag { background:transparent; border:1px solid #2b343b; border-radius:2px; color:#182027; }
+.sim-action { border-color:#2b343b; border-radius:2px; color:#182027; }
+.sim-action.sim-armed { background:#970d63; border-color:#970d63; color:#f2f6f9; }
+.sim-log { color:#3b434b; opacity:1; }
+${DIFF_LIGHT}` },
+  { id: 'vellum', name: '양피지', from: 'vellum', fit: '판타지·중세·마법',
+    brief: '옛 인쇄소 — 양피지 바탕, 엄버(흑갈) 잉크, 제목은 명조, 실선과 이중 괘선, 모서리 2px, 안료는 군청 하나. 세월은 글꼴이 지니니 나머지는 꾸미지 않는다 — 선술집 소품이나 일부러 낡힌 흉내가 아니다.',
+    css: `.sim-status { background:#f3eada; color:#261a12; border:4px double #bcab96; border-radius:2px; font-family:${DESIGN_FONT_SERIF}; --sim-pop-bg:#f3eada; --sim-pop-fg:#261a12; --sim-tab-on-bg:#e9dcc7; --sim-tab-on-line:#bcab96; }
+.sim-status summary { color:#261a12; opacity:1; }
+.sim-group-label { color:#62554a; opacity:1; font-weight:700; border-bottom:1px solid #bcab96; }
+.sim-label { color:#3a2d24; opacity:1; }
+.sim-value { color:#261a12; font-weight:700; }
+.sim-bar { background:#e9dcc7; border:1px solid #bcab96; border-radius:2px; height:7px; }
+.sim-bar-fill { background:#2942ab; border-radius:0; }
+.sim-badge, .sim-tag { background:#e9dcc7; border:1px solid #bcab96; border-radius:2px; color:#3a2d24; }
+.sim-action { border-color:#bcab96; border-radius:2px; color:#3a2d24; }
+.sim-action.sim-armed { background:#2942ab; border-color:#1b2e87; color:#f5eee0; }
+.sim-log { color:#62554a; opacity:1; }
+${DIFF_LIGHT}` },
+  { id: 'newsprint', name: '석간 신문', from: 'newsprint', fit: '근대·추리·기자·정치',
+    brief: '석간 1면 — 바랜 신문지, 따뜻한 검정 잉크, 굵은 명조 제목, 평소엔 실선·큰 구분엔 이중선, 모서리 없음. 마른 벽돌색 신호는 글자와 선에만, 무엇도 채우지 않는다 — 둥근 카드 잡지가 아니다.',
+    css: `.sim-status { background:#eeebe3; color:#130e0a; border:0; border-top:3px double #3d3732; border-bottom:1px solid #9e978e; border-radius:0; font-family:${DESIGN_FONT_SERIF}; --sim-pop-bg:#eeebe3; --sim-pop-fg:#130e0a; --sim-tab-on-bg:#e4dfd5; --sim-tab-on-line:#3d3732; }
+.sim-status summary { color:#130e0a; opacity:1; font-weight:800; }
+.sim-group { border-top:1px solid #9e978e; padding-top:5px; }
+.sim-group-label { color:#8c2f1f; opacity:1; font-weight:700; }
+.sim-label { color:#2b2521; opacity:1; }
+.sim-value { color:#130e0a; font-weight:700; }
+.sim-bar { background:transparent; border:1px solid #3d3732; border-radius:0; height:7px; }
+.sim-bar-fill { background:#2b2521; border-radius:0; }
+.sim-badge, .sim-tag { background:transparent; border:0; border-bottom:1px solid #3d3732; border-radius:0; padding:0 2px; color:#2b2521; }
+.sim-action { border:1px solid #3d3732; border-radius:0; color:#130e0a; }
+.sim-action.sim-armed { background:transparent; border-color:#8c2f1f; color:#8c2f1f; text-decoration:underline; }
+.sim-log { color:#5e5650; opacity:1; }
+${DIFF_LIGHT}` },
+  { id: 'darkroom', name: '암실', from: 'darkroom', fit: '호러·느와르·미스터리',
+    brief: '불 끈 암실 — 인화지보다 한 톤 밝은 따뜻한 검정 바탕, 섬유 흰 잉크, 실선만, 모서리 없음. 색은 호박색 안전등 하나를 게이지와 발동 대기에만. 필름 소품이나 분위기용 그라데이션이 아니다.',
+    css: `.sim-status { background:#100c0a; color:#e9e4dc; border:1px solid #2f2a27; border-radius:0; font-family:${DESIGN_FONT_SANS}; --sim-pop-bg:#1b1613; --sim-pop-fg:#e9e4dc; --sim-tab-on-bg:#1b1613; --sim-tab-on-line:#2f2a27; }
+.sim-status summary { color:#c2bdb5; opacity:1; }
+.sim-group { border-top:1px solid #2f2a27; padding-top:6px; }
+.sim-group-label { color:#918b85; opacity:1; font-weight:500; }
+.sim-label { color:#c2bdb5; opacity:1; }
+.sim-value { color:#e9e4dc; }
+.sim-bar { background:#1b1613; border-radius:0; height:4px; }
+.sim-bar-fill { background:#ec8d38; border-radius:0; }
+.sim-badge, .sim-tag { background:#1b1613; border:1px solid #2f2a27; border-radius:0; color:#c2bdb5; }
+.sim-action { border-color:#2f2a27; border-radius:0; color:#c2bdb5; }
+.sim-action.sim-armed { background:transparent; border-color:#ec8d38; color:#ec8d38; }
+.sim-log { color:#918b85; opacity:1; }
+${DIFF_DARK}` },
+  { id: 'terminal', name: '단말기', from: 'terminal', fit: 'SF·해킹·우주선·디스토피아',
+    brief: '셸 화면 그 자체 — 초록 기운이 도는 검정 바탕 3단, 인광 잉크, 모든 글자 고정폭, 밝은 인광 초록 하나와 그 옅은 물빛(선택·추가 표시), 모서리 없음. 주사선·글로우를 두른 CRT 흉내가 아니다.',
+    css: `.sim-status { background:#080f0a; color:#e1f1de; border:1px solid #1d2a1f; border-radius:0; font-family:${DESIGN_FONT_MONO}; --sim-pop-bg:#101a12; --sim-pop-fg:#e1f1de; --sim-tab-on-bg:#062409; --sim-tab-on-line:#334934; }
+.sim-status summary { color:#7ef473; opacity:1; }
+.sim-group { border-left:1px solid #334934; padding-left:8px; }
+.sim-group-label { color:#8fae8e; opacity:1; font-weight:400; }
+.sim-label { color:#b2cdaf; opacity:1; }
+.sim-value { color:#e1f1de; }
+.sim-bar { background:#101a12; border:1px solid #334934; border-radius:0; height:8px; }
+.sim-bar-fill { background:#7ef473; border-radius:0; }
+.sim-badge, .sim-tag { background:#062409; border:1px solid #334934; border-radius:0; color:#b2cdaf; }
+.sim-action { border-color:#334934; border-radius:0; color:#b2cdaf; }
+.sim-action.sim-armed { background:#062409; border-color:#7ef473; color:#7ef473; }
+.sim-log { color:#8fae8e; opacity:1; }
+${DIFF_DARK}` },
+  { id: 'blueprint', name: '설계도', from: 'blueprint', fit: '메카·공학·건설·탐사',
+    brief: '제도판 위 청사진 — 프러시안 블루 종이, 흰 선이 곧 잉크, 상자 대신 이중 키라인, 치수처럼 고정폭 숫자. 신호는 색이 아니라 흰 선 하나뿐. 파란 그라데이션 다크 페이지나 네온 와이어프레임이 아니다.',
+    css: `.sim-status { background:#0d3970; color:#eef6fd; border:1px solid rgba(220,234,244,.85); outline:1px solid rgba(220,234,244,.32); outline-offset:-5px; border-radius:0; font-family:${DESIGN_FONT_SANS}; --sim-pop-bg:#062f61; --sim-pop-fg:#eef6fd; --sim-tab-on-bg:#062f61; --sim-tab-on-line:rgba(220,234,244,.85); }
+.sim-status summary { color:#eef6fd; opacity:1; font-weight:600; }
+.sim-group-label { color:#a6c2d9; opacity:1; font-weight:500; border-bottom:1px dashed rgba(220,234,244,.32); }
+.sim-label { color:#d0e1ee; opacity:1; }
+.sim-value { font-family:${DESIGN_FONT_MONO}; color:#eef6fd; }
+.sim-bar { background:transparent; border:1px solid rgba(220,234,244,.6); border-radius:0; height:7px; }
+.sim-bar-fill { background:#eef6fd; border-radius:0; }
+.sim-badge, .sim-tag { background:transparent; border:1px solid rgba(220,234,244,.6); border-radius:0; color:#d0e1ee; }
+.sim-action { border-color:rgba(220,234,244,.6); border-radius:0; color:#d0e1ee; }
+.sim-action.sim-armed { background:#eef6fd; border-color:#eef6fd; color:#06346a; }
+.sim-log { color:#a6c2d9; opacity:1; }
+${DIFF_DARK}` },
+  { id: 'garden', name: '텃밭 수첩', from: 'garden', fit: '힐링·농장·전원·계절',
+    brief: '재배자의 수첩 — 귀리색 종이, 초록빛 검정 잉크, 명조 제목 + 고딕 본문, 실선과 이끼색 옅은 칠, 잎사귀 초록 신호 하나. 회색도 광택도 상자도 없다 — 세이지·슬레이트 웰니스 페이지가 아니다.',
+    css: `.sim-status { background:#f7f1df; color:#072311; border:1px solid #c7c9b8; border-radius:4px; font-family:${DESIGN_FONT_SANS}; --sim-pop-bg:#f7f1df; --sim-pop-fg:#072311; --sim-tab-on-bg:#eee6d1; --sim-tab-on-line:#8c9f86; }
+.sim-status summary { color:#072311; opacity:1; font-family:${DESIGN_FONT_SERIF}; font-weight:700; }
+.sim-group-label { color:#4d5d4c; opacity:1; font-family:${DESIGN_FONT_SERIF}; font-weight:700; }
+.sim-label { color:#223c28; opacity:1; }
+.sim-value { color:#072311; font-weight:600; }
+.sim-bar { background:#eee6d1; border-radius:999px; height:6px; }
+.sim-bar-fill { background:#1f6a19; border-radius:999px; }
+.sim-badge, .sim-tag { background:#c3dba6; border:0; border-radius:999px; color:#072311; }
+.sim-action { border-color:#8c9f86; border-radius:4px; color:#223c28; }
+.sim-action.sim-armed { background:#1f6a19; border-color:#1f6a19; color:#f8f5ea; }
+.sim-log { color:#4d5d4c; opacity:1; }
+${DIFF_LIGHT}` },
+  { id: 'kiln', name: '가마', from: 'kiln', fit: '대장간·제작·전투·연금',
+    brief: '문이 살짝 열린 가마 — 거의 검정 바탕, 크림 잉크, 명조 제목 + 고딕 본문, 그을린 오목 칸. 열은 뜨거운 곳에만: 게이지는 재→적갈→불씨로 온도가 오르는 램프(장식이 아니라 값의 온도), 그 밖은 차갑게. 주황 버튼 하나 단 고급 다크 페이지가 아니다.',
+    css: `.sim-status { background:#170e0b; color:#f2eadd; border:1px solid #3a2b24; border-radius:6px; font-family:${DESIGN_FONT_SANS}; --sim-pop-bg:#221814; --sim-pop-fg:#f2eadd; --sim-tab-on-bg:#221814; --sim-tab-on-line:#4a3a31; }
+.sim-status summary { color:#f2eadd; opacity:1; font-family:${DESIGN_FONT_SERIF}; font-weight:700; }
+.sim-group { background:#0b0605; border-radius:6px; padding:6px 9px; }
+.sim-group-label { color:#b3a192; opacity:1; font-family:${DESIGN_FONT_SERIF}; }
+.sim-label { color:#d5c8b9; opacity:1; }
+.sim-value { color:#f2eadd; }
+.sim-bar { background:#221814; border-radius:3px; height:7px; }
+.sim-bar-fill { background:linear-gradient(90deg,#5a1a10,#b8320c 55%,#fe6a00); border-radius:3px; }
+.sim-badge, .sim-tag { background:#221814; border:1px solid #3a2b24; border-radius:4px; color:#d5c8b9; }
+.sim-action { border-color:#4a3a31; border-radius:4px; color:#d5c8b9; }
+.sim-action.sim-armed { background:#2a160c; border-color:#fe6a00; color:#ff8a00; }
+.sim-log { color:#b3a192; opacity:1; }
+${DIFF_DARK}` },
+  { id: 'sticker', name: '스티커', from: 'sticker', fit: '아이돌·학원·코미디·일상',
+    brief: '인쇄소 스티커 시트 — 따뜻한 오프화이트 종이, 따뜻한 검정 잉크, 도드라진 것은 굵은 잉크 테두리 + 번지지 않는 오프셋 그림자, 핫핑크와 라임은 옅은 색이 아니라 꽉 찬 채움. 깊이는 인쇄된 것이다 — 흐린 그림자의 파스텔 가게가 아니다.',
+    css: `.sim-status { background:#f5f0e7; color:#1b1813; border:2px solid #1b1813; border-radius:14px; box-shadow:4px 5px 0 #1b1813; font-family:${DESIGN_FONT_SANS}; --sim-pop-bg:#fffdf8; --sim-pop-fg:#1b1813; --sim-tab-on-bg:#cae649; --sim-tab-on-line:#1b1813; }
+.sim-status summary { color:#1b1813; opacity:1; font-weight:800; }
+.sim-group-label { color:#1b1813; opacity:1; font-weight:800; }
+.sim-label { color:#312d27; opacity:1; }
+.sim-value { color:#1b1813; font-weight:800; }
+.sim-bar { background:#fffdf8; border:2px solid #1b1813; border-radius:999px; height:10px; }
+.sim-bar-fill { background:#d3036a; border-radius:999px; }
+.sim-badge, .sim-tag { background:#cae649; border:2px solid #1b1813; border-radius:999px; color:#1b1813; font-weight:700; }
+.sim-action { background:#fffdf8; border:2px solid #1b1813; border-radius:10px; box-shadow:2px 2px 0 #1b1813; color:#1b1813; }
+.sim-action.sim-armed { background:#d3036a; border-color:#1b1813; color:#fefdfb; }
+.sim-log { color:#5f5750; opacity:1; }
+${DIFF_LIGHT}` },
+  { id: 'midnight', name: '한밤', from: 'midnight', fit: '로맨스·도시·밤·첩보',
+    brief: '고요한 밤의 계기 — 가장자리까지 깊은 자정 파랑 바탕, 차가운 흰 잉크, 가는 획에 자간을 넓힌 제목, 한 단계씩 밝아지는 파랑 면을 각지게, 하늘색 신호 하나. 네온 다크 모드도, 반투명 유리도 아니다.',
+    css: `.sim-status { background:#071129; color:#e7f0f9; border:1px solid #1c2a48; border-radius:0; font-family:${DESIGN_FONT_SANS}; --sim-pop-bg:#0f1c37; --sim-pop-fg:#e7f0f9; --sim-tab-on-bg:#0f1c37; --sim-tab-on-line:#364868; }
+.sim-status summary { color:#e7f0f9; opacity:1; font-weight:300; letter-spacing:.12em; }
+.sim-group { background:#0f1c37; padding:6px 9px; }
+.sim-group-label { color:#a3b4cc; opacity:1; font-weight:400; letter-spacing:.06em; }
+.sim-label { color:#bddcf7; opacity:1; }
+.sim-value { color:#e7f0f9; }
+.sim-bar { background:#02071d; border-radius:0; height:5px; }
+.sim-bar-fill { background:#6bcbf7; border-radius:0; }
+.sim-badge, .sim-tag { background:#02071d; border:1px solid #364868; border-radius:0; color:#bddcf7; }
+.sim-action { border-color:#364868; border-radius:0; color:#bddcf7; }
+.sim-action.sim-armed { background:#6bcbf7; border-color:#6bcbf7; color:#040c22; }
+.sim-log { color:#a3b4cc; opacity:1; }
+${DIFF_DARK}` },
+];
+
+const DESIGN_CTX_DESC = 1200; // 봇 설명은 앞부분만 — 소재를 고르는 데엔 이걸로 충분하고, 꾸미기 프롬프트가 설정집이 되면 안 된다
+
+/**
+ * 꾸미기용 봇 정보 (v1.22.0) — 이름·설명 앞부분·로어북 항목 **이름만**.
+ * 다른 생성 창구는 로어북 본문까지 싣지만(assembleBotContext) 디자인엔 장르·소재만 있으면 된다.
+ * ctx = getBotContext 결과 (📚 고르기를 거친 것) 또는 null — 그때는 스키마 이름만.
+ */
+function designCtxText(ctx, schema) {
+  const lines = [];
+  const metaName = String(schema?.meta?.name || '').trim();
+  const name = String(ctx?.name || '').trim() || (metaName && metaName !== '새 시뮬레이션' ? metaName : '');
+  if (name) lines.push(`이름: ${name}`);
+  const desc = String(ctx?.desc || '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+  if (desc) lines.push('설명 (앞부분):', desc.length > DESIGN_CTX_DESC ? desc.slice(0, DESIGN_CTX_DESC) + ' …' : desc);
+  const lore = (ctx?.lore || []).map((l) => String(l?.name || '').trim()).filter((n) => n && !n.includes('⚙simcore'));
+  if (lore.length) lines.push(`로어북 항목 이름: ${lore.slice(0, 30).join(', ')}${lore.length > 30 ? ` 외 ${lore.length - 30}개` : ''}`);
+  return lines.join('\n');
+}
+
+/** 꾸미기 규격서의 공통 꼬리 — 봇 정보·출발 재질 (스킨·배치 둘 다) */
+function designBriefLines(opts, layout) {
+  const out = [];
+  const ctx = String(opts?.botCtx || '').trim();
+  if (ctx) {
+    out.push('', '## 이 봇 (자동 동봉 — 소재와 분위기를 고르는 데만 쓰세요. 설정 문장을 상태창에 옮겨 적지 마세요)', ctx);
+  }
+  const m = STATUS_MATERIALS.find((x) => x.id === opts?.material);
+  if (m) {
+    out.push('', `## 출발 재질 — "${m.name}" (Hallmark 테마 "${m.from}"를 상태창용으로 옮긴 것)`, m.brief,
+      layout
+        ? '아래는 이 재질을 기본 상태창 클래스에 입힌 예시입니다. 새 템플릿의 클래스명에 맞게 옮기고, 색 하나·선 하나라도 이 봇 쪽으로 바꾸세요.'
+        : '아래는 이 재질을 이 상태창에 입힌 예시입니다. 그대로 베끼지 말고, 이 봇의 소재에 맞게 색 하나·선 하나라도 바꾸세요.',
+      '```css', m.css, '```');
+  }
+  return out;
+}
+
+function buildCssSpecPrompt(schema, styleReq = '', designPolish = true, opts = {}) {
   let skeleton = '(스키마에 오류가 있어 실제 구조를 못 뽑았습니다 — 위 클래스 목록만 보고 만들어 주세요)';
   try {
     const v = validateSchema(schema);
@@ -18096,9 +18342,12 @@ function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
     '아래 규격에 맞는 CSS를 만들어 주세요. RisuAI용 시뮬레이션 플러그인(SimCore)의 상태창 스킨입니다.',
     '',
     '## 내가 원하는 분위기',
-    String(styleReq || '').trim()
-      || '(여기에 원하는 스타일을 적으세요 — 예: "낡은 신문지 느낌, 세리프 폰트, 붉은 도장 같은 포인트 색")',
-    ...(designPolish ? ['', ...DESIGN_POLISH_PROMPT] : []),
+    String(styleReq || '').trim() || (opts.gen
+      // 내장 생성에선 예시 문구를 싣지 않는다 (v1.22.0) — 비워 두면 "낡은 신문지"가 요청인 줄 알고 그쪽으로 쏠렸다
+      ? '(따로 적지 않았습니다 — 봇 정보와 변수 이름에서 소재를 골라 정해 주세요)'
+      : '(여기에 원하는 스타일을 적으세요 — 예: "낡은 신문지 느낌, 세리프 폰트, 붉은 도장 같은 포인트 색")'),
+    ...designBriefLines(opts, false),
+    ...(designPolish ? ['', ...STATUS_DESIGN_GUIDE] : []),
     '',
     '## 반드시 지킬 것',
     '- **CSS만** 출력하세요. HTML·JS·설명 없이 스타일 규칙만.',
@@ -18109,12 +18358,13 @@ function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
     '- `position: fixed` / `position: absolute`는 피하세요. 채팅 흐름 안에 들어가는 창입니다.',
     '- `@keyframes`와 `animation`, `transition`은 쓸 수 있습니다.',
     '- **중첩 CSS(`.a { .b {…} }`, `&:hover`)와 `@layer`는 쓰지 마세요.** 리수 채팅은 CSS를 엄격하게 읽어서 하나라도 못 읽으면 스킨 전체를 버립니다 (미리보기에선 멀쩡해 보입니다).',
-    '- 아래 목록에 **없는 클래스는 만들지 마세요.** 존재하지 않아서 아무 효과가 없습니다.',
+    '- 아래 목록과 실제 구조에 **없는 클래스는 만들지 마세요.** 존재하지 않아서 아무 효과가 없습니다.',
     '- 밝은 테마/어두운 테마 어느 쪽에서도 글씨가 읽히도록 배경색과 글자색을 같이 지정하세요.',
     '',
-    '## 쓸 수 있는 클래스 (이게 전부입니다)',
+    '## 쓸 수 있는 클래스 (이 목록과 아래 실제 구조에 보이는 sim- 클래스가 전부입니다)',
     ...CSS_SPEC_CLASSES.map(([sel, desc]) => `- \`${sel}\` — ${desc}`),
     ...(schema.scenario ? ['- `.sim-scn / .sim-scn-prog` — 이야기 진행 칩 (현재 막 라벨) / 그 안의 (i/N막) 표시'] : []),
+    '- CSS 변수 — `--sim-pop-bg` / `--sim-pop-fg`(팝업 바탕·글자), `--sim-tab-on-bg` / `--sim-tab-on-line`(고른 탭). `.sim-status`에 선언하면 안쪽이 따라갑니다.',
     '',
     '## 이 봇의 실제 상태창 구조',
     '```html',
@@ -18158,7 +18408,7 @@ function activeTemplateSlot(schema) {
 // ── 배치까지 AI에게 맡기는 규격서 (커스텀 템플릿 통째) ─────────
 // 스킨 규격(위)과 달리 클래스는 자유, 대신 {자리표시자} 계약이 생명이다 —
 // 목록에 없는 자리표시자는 검증기가 거부하므로 "실패해도 안전"이 여기서도 성립한다.
-function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
+function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true, opts = {}) {
   const ph = [
     ...(schema.vars || []).map((v) =>
       `- \`{${v.id}}\` — ${v.label ?? v.id} (${v.type}${v.type === 'list' ? `, 목록이라 \`{${v.id}:tags}\`로 칩 렌더 가능` : ''})`),
@@ -18176,9 +18426,11 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     '채팅 메시지마다 이 HTML이 그려지고, {자리표시자}가 실제 값으로 치환됩니다.',
     '',
     '## 내가 원하는 분위기·배치',
-    String(styleReq || '').trim()
-      || '(여기에 적으세요 — 예: "왼쪽에 칭호 칸, 오른쪽에 수치 2열, 하단에 계약 목록 칩")',
-    ...(designPolish ? ['', ...DESIGN_POLISH_PROMPT] : []),
+    String(styleReq || '').trim() || (opts.gen
+      ? '(따로 적지 않았습니다 — 봇 정보와 자리표시자 목록에서 소재와 배치를 골라 정해 주세요)'
+      : '(여기에 적으세요 — 예: "왼쪽에 칭호 칸, 오른쪽에 수치 2열, 하단에 계약 목록 칩")'),
+    ...designBriefLines(opts, true),
+    ...(designPolish ? ['', ...STATUS_DESIGN_GUIDE, ...STATUS_DESIGN_LAYOUT] : []),
     '',
     '## 반드시 지킬 것',
     '- 출력은 **`<style>` 블록 하나 + HTML**만. 코드펜스 밖에 설명을 덧붙이지 마세요.',
@@ -22908,51 +23160,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const design = h('details', { class: 'sce-status-design' },
       h('summary', {}, '상태창 꾸미기 (선택)'));
     const designBody = h('div', { class: 'sce-status-design-body' });
-    designBody.appendChild(h('h4', {}, '디자인 레시피'));
-    const RECIPES = [
-      ['양피지 장부', `.sim-status { background:#f3ead3; border:1px solid #b09b6b; color:#4a3a26; font-family:Georgia,'Nanum Myeongjo',serif; }
-.sim-status summary { color:#6b512f; }
-.sim-group { border-bottom:1px dashed #cbb98d; padding-bottom:6px; }
-.sim-group-label { color:#8a6d45; letter-spacing:.08em; }
-.sim-label { color:#6b5638; opacity:1; }
-.sim-value { color:#9c2f21; font-weight:700; }
-.sim-badge, .sim-tag { background:#45351d; color:#f0e6cf; border:none; }
-.sim-bar { background:#ddd0ae; }
-.sim-bar-fill { background:#9c2f21; }
-.sim-action { border-color:#8a6d45; color:#6b512f; }
-.sim-log { color:#7a6a4c; }`],
-      ['한밤 유리', `.sim-status { background:rgba(20,28,48,.75); border:1px solid rgba(120,160,255,.25); border-radius:16px; backdrop-filter:blur(6px); box-shadow:0 8px 24px rgba(0,0,0,.35); }
-.sim-status summary { color:#9db8e8; }
-.sim-group { background:rgba(91,141,239,.07); border-radius:10px; padding:6px 8px; }
-.sim-badge, .sim-tag { background:rgba(91,141,239,.18); border:1px solid rgba(91,141,239,.3); }
-.sim-bar { background:rgba(91,141,239,.15); }
-.sim-bar-fill { background:linear-gradient(90deg,#5b8def,#9d6bef); }`],
-      ['로얄 골드', `.sim-status { background:#151310; border:1px solid #8a6d3b; color:#e8ddc4; }
-.sim-status summary { color:#d4af37; letter-spacing:.06em; }
-.sim-group-label { color:#d4af37; border-bottom:1px solid #3a3325; }
-.sim-value { color:#f1e3b8; }
-.sim-badge, .sim-tag { background:#2a2418; color:#d4af37; border:1px solid #8a6d3b66; }
-.sim-bar { background:#2a2418; }
-.sim-bar-fill { background:linear-gradient(90deg,#8a6d3b,#d4af37); }
-.sim-action { border-color:#8a6d3b; color:#d4af37; }`],
-      ['벚꽃', `.sim-status { background:#fff5f7; border:1px solid #f3c1cf; color:#5c4046; }
-.sim-status summary { color:#d16a8a; }
-.sim-group-label { color:#c25c7d; }
-.sim-value { color:#b03a5e; font-weight:600; }
-.sim-badge, .sim-tag { background:#fbe3ea; color:#a34565; border:1px solid #f3c1cf; }
-.sim-bar { background:#f8dde5; }
-.sim-bar-fill { background:linear-gradient(90deg,#f199b4,#d16a8a); }`],
-      ['픽셀 레트로', `.sim-status { background:#0b1020; border:2px solid #4a5aef; border-radius:0; color:#cdd6ff; font-family:'Galmuri11','DungGeunMo',monospace; }
-.sim-status summary { color:#7f8cff; }
-.sim-group-label { color:#ffd166; }
-.sim-bar { background:#1c2440; border-radius:0; height:10px; border:1px solid #4a5aef55; }
-.sim-bar-fill { border-radius:0; background:#4ade80; }
-.sim-badge, .sim-tag { border-radius:0; background:#1c2440; border:1px solid #4a5aef88; }
-.sim-action { border-radius:0; }`],
-    ];
+    // 재질 프리셋 (v1.22.0) — 옛 레시피 다섯(양피지 장부·한밤 유리·로얄 골드·벚꽃·픽셀 레트로)은 그 자체가 흔한 기본값이었다
+    // (유리 블러·파랑→보라 그라데이션). 이미 입힌 봇은 customCSS에 그대로 남는다 — 버튼만 바뀐다.
+    designBody.appendChild(h('h4', {}, '재질 프리셋'));
+    designBody.appendChild(h('div', { class: 'sce-status-note' },
+      'Hallmark 테마(MIT)에서 색과 재질을 옮겨 왔어요. 그대로 입히거나, 위 🎨 꾸미기에서 출발 재질로 골라 이 봇에 맞게 바꿔 달라고 할 수 있어요.'));
     const recipeRow = h('div', { class: 'sce-row' });
-    for (const [name, css] of RECIPES) {
-      recipeRow.appendChild(h('button', { class: 'sce-btn', onclick: () => { ui.customCSS = css; rerender(); } }, name));
+    for (const m of STATUS_MATERIALS) {
+      recipeRow.appendChild(h('button', { class: 'sce-btn', title: `${m.fit} — ${m.brief}`, onclick: () => applyMaterial(m) }, m.name));
     }
     recipeRow.appendChild(h('button', { class: 'sce-btn sce-danger', onclick: () => { ui.customCSS = undefined; rerender(); } }, 'CSS 지우기'));
     designBody.appendChild(recipeRow);
@@ -28000,6 +28215,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let cssDesignPolish = true;
   let cssGen = { busy: false, seq: 0, note: null };
   let cssBackup = null;     // { mode, template, customCSS } — 꾸미기 적용 직전 상태 (되돌리기 1슬롯)
+  let cssMaterial = '';     // 출발 재질 id (v1.22.0) — '' = 자동(봇 정보에서 소재를 고르게)
+
+  // 되돌리기 1슬롯 — templates[]까지 떠 놓는다 (배치 적용이 그 안의 한 장을 갈아끼우므로)
+  function snapshotCss() {
+    const ui = schema.statusUI;
+    cssBackup = { mode: ui.mode, template: ui.template, customCSS: ui.customCSS,
+      templates: ui.templates ? JSON.parse(JSON.stringify(ui.templates)) : undefined };
+  }
+  // 재질 프리셋 그대로 입히기 (v1.22.0) — 옛 레시피 버튼은 되돌리기가 없어 손으로 쓴 CSS를 말없이 덮었다
+  function applyMaterial(m) {
+    snapshotCss();
+    schema.statusUI.customCSS = m.css;
+    cssGen.note = `✅ 재질 "${m.name}"을 입혔습니다 — 마음에 안 들면 [꾸미기 되돌리기].`;
+    rerender();
+  }
+  // 꾸미기 규격서의 봇 정보 — 📚 고르기·동봉 끄기를 따른다. 복사 옆문은 동기라 읽어 둔 것만 쓴다
+  const designOpts = (ctx) => ({ material: cssMaterial,
+    botCtx: designCtxText(aiCtxOn && ctx ? filterBotCtx(ctx, botCtxPick) : null, schema) });
 
   function statusPreviewEl(uid) {
     // uid는 채팅 메시지 번호·다른 미리보기와 겹치지 않게 — 접기 상태가 서로를 건드리면 안 된다
@@ -28041,10 +28274,26 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     wrap.appendChild(modeSwitch);
 
+    // 봇 정보는 미리 읽어 둔다 — 복사 옆문(동기)이 쓸 수 있게. 다 읽어도 다시 그리지 않는다 (누를 때 쓰면 그만)
+    if (aiBotCtx === undefined && aiCtxOn && ai && ai.getBotContext) fetchBotCtx().catch(() => {});
+
+    // 출발 재질 (v1.22.0) — 자동이면 봇 정보에서 소재를 고르게 하고, 고르면 그 재질 위에서 이 봇에 맞게 변주하게 한다
+    const mat = STATUS_MATERIALS.find((m) => m.id === cssMaterial) || null;
+    const matRow = h('div', { class: 'sce-row sce-design-material' },
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '출발 재질'),
+      bindSelect(cssMaterial, [['', '자동 — 봇 설정을 보고 정하기'],
+        ...STATUS_MATERIALS.map((m) => [m.id, `${m.name} · ${m.fit}`])], (x) => { cssMaterial = x; rerender(); }));
+    if (mat && !layoutMode) {
+      matRow.appendChild(h('button', { class: 'sce-btn sce-mini', title: '생성 없이 이 재질을 그대로 입혀요 (되돌리기 가능)',
+        onclick: () => applyMaterial(mat) }, '그대로 입히기'));
+    }
+    wrap.appendChild(matRow);
+    if (mat) wrap.appendChild(h('div', { class: 'sce-hint' }, mat.brief));
+
     const cssActions = h('div', { class: 'sce-design-actions' });
     const cssRequest = bindArea(cssReq, (x) => { cssReq = x; }, layoutMode
-      ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩 / 작전 지도: 배경 에셋 worldmap 위에 거점 핀'
-      : '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트');
+      ? '원하는 배치·분위기 (비워 두면 봇 설정을 보고 정해요) — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩 / 작전 지도: 배경 에셋 worldmap 위에 거점 핀'
+      : '원하는 분위기 (비워 두면 봇 설정을 보고 정해요) — 예: 낡은 신문지 느낌, 명조, 붉은 도장 포인트');
     cssRequest.className = 'sce-design-request';
     cssRequest.setAttribute('aria-label', layoutMode ? '원하는 배치와 분위기' : '원하는 분위기');
     cssActions.appendChild(cssRequest);
@@ -28080,7 +28329,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-design-polish' },
       bindCheck(cssDesignPolish, (x) => { cssDesignPolish = x; rerender(); }, '획일적인 AI 디자인 줄이기'),
       h('span', { class: 'sce-hint', style: 'margin:0' },
-        'Hallmark 가이드를 보정 지침으로 더해 흔한 카드·배지 남발을 줄여요.'),
+        '디자인 지침을 같이 보내요 — 봇의 세계에서 소재 고르기, 계획을 먼저 적기, 흔한 기본값 피하기, 글자 대비. '
+        + 'Hallmark와 Anthropic frontend-design에서 상태창에 맞는 것만 추렸어요.'),
       h('a', { class: 'sce-hallmark-link', href: 'https://github.com/Nutlope/hallmark',
         target: '_blank', rel: 'noopener noreferrer', title: 'Hallmark GitHub 저장소 열기' }, 'GitHub ↗')));
 
@@ -28098,8 +28348,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사해요. 웹 AI에게 주고, '
           + '받은 CSS는 세부 편집기 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
       () => (cssMode === 'layout'
-        ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish)
-        : buildCssSpecPrompt(schema, cssReq, cssDesignPolish)), [], { collapsible: true }).mount(external);
+        ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish, designOpts(aiBotCtx))
+        : buildCssSpecPrompt(schema, cssReq, cssDesignPolish, designOpts(aiBotCtx))), [], { collapsible: true }).mount(external);
     wrap.appendChild(external);
     return wrap;
   }
@@ -28112,9 +28362,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
     let res = null;
     try {
+      // 봇 정보를 같이 보낸다 (v1.22.0) — 없으면 모델은 어느 봇에나 맞는 기본값을 낸다. 못 읽어도 생성은 계속한다
+      const dOpts = { ...designOpts(aiCtxOn ? await fetchBotCtx().catch(() => null) : null), gen: true };
+      if (cssGen.seq !== mySeq || destroyed) return;
       res = await ai.generate(layout
-        ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish)
-        : buildCssSpecPrompt(schema, cssReq, cssDesignPolish));
+        ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish, dOpts)
+        : buildCssSpecPrompt(schema, cssReq, cssDesignPolish, dOpts));
     } catch (e) { res = { error: '호출 예외: ' + e.message }; }
     if (cssGen.seq !== mySeq || destroyed) return;
     cssGen.busy = false;
@@ -28126,11 +28379,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       rerender(); return;
     }
     const ui = schema.statusUI;
-    // 되돌리기 1슬롯 — templates[]까지 떠 놓는다 (배치 적용이 그 안의 한 장을 갈아끼우므로)
-    const takeBackup = () => {
-      cssBackup = { mode: ui.mode, template: ui.template, customCSS: ui.customCSS,
-        templates: ui.templates ? JSON.parse(JSON.stringify(ui.templates)) : undefined };
-    };
+    const takeBackup = snapshotCss;
     const restoreBackup = () => {
       ui.mode = cssBackup.mode; ui.template = cssBackup.template; ui.customCSS = cssBackup.customCSS;
       if (cssBackup.templates) ui.templates = JSON.parse(JSON.stringify(cssBackup.templates));

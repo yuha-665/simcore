@@ -34,3 +34,14 @@ node test/check-lua-bridge.js   # 생성 루아 브리지 문법 검증 (playwri
 
 playwright/luaparse는 `npm i --no-save playwright luaparse` 후 사용.
 (별도 로컬 실측 테스트 `테스트/test-*.js`가 있다면 그쪽도 함께 돌릴 것.)
+
+## 빌려 온 것
+
+| 자리 | 출처 | 라이선스 | 어떻게 |
+|---|---|---|---|
+| `core/editor.js` `STATUS_DESIGN_GUIDE`·`STATUS_DESIGN_LAYOUT` (v1.22.0) | [Hallmark](https://github.com/Nutlope/hallmark) (Nutlope / Together AI) · [Anthropic frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) | MIT · Apache-2.0 | 상태창에 해당하는 원칙만 골라 한국어로 **새로 썼다** (원문 전재 없음). 웹 페이지용 절(히어로·스크롤·사진)은 뺐다 |
+| `core/editor.js` `STATUS_MATERIALS` 재질 10종 (v1.22.0) | Hallmark `skills/hallmark/references/themes/` — almanac·vellum·newsprint·darkroom·terminal·blueprint·garden·kiln·sticker·midnight (커밋 407fa68, 2026-11-05) | MIT — Copyright (c) 2026 Hallmark contributors | 테마의 재질 설명과 색 토큰(oklch → hex)을 상태창 클래스에 옮기고, 웹폰트를 기기 글꼴로 바꿨다. CSS는 새로 짰다 |
+
+Hallmark MIT 고지: Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files
+(the "Software"), to deal in the Software without restriction … The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software. (전문: https://github.com/Nutlope/hallmark/blob/main/LICENSE)

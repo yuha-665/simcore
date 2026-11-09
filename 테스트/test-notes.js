@@ -60,7 +60,9 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 {
   const a = src.indexOf('  function stripNotesFromLore(l) {');
   const b = src.indexOf('  /** 번들 형식 검사', a);
-  const fn = new Function('SCHEMA_LORE_COMMENT', src.slice(a, b) + '\nreturn bundleFromChar;')('⚙simcore');
+  // 🔀 프로필(v1.24.0) 항목의 덧칠 notes도 이 함수가 뺀다 — profile 모듈 주입 (규칙 #8)
+  (0, eval)(src.slice(src.indexOf('const SimCore = (() => {'), src.indexOf('(async () => {')) + '\n;globalThis.__SCN = SimCore;');
+  const fn = new Function('SCHEMA_LORE_COMMENT', 'profileMod', src.slice(a, b) + '\nreturn bundleFromChar;')('⚙simcore', globalThis.__SCN.require('profile'));
   const char = { name: '봇', globalLore: [
     { comment: '⚙simcore', content: JSON.stringify(BASE), key: ' __simcore_never__' },
     { comment: '세계관', content: '{"notes":"이건 로어 원문"}' },

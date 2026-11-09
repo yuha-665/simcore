@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.23.0
-//@display-name SimCore (시뮬 엔진) v1.23.0 🗺️ 지도 — 가 본 만큼 채워진다
+//@version 1.24.0
+//@display-name SimCore (시뮬 엔진) v1.24.0 🔀 프로필 — 한 봇에 판 여러 벌
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,29 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.24.0 ───────────────────────────────────────────────
+// **🔀 프로필 — 한 봇에 판 여러 벌, 채팅마다 하나.** 커뮤니티 요청(2026-11-09, 유저 전달): "한 봇에서 가끔 다른 능력으로 하고 싶다 —
+// 스키마를 채팅별로 따로, 프리셋처럼". 그전엔 스키마가 캐릭터에 하나(⚙simcore)라 고치면 그 봇의 모든 채팅에 번졌다. 설계: docs/design-프로필.md
+// - [코어] 새 모듈 `profile.js`. 프로필 = 로어북 ⚙simcore:<이름>, 내용 = **기본 판에서 달라진 부분만**(덧칠). 통째 사본이 아닌 이유:
+//   큰 봇 스키마가 수백 KB(아틀리에 494KB)라 사본이면 캐릭터가 무거워지고, 제작자가 봇을 업데이트하면 사본은 옛 버전에 멈춘다 — 덧칠은 새 기본 판 위에 다시 얹힌다.
+//   id 달린 목록(vars·events·actions…)은 항목 단위로 넣고/바꾸고/빼고, 나머지는 키 단위. 고친 항목은 프로필 것이 이긴다. 통째 스키마를 붙여 넣은 항목도 받는다.
+// - [코어] 이 채팅의 판 = **상태 예약 키 `sim_profile`** — 스냅샷에 실려 과거 상태창·되감기가 그때 판을 따르고, 채팅 변수 미러($sim_profile)로
+//   로어북 CBS가 읽는다(`{{getvar::sim_profile}}`로 판마다 로어 켜고 끄기). 리롤·메시지 지우고 이어 가기는 유저의 마지막 선택(세션의 판)으로 적는다.
+//   검증이 변수 id `sim_profile`을 막는다. 세션: `useSchema`·`stampProfile`·`peekState`(판 고르기용 날것 엿보기).
+// - [어댑터] 로드가 이 채팅의 상태를 엿보고 판을 고른다. 시작 전(턴 0)이면 캐릭터에 저장된 "새 채팅의 판"이 이긴다(새 시작 프리셋과 같은 규약).
+//   못 얹는 판(기본 판이 바뀌어 검증 실패·항목 손상·지워짐)은 **기본 판으로 돌고 알린다** — 이름은 지킨다(고치면 돌아온다). 되감기가 판까지 돌려놓으면 출력 자리에서 갈아 끼운다.
+// - [패널] 현황 [새 시작]에 🔀 이 채팅의 판 단추(진행 중이면 두 번 누르기 — 같은 이름 변수는 이어지고 새 변수는 시작값). 작업공간 [🔀 프로필] 카드 —
+//   지금 작업본을 새 프로필로 · 편집기에 열기 · 이름·설명(옛 이름은 aka로 남아 그 이름을 적은 채팅이 이어진다) · 지우기 · ↶ 되돌리기(프로필 백업 8개).
+// - [편집기] **[캐릭터에 적용]은 편집기가 고치는 판에만** — 편집기는 연 판을 붙잡고(손대지 않았으면 채팅이 판을 바꿀 때 따라간다), 배너에 "판"과 이 채팅의 판.
+//   서명이 키 순서를 안 본다(얹은 판은 기본 판의 키 순서라 "반영 안 된 변경" 배너가 안 꺼졌다).
+// - [번들] 번들에 없는 ⚙simcore:… 항목(유저가 만든 판)은 교체에서 남긴다. 덧칠 속 📌 작업 지침도 뺀다. 내보내기·적용 보고에 프로필 수.
+// - [브리지] 루아 브리지가 판마다 템플릿을 굽고 채팅 변수 sim_profile로 고른다. 판이 하나면 예전과 글자 하나 다르지 않은 코드(설치된 브리지가 노후로 안 뜬다).
+// - 그 밖: 과거 상태창 캐시는 그때 판으로 정합(지금 판 상한에 옛 값이 깎이던 것) · 세이브 가져오기는 세이브의 판으로 먼저 · [캐릭터에서 제거]는 프로필을 남기고 알림 ·
+//   편집기 생성 맥락·메신저 인물 찾기에서 프로필 항목을 뺀다.
+// - [덧칠] 양쪽을 편집기 모양(profile.shapeFill = editor normalize)으로 맞춘 뒤 잰다 — 구현 중 실측: 기본 판을 그대로 새 프로필로 저장하니 편집기가 채운
+//   빈 절 일곱 개가 덧칠에 실려, 제작자가 나중에 넣은 지시문을 프로필의 빈 목록이 덮을 뻔했다. 편집기 비교 서명도 같은 모양으로(shapeSig).
+// - 테스트: `테스트/test-profile.js` 79 (덧칠·편집기 모양·항목·세션·검증·번들·가짜 리수) · `test-profileeditor.js` 10 (편집기가 고치는 판).
 //
 // ── v1.23.0 ───────────────────────────────────────────────
 // **🗺️ 지도 — 가 본 만큼 채워진다.** 유저(2026-11-09, 교토 전도 스샷): "심코어에도 이렇게 지도 그리는 기능" → "아틀리에나 베리디아처럼
@@ -1381,6 +1404,7 @@ function validateSchema(schema) {
     const v = vars[i], p = `$.vars[${i}]`;
     if (!v.id || !ID_RE.test(v.id)) { err(p, `잘못된 id: '${v.id}' (영문자/숫자/_, 영문자 시작)`); continue; }
     if (RESERVED.has(v.id)) err(p, `'${v.id}'는 예약어라 변수 id로 쓸 수 없음`);
+    if (v.id === 'sim_profile') err(p, `'sim_profile'은 이 채팅의 프로필 이름을 담는 예약 키입니다 (v1.24.0) — 변수 id를 바꾸세요`);
     if (ids.has(v.id)) err(p, `중복된 id: '${v.id}'`);
     ids.add(v.id);
     // 모르는 키 (v1.14.2) — 실제 제보: AI에게 변수 설명을 채우게 했더니 `description`을 지어 넣어 영문 설명이 통째로
@@ -9263,6 +9287,318 @@ module.exports = {
 
 });
 
+SimCore.define("profile", function (require, module, exports) {
+// 🔀 프로필 (v1.24.0) — 한 봇에 판 여러 벌, 채팅마다 하나. 설계: docs/design-프로필.md
+//
+// 커뮤니티 요청(2026-11-09, 유저 전달): "한 봇에서 가끔 다른 능력으로 하고 싶다 — 스키마를 채팅별로 따로, 프리셋처럼".
+// 그전엔 스키마가 캐릭터에 하나(로어북 ⚙simcore)라 고치면 그 봇의 모든 채팅에 번졌다. 새 시작 프리셋은 시작값만 바꾼다.
+//
+// 원칙
+//   · 기본 판 = 로어북 ⚙simcore (그대로). 프로필 = 로어북 ⚙simcore:<이름>, 내용 = **기본 판에서 달라진 부분만**(덧칠).
+//     통째 사본이 아닌 이유 — ① 큰 봇 스키마가 수백 KB(아틀리에 494KB)라 사본 세 벌이면 캐릭터가 1.5MB 늘고 전송·채팅 전환마다
+//     통째로 읽힌다 ② 제작자가 봇을 업데이트(번들)하면 사본은 옛 버전에 멈춘다. 덧칠은 새 기본 판 위에 다시 얹힌다.
+//   · 이 채팅의 프로필 = 상태의 예약 키 sim_profile — 스냅샷에 실려서 과거 상태창·리롤·되감기가 그 시점의 판을 따른다.
+//     채팅 변수 미러($sim_profile)로 CBS가 읽는다 — 로어북을 {{getvar::sim_profile}}로 판마다 켜고 끈다.
+//   · 덧칠을 못 얹으면(기본 판이 바뀌어 검증 실패) 그 채팅은 기본 판으로 돌고 알린다 — 이름은 지우지 않는다(고치면 돌아온다).
+//
+// 덧칠 노드
+//   { "$set": 값 }                     — 통째 교체
+//   { "$list": { put, del, order } }   — id 달린 목록(vars·events·actions…). put = 새로 넣거나 바꾼 항목(**통째**),
+//                                        del = 뺀 id, order = 순서가 바뀌었을 때만
+//   { 키: 노드, …, "$del": [키] }      — 객체: 바뀐 키만, 없어진 키는 $del
+// 목록 항목을 통째로 싣는 이유: 기본 판이 그 항목을 지워도 프로필 것이 살아남고, 고친 항목은 프로필 것이 이긴다(내가 고친 판이 우선).
+
+const PROFILE_KEY = 'sim_profile';       // 상태 예약 키 — validate가 변수 id로 못 쓰게 막는다
+const BASE_COMMENT = '⚙simcore';
+const PROFILE_PREFIX = '⚙simcore:';     // ⚙simcore-pack·⚙simcore-addon(모듈)과는 하이픈/콜론으로 갈린다
+const ENTRY_TAG = 'simcoreProfile';
+const NAME_MAX = 20;
+const PROFILE_MAX = 12;
+const DESC_MAX = 80;
+
+const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+const clone = (x) => (x === undefined ? undefined : JSON.parse(JSON.stringify(x)));
+
+/** 키 순서에 안 흔들리는 직렬화 (session.stableJson과 같은 규약) */
+function stable(x) {
+  if (Array.isArray(x)) return '[' + x.map(stable).join(',') + ']';
+  if (isObj(x)) return '{' + Object.keys(x).filter((k) => x[k] !== undefined).sort().map((k) => JSON.stringify(k) + ':' + stable(x[k])).join(',') + '}';
+  return x === undefined ? 'null' : JSON.stringify(x);
+}
+const same = (a, b) => stable(a) === stable(b);
+
+// ── 로어북 항목 ────────────────────────────────────────────
+
+/** 스키마 항목인가 (기본 판·프로필) — 로어북 목록·인물 찾기·생성 맥락에서 뺄 때 */
+function isSchemaLore(l) {
+  const c = l && typeof l.comment === 'string' ? l.comment : '';
+  return c === BASE_COMMENT || c.startsWith(PROFILE_PREFIX);
+}
+/** 프로필 항목이면 이름, 아니면 null */
+function profileNameOf(l) {
+  const c = l && typeof l.comment === 'string' ? l.comment : '';
+  return c.startsWith(PROFILE_PREFIX) ? c.slice(PROFILE_PREFIX.length) : null;
+}
+const profileComment = (name) => PROFILE_PREFIX + name;
+
+/** 이름 검사 — 문제면 이유, 괜찮으면 null. taken = 이미 있는 이름들 */
+function checkProfileName(name, taken = []) {
+  const n = typeof name === 'string' ? name : '';
+  if (!n.trim()) return '이름을 적어 주세요';
+  if (n !== n.trim()) return '이름 앞뒤에는 빈칸을 못 써요';
+  if ([...n].length > NAME_MAX) return `이름은 ${NAME_MAX}자까지예요`;
+  if (/[\u0000-\u001f{}]/.test(n)) return '이름에 못 쓰는 글자가 있어요 (중괄호·제어 문자)';
+  if (n === '기본') return "'기본'은 기본 판의 이름이라 못 써요";
+  if (taken.includes(n)) return '같은 이름의 프로필이 이미 있어요';
+  return null;
+}
+
+// ── 덧칠: 차이 계산과 얹기 ─────────────────────────────────
+
+/** 모든 항목이 객체이고 id(빈칸 아닌 글자)가 겹치지 않는 목록 */
+function keyed(arr) {
+  if (!Array.isArray(arr)) return false;
+  const seen = new Set();
+  for (const it of arr) {
+    if (!isObj(it) || typeof it.id !== 'string' || !it.id || seen.has(it.id)) return false;
+    seen.add(it.id);
+  }
+  return true;
+}
+
+function diffList(a, b) {
+  const aBy = new Map(a.map((x) => [x.id, x]));
+  const bIds = b.map((x) => x.id);
+  const bSet = new Set(bIds);
+  const L = {};
+  const put = b.filter((x) => !aBy.has(x.id) || !same(aBy.get(x.id), x)).map(clone);
+  const del = a.filter((x) => !bSet.has(x.id)).map((x) => x.id);
+  if (put.length) L.put = put;
+  if (del.length) L.del = del;
+  // 순서: 기본 판 순서(뺀 것 제외) + 새 항목은 뒤 — 이것과 다를 때만 싣는다
+  const natural = [...a.map((x) => x.id).filter((id) => bSet.has(id)), ...bIds.filter((id) => !aBy.has(id))];
+  if (JSON.stringify(natural) !== JSON.stringify(bIds)) L.order = bIds;
+  return L;
+}
+
+function diffNode(a, b) {
+  if (same(a, b)) return undefined;
+  if (isObj(a) && isObj(b)) {
+    const out = {};
+    for (const k of Object.keys(b)) {
+      const d = diffNode(a[k], b[k]);
+      if (d !== undefined) out[k] = d;
+    }
+    const del = Object.keys(a).filter((k) => !(k in b));
+    if (del.length) out.$del = del;
+    return out;
+  }
+  if (keyed(a) && keyed(b) && (a.length || b.length)) return { $list: diffList(a, b) };
+  return { $set: clone(b) };
+}
+
+/**
+ * 편집기 모양 — 편집기(editor.js normalize)가 실을 때 채우는 빈 칸·걷는 빈 절을 똑같이 맞춘다.
+ * 덧칠은 양쪽을 이 모양으로 맞춘 뒤 잰다: 편집기가 채운 `derived: []`·`directives: []`·기본 promptState 따위가 덧칠에 `$set`으로 실리면
+ * 제작자가 나중에 기본 판에 지시문을 넣어도 프로필에선 빈 목록이 그걸 덮는다 (구현 중 실측 — 기본 판 복제만 했는데 덧칠에 일곱 절).
+ * ⚠ editor.js normalize와 같이 고친다 (test-profile이 둘을 같은 입력에 돌려 대조한다).
+ */
+function shapeFill(s) {
+  if (!isObj(s)) return s;
+  s.simcore = s.simcore || '0.1';
+  s.meta = s.meta || {};
+  s.vars = s.vars || [];
+  s.derived = s.derived || [];
+  s.directives = s.directives || [];
+  s.rules = s.rules || {};
+  s.rules.onTurn = s.rules.onTurn || [];
+  s.rules.events = s.rules.events || [];
+  s.rules.randomEvents = s.rules.randomEvents || { chancePerTurn: 0, table: [] };
+  s.rules.randomEvents.table = s.rules.randomEvents.table || [];
+  s.updater = s.updater || { model: 'aux', allow: [] };
+  s.updater.allow = s.updater.allow || [];
+  s.promptState = s.promptState || { position: 'history_end', template: '', includeEvents: true };
+  s.statusUI = s.statusUI || { mode: 'auto', groups: [] };
+  s.statusUI.groups = s.statusUI.groups || [];
+  s.actions = s.actions || [];
+  s.checks = s.checks || [];
+  s.setup = s.setup || {};
+  s.setup.presets = s.setup.presets || [];
+  s.setup.ai = s.setup.ai || { enabled: false, vars: [] };
+  if (s.assets && !(s.assets.packs || []).length && s.assets.moduleManifests !== true) delete s.assets;
+  if (s.scenario && !(s.scenario.acts || []).length) delete s.scenario;
+  if (Array.isArray(s.secrets) && !s.secrets.length) delete s.secrets;
+  if (Array.isArray(s.fronts) && !s.fronts.length) delete s.fronts;
+  return s;
+}
+
+/** 기본 판 → 고친 판의 덧칠. 같으면 {} — 편집기가 채운 빈 칸은 차이가 아니다 (shapeFill) */
+function diffSchema(base, next) {
+  return diffNode(shapeFill(clone(base ?? {})), shapeFill(clone(next ?? {}))) || {};
+}
+/** 비교용 서명 — 키 순서·편집기 빈 칸에 안 흔들린다 (어댑터 편집기 배너·되읽기 대조) */
+const shapeSig = (s) => stable(shapeFill(clone(s ?? {})));
+
+function applyList(base, L) {
+  const del = new Set(Array.isArray(L?.del) ? L.del : []);
+  let out = base.filter((x) => !(isObj(x) && del.has(x.id))).map(clone);
+  for (const it of Array.isArray(L?.put) ? L.put : []) {
+    if (!isObj(it) || typeof it.id !== 'string') continue;
+    const i = out.findIndex((x) => isObj(x) && x.id === it.id);
+    if (i >= 0) out[i] = clone(it); else out.push(clone(it));
+  }
+  if (Array.isArray(L?.order) && L.order.length) {
+    const pos = new Map(L.order.map((id, i) => [id, i]));
+    const inOrder = out.filter((x) => isObj(x) && pos.has(x.id)).sort((x, y) => pos.get(x.id) - pos.get(y.id));
+    // 덧칠 뒤에 기본 판에 새로 생긴 항목(제작자 업데이트)은 순서 목록에 없다 — 뒤에 붙인다
+    out = [...inOrder, ...out.filter((x) => !(isObj(x) && pos.has(x.id)))];
+  }
+  return out;
+}
+
+function applyNode(base, node) {
+  if (!isObj(node)) return clone(base);                       // 깨진 노드는 무시 — 기본 판 그대로
+  if ('$set' in node) return clone(node.$set);
+  if ('$list' in node) return applyList(Array.isArray(base) ? base : [], node.$list);
+  const out = isObj(base) ? clone(base) : {};
+  if (Array.isArray(node.$del)) for (const k of node.$del) delete out[k];
+  for (const k of Object.keys(node)) {
+    if (k === '$del') continue;
+    const v = applyNode(out[k], node[k]);
+    if (v === undefined) delete out[k]; else out[k] = v;
+  }
+  return out;
+}
+
+/** 기본 판에 덧칠을 얹은 새 스키마 (기본 판은 안 바뀐다) */
+function applyOverlay(base, overlay) {
+  return applyNode(base ?? {}, isObj(overlay) ? overlay : {});
+}
+
+// ── 항목 내용 ──────────────────────────────────────────────
+
+/** 프로필 항목의 content 글 */
+function entryContent(overlay, meta = {}) {
+  const o = { [ENTRY_TAG]: 1 };
+  const desc = typeof meta.desc === 'string' ? meta.desc.trim().slice(0, DESC_MAX) : '';
+  if (desc) o.desc = desc;
+  const aka = Array.isArray(meta.aka) ? meta.aka.filter((x) => typeof x === 'string' && x).slice(-8) : [];
+  if (aka.length) o.aka = aka;
+  o.overlay = isObj(overlay) ? overlay : {};
+  return JSON.stringify(o);
+}
+
+/** content → { desc, aka, overlay, full } — 통째 스키마를 붙여 넣은 항목도 받는다(그 자리에서 덧칠로 계산). 실패면 { error } */
+function parseEntry(content, base) {
+  let raw;
+  try { raw = JSON.parse(String(content ?? '')); }
+  catch (e) { return { error: 'JSON 손상: ' + e.message }; }
+  if (isObj(raw) && raw[ENTRY_TAG]) {
+    return {
+      desc: typeof raw.desc === 'string' ? raw.desc : '',
+      aka: Array.isArray(raw.aka) ? raw.aka.filter((x) => typeof x === 'string' && x) : [],
+      overlay: isObj(raw.overlay) ? raw.overlay : {},
+      full: false,
+    };
+  }
+  if (isObj(raw) && Array.isArray(raw.vars)) return { desc: '', aka: [], overlay: diffSchema(base, raw), full: true };
+  return { error: '프로필 형식이 아니에요 (simcoreProfile 표식도, 스키마도 아님)' };
+}
+
+/**
+ * 로어북 항목 하나 → 프로필 정보. validate를 주면 얹은 판까지 검증한다.
+ * @returns {{ name, comment, desc, aka, overlay, merged, ok, errors, warnings, error, full }}
+ */
+function readProfile(base, lore, validate) {
+  const name = profileNameOf(lore);
+  const item = { name, comment: lore?.comment, desc: '', aka: [], overlay: {}, merged: null, ok: false, errors: [], warnings: [], error: null, full: false };
+  const badName = checkProfileName(name);
+  if (badName) { item.error = `이름: ${badName}`; return item; }
+  const p = parseEntry(lore?.content, base);
+  if (p.error) { item.error = p.error; return item; }
+  Object.assign(item, { desc: p.desc, aka: p.aka, overlay: p.overlay, full: p.full });
+  item.merged = applyOverlay(base, p.overlay);
+  if (typeof validate === 'function') {
+    try {
+      const v = validate(item.merged);
+      item.ok = !!v.ok; item.errors = v.errors || []; item.warnings = v.warnings || [];
+    } catch (e) { item.ok = false; item.errors = [{ path: '$', msg: '검증 중 오류: ' + e.message }]; }
+  } else item.ok = true;
+  return item;
+}
+
+/** 캐릭터 로어북의 프로필 전부 (같은 이름이 두 번이면 앞의 것) */
+function readProfiles(base, lore, validate) {
+  const out = [];
+  const seen = new Set();
+  for (const l of Array.isArray(lore) ? lore : []) {
+    const name = profileNameOf(l);
+    if (name == null || seen.has(name)) continue;
+    seen.add(name);
+    out.push(readProfile(base, l, validate));
+  }
+  return out;
+}
+
+/** 이름(또는 옛 이름 aka)으로 찾기 */
+function findProfile(list, name) {
+  if (typeof name !== 'string' || !name) return null;
+  return (list || []).find((p) => p.name === name) || (list || []).find((p) => (p.aka || []).includes(name)) || null;
+}
+
+// ── 화면용 요약 ────────────────────────────────────────────
+
+const AREA = {
+  vars: '변수', derived: '파생', checks: '판정', rules: '규칙·이벤트', directives: '지시문', actions: '액션', statusUI: '상태창',
+  promptState: 'AI 설정', updater: '보조 AI', setup: '새 시작', meta: '제목·메모', time: '시간', calendar: '달력', scenario: '시나리오',
+  secrets: '비밀', map: '지도', shop: '상점', shops: '상점', board: '보드', messenger: '메신저', questBoard: '의뢰판', party: '편성표',
+  assets: '에셋', fronts: '무대 뒤', liveChoices: '보조 갈림길', checkpoint: '되감기', pools: '후보 풀', suggest: '행동 제안', onTurn: '매 턴 정산',
+};
+
+/** 덧칠이 무엇을 바꾸는지 짧은 줄들 — ['변수 +2 ~1', '상태창', …] */
+function summarizeOverlay(base, overlay) {
+  const out = [];
+  if (!isObj(overlay)) return out;
+  for (const k of Object.keys(overlay)) {
+    if (k === '$del') continue;
+    const label = AREA[k] || k;
+    const node = overlay[k];
+    if (isObj(node) && isObj(node.$list)) {
+      const ids = new Set((Array.isArray(base?.[k]) ? base[k] : []).map((x) => x && x.id));
+      const put = Array.isArray(node.$list.put) ? node.$list.put : [];
+      const add = put.filter((x) => !ids.has(x && x.id)).length;
+      const chg = put.length - add;
+      const del = Array.isArray(node.$list.del) ? node.$list.del.length : 0;
+      const bits = [add ? `+${add}` : '', chg ? `~${chg}` : '', del ? `−${del}` : '', !add && !chg && !del && node.$list.order ? '순서' : ''].filter(Boolean);
+      out.push(bits.length ? `${label} ${bits.join(' ')}` : label);
+    } else out.push(label);
+  }
+  for (const k of Array.isArray(overlay.$del) ? overlay.$del : []) out.push(`${AREA[k] || k} 끔`);
+  return out;
+}
+
+/** 배포 번들에서 📌 작업 지침(meta.notes)을 빼는 것과 같은 결 — 덧칠 안의 notes도 뺀다 */
+function stripOverlayNotes(overlay) {
+  const o = clone(overlay);
+  if (!isObj(o) || !isObj(o.meta)) return o;
+  if (isObj(o.meta.$set)) delete o.meta.$set.notes;
+  else {
+    delete o.meta.notes;
+    if (Array.isArray(o.meta.$del)) { o.meta.$del = o.meta.$del.filter((k) => k !== 'notes'); if (!o.meta.$del.length) delete o.meta.$del; }
+    if (!Object.keys(o.meta).length) delete o.meta;
+  }
+  return o;
+}
+
+module.exports = {
+  PROFILE_KEY, BASE_COMMENT, PROFILE_PREFIX, NAME_MAX, PROFILE_MAX, DESC_MAX,
+  isSchemaLore, profileNameOf, profileComment, checkProfileName,
+  diffSchema, applyOverlay, entryContent, parseEntry, readProfile, readProfiles, findProfile,
+  summarizeOverlay, stripOverlayNotes, stable, shapeFill, shapeSig,
+};
+
+});
+
 SimCore.define("engine", function (require, module, exports) {
 // SimCore 엔진 — 턴 처리의 심장. 전부 순수 함수 (호스트 의존성 없음).
 //
@@ -13059,6 +13395,7 @@ const engine = require('./engine');
 const { SnapshotStore, mapLimited } = require('./store');
 const IO_CONCURRENCY = 12; // 샌드박스 브리지 동시 요청 수 (너무 키우면 브리지가 밀린다)
 const { seededRng, makeUnstableRng } = require('./rng');
+const { PROFILE_KEY } = require('./profile'); // 🔀 프로필 (v1.24.0) — 상태 예약 키 sim_profile
 
 /** 키 순서에 안 흔들리는 직렬화 — 스냅샷을 두 경로로 만들면 키 순서가 달라질 수 있다 */
 function stableJson(x) {
@@ -13088,10 +13425,38 @@ class SimSession {
   constructor(schema, backend, opts = {}) {
     this.schema = schema;
     this.chatId = opts.chatId ?? 'chat';
-    this.stableRng = opts.stableRng !== false && schema.rerollStableRng !== false;
+    this.optStableRng = opts.stableRng !== false;
+    this.stableRng = this.optStableRng && schema.rerollStableRng !== false;
     this.random = opts.random ?? Math.random;
     this.store = new SnapshotStore(backend, opts.prefix ?? `sim:${this.chatId}`, opts.keepN ?? 60);
     this.current = null; // 마지막으로 확정된 라이브 상태
+    // 🔀 프로필 (v1.24.0) — 이 세션이 도는 판의 이름 ('' = 기본 판). null = 프로필 없는 봇 → 상태에 손대지 않는다
+    this.profile = typeof opts.profile === 'string' ? opts.profile : null;
+  }
+
+  /** 판 갈아 끼우기 (v1.24.0) — 호스트가 채팅의 프로필을 고른 뒤 부른다. 상태 정합(reconcile)·이름 적기는 호출자 몫 */
+  useSchema(schema, profile = null) {
+    this.schema = schema;
+    this.stableRng = this.optStableRng && schema.rerollStableRng !== false;
+    this.profile = typeof profile === 'string' ? profile : null;
+  }
+
+  /** 상태에 이 세션의 판 이름을 적는다 (v1.24.0) — 스냅샷에 실려 과거 상태창·리롤·되감기가 그 시점의 판을 따른다 */
+  stampProfile(state = this.current) {
+    if (this.profile !== null && state && state.vars) state.vars[PROFILE_KEY] = this.profile;
+    return state;
+  }
+
+  /**
+   * 판 고르기용 엿보기 (v1.24.0) — init이 고를 상태를 정합 없이 날것으로. 없으면 null.
+   * 정합(reconcile)을 안 하는 이유: 다른 판의 스키마로 정합하면 그 판에만 있는 선택지 값이 시작값으로 깎인다
+   */
+  async peekState(latestOutIndex = -1) {
+    if (latestOutIndex >= 0) {
+      const found = await this.store.latestAtOrBelow('out', latestOutIndex);
+      if (found) return found.state;
+    }
+    return (await this.store.load('boot', 0)) || null;
   }
 
   _rng(index, label) {
@@ -13107,15 +13472,15 @@ class SimSession {
   async init(latestOutIndex = -1) {
     if (latestOutIndex >= 0) {
       const found = await this.store.latestAtOrBelow('out', latestOutIndex);
-      if (found) { this.current = engine.reconcileState(this.schema, found.state); return this.current; }
+      if (found) { this.current = this.stampProfile(engine.reconcileState(this.schema, found.state)); return this.current; }
     }
     // 첫 전송 전 슬롯 (v1.14.7) — char 메시지가 아직 없는 채팅(새 채팅·빈 채팅에 세이브 가져오기)에서 한 조작·가져온 상태.
     // 전엔 앵커가 -1이라 저장을 전부 건너뛰어 재로드·전환이면 증발했다 (점검 영역 3 #7·#8)
     const boot = await this.store.load('boot', 0);
-    if (boot) { this.current = engine.reconcileState(this.schema, boot); return this.current; }
+    if (boot) { this.current = this.stampProfile(engine.reconcileState(this.schema, boot)); return this.current; }
     // 시작 시각 무작위(v0.80)용 rng — 인덱스를 -1로 둬 어느 턴과도 안 겹치는 시드를 쓴다.
     // 리롤 안정이 켜져 있으면 chatId로만 갈리므로 **이 채팅은 늘 같은 시각**, 새 채팅은 새 시각.
-    this.current = engine.initState(this.schema, { rng: this._rng(-1, 'start') });
+    this.current = this.stampProfile(engine.initState(this.schema, { rng: this._rng(-1, 'start') }));
     return this.current;
   }
 
@@ -13133,7 +13498,7 @@ class SimSession {
    */
   async onSend(sendIndex, userText = '') {
     const existingPre = await this.store.load('pre', sendIndex);
-    let base = existingPre ?? this.current ?? engine.initState(this.schema);
+    let base = existingPre ?? this.current ?? this.stampProfile(engine.initState(this.schema));
     let branched = false;
     if (existingPre) {
       // 유령 시간선 대조 (v1.7.3) — pre:U는 out:U-1(+턴 사이 무장)에서 파생된 캐시다. 직전 응답이
@@ -13150,6 +13515,11 @@ class SimSession {
           await this.store.pruneFrom(sendIndex);   // 옛 미래(pre/send/out ≥ U)는 여기서 끝난다
         }
       }
+    }
+    // 🔀 판은 유저의 마지막 선택을 따른다 (v1.24.0) — 판을 바꾼 직후 리롤하면 pre:U는 옛 판 이름을 들고 있다.
+    // 세션이 도는 판으로 적어야 상태(옛 판)와 스키마(새 판)가 어긋나지 않는다. 메시지를 지우고 이어 가도 같다
+    if (this.profile !== null && base && base.vars && base.vars[PROFILE_KEY] !== this.profile) {
+      base = this.stampProfile(JSON.parse(JSON.stringify(base)));
     }
     if (!existingPre || branched) await this.store.save('pre', sendIndex, base);
     // userText (v1.6.0): 전투 안무의 맡김/내 수 판단용 — 굴림과 무관하니 리롤 안정성은 그대로
@@ -13263,7 +13633,7 @@ class SimSession {
       (d, t) => onProgress?.(d, t, '스냅샷 삭제 중'));
     // 초기화는 리롤이 아니라 "판을 지우고 새로 시작"이다 — 시작 시각 무작위를 켰다면
     // **여기서는 새로 굴린다** (chatId 시드를 쓰면 초기화해도 늘 같은 시각이 나온다).
-    this.current = engine.initState(this.schema, { rng: makeUnstableRng(this.random) });
+    this.current = this.stampProfile(engine.initState(this.schema, { rng: makeUnstableRng(this.random) })); // 초기화해도 판은 그대로 (v1.24.0)
     return this.current;
   }
 
@@ -13372,7 +13742,7 @@ class SimSession {
     if (typeof state.vars.turn === 'number') state.meta.turn = Math.max(0, state.vars.turn - 1);
     // 미러가 있다 = 첫 응답은 이미 지났다. AI 최초설정 봇에서 이걸 안 세우면 다음 전송이 최초설정으로 돌아 복원한 값을 덮는다 (v1.14.7)
     if (restored && this.schema.setup?.ai?.enabled) state.meta.setupDone = true;
-    this.current = eng.reconcileState(this.schema, state);
+    this.current = this.stampProfile(eng.reconcileState(this.schema, state));
     return restored;
   }
 
@@ -40957,6 +41327,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const msgrMod = SimCore.require('messenger');    // 메신저 (v1.2.0)
   const questMod = SimCore.require('quest');       // 의뢰판 (v1.7.9)
   const mapMod = SimCore.require('map');           // 지도 (v1.23.0)
+  const profileMod = SimCore.require('profile');   // 🔀 프로필 (v1.24.0) — 한 봇에 판 여러 벌, 채팅마다 하나
   const choiceMod = SimCore.require('choice');     // 보조 갈림길 (v1.8.0) — 지연 경로 적용 (v1.14.6)
   const { makeUnstableRng } = SimCore.require('rng');
 
@@ -41059,6 +41430,87 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   }
   const SCHEMA_LORE_COMMENT = '⚙simcore';
 
+  // ── 🔀 프로필 (v1.24.0) — 한 봇에 판 여러 벌, 채팅마다 하나 (core/profile.js · docs/design-프로필.md) ──
+  // 기본 판 = ⚙simcore, 프로필 = ⚙simcore:<이름>(기본 판에서 달라진 부분만). 이 채팅의 판 = 상태 예약 키 sim_profile.
+  // schema는 늘 "이 채팅이 도는 판"(덧칠 얹은 것)이고, 기본 판은 baseSchema에 따로 둔다.
+  let baseSchema = null;        // 기본 판 (⚙simcore 그대로)
+  let baseWarnings = [];        // 기본 판 검증 경고
+  let profileList = [];         // 캐릭터의 프로필 [{ name, desc, aka, overlay, merged, ok, errors, warnings, error }]
+  let currentProfile = null;    // 이 채팅의 판 이름 ('' = 기본) · null = 프로필 없는 봇 (상태에 손대지 않는다)
+  let profileNote = null;       // 판을 못 얹어 기본 판으로 돌 때의 알림
+  let activeWarnings = null;    // 지금 판의 검증 경고 (같은 채팅 재로드에서도 상태줄이 기본 판 경고로 바뀌지 않게)
+  let startProfile = null;      // 새 채팅이 시작할 판 — 캐릭터에 저장 (새 시작 프리셋과 같은 규약, v0.85.2)
+  let startProfileKey = null;   // sim:start-profile:<캐릭터>
+  const profileCache = new Map(); // comment → { base, content, item } — 덧칠·검증은 글이 바뀔 때만 다시
+  const PROFILE_KEY = profileMod.PROFILE_KEY;
+  /** 로어북 항목 모양 — 스키마·프로필 공용 (키가 절대 안 걸리는 상시 꺼짐 항목) */
+  const schemaLoreEntry = (comment, content) => ({
+    comment, key: ' __simcore_never__', secondkey: '',
+    insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
+  });
+  /** 캐릭터 로어북의 프로필 목록 — 기본 판 글과 항목 글이 그대로면 지난번 결과를 쓴다 (덧칠+검증은 큰 봇에서 무겁다) */
+  function profileListFor(char, base, baseContent) {
+    const out = [];
+    const seen = new Set();
+    for (const l of char?.globalLore || []) {
+      const name = profileMod.profileNameOf(l);
+      if (name == null || seen.has(name)) continue;
+      seen.add(name);
+      const c = profileCache.get(l.comment);
+      if (c && c.base === baseContent && c.content === l.content) { out.push(c.item); continue; }
+      const item = profileMod.readProfile(base, l, validateSchema);
+      profileCache.set(l.comment, { base: baseContent, content: l.content, item });
+      out.push(item);
+    }
+    return out;
+  }
+  /** 이름 → 이 채팅이 돌 판 { schema, profile, note, warnings }. 못 얹으면 기본 판 + 알림 (이름은 지키고 — 고치면 돌아온다) */
+  function pickProfileSchema(name) {
+    if (!profileList.length) return { schema: baseSchema, profile: null, note: null, warnings: null };
+    const n = typeof name === 'string' ? name : '';
+    if (!n) return { schema: baseSchema, profile: '', note: null, warnings: null };
+    const e = profileMod.findProfile(profileList, n);
+    if (!e) return { schema: baseSchema, profile: n, note: `이 채팅의 프로필 '${n}'이(가) 캐릭터에 없어요 — 기본 판으로 돌아요`, warnings: null };
+    if (!e.ok) {
+      const why = e.error || `검증 오류 ${e.errors.length}건 (${e.errors.slice(0, 2).map((x) => x.msg).join(' / ')})`;
+      return { schema: baseSchema, profile: e.name, note: `프로필 '${e.name}'을(를) 못 얹었어요 — ${why}. 기본 판으로 돌아요 · [편집 작업공간 → 🔀 프로필]에서 고쳐요`, warnings: null };
+    }
+    return { schema: e.merged, profile: e.name, note: null, warnings: e.warnings };
+  }
+  /** 세이브 파일의 판 이름 — 프로필 있는 봇에서만, 없으면 null */
+  const savedProfOf = (data) => (profileList.length && typeof data?.current?.vars?.[PROFILE_KEY] === 'string' ? data.current.vars[PROFILE_KEY] : null);
+  /** 그 판의 설치본 (편집기 기준선). 못 얹는 프로필도 얹은 모양 그대로 돌려준다 — 고치러 열 수 있게. 없으면 null */
+  function installedSchemaFor(name) {
+    if (!name) return baseSchema;
+    return profileMod.findProfile(profileList, name)?.merged ?? null;
+  }
+  /** 과거 상태창용 — 그 시점 상태가 돌던 판 (v1.24.0: 프로필을 바꾼 채팅의 옛 메시지가 새 판 모양으로 다시 그려지던 것) */
+  function schemaForState(st) {
+    if (!profileList.length || !st?.vars) return schema;
+    const raw = st.vars[PROFILE_KEY];
+    const n = typeof raw === 'string' ? raw : '';
+    if (n === (currentProfile ?? '')) return schema;
+    if (!n) return baseSchema || schema;
+    const e = profileMod.findProfile(profileList, n);
+    if (e && e.name === currentProfile) return schema;
+    return e && e.ok ? e.merged : (baseSchema || schema);
+  }
+  /** 루아 브리지에 구울 판들 — 프로필이 없으면 예전처럼 스키마 하나 (지문이 안 바뀌어 설치된 브리지가 노후로 안 뜬다) */
+  function bridgeSetCurrent() {
+    const ok = profileList.filter((p) => p.ok);
+    if (!ok.length || !baseSchema) return schema;
+    return [{ name: '', schema: baseSchema }, ...ok.map((p) => ({ name: p.name, schema: p.merged }))];
+  }
+  /** 같은 것을 캐릭터 로어북에서 바로 — 설치 직후처럼 profileList가 아직 옛것일 때. 기본 판이 없거나 깨졌으면 null */
+  function bridgeSetForChar(char) {
+    const be = (char?.globalLore || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+    if (!be) return null;
+    let base;
+    try { base = JSON.parse(be.content); } catch { return null; }
+    const ok = profileListFor(char, base, be.content).filter((p) => p.ok);
+    return ok.length ? [{ name: '', schema: base }, ...ok.map((p) => ({ name: p.name, schema: p.merged }))] : base;
+  }
+
   // ── 개조 번들 (v1.0.5) — 로어북+정규식을 한 파일로 배포하고 한 번에 교체 적용 ──
   // 계기: 개조 배포에서 원본 카드 재배포가 비허가 → "원본 카드 + 개조 파일"로 갈랐는데,
   // 리수에 로어북·정규식 일괄삭제가 없어 받는 쪽이 원본 항목을 하나씩 지워야 했다.
@@ -41066,7 +41518,14 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 트리거스크립트(루아 브리지 자리)·인사말·이미지는 안 건드린다 — 원본 카드의 것 유지.
   // 📌 작업 지침(meta.notes, v1.9.18)은 제작자 메모라 배포 번들에서 뺀다 — 스키마 로어의 JSON만 다시 쓴다(다른 로어는 그대로)
   function stripNotesFromLore(l) {
-    if (!l || l.comment !== SCHEMA_LORE_COMMENT || typeof l.content !== 'string') return { ...l };
+    // 프로필(v1.24.0)은 덧칠 안의 meta.notes를 뺀다 — 통째 스키마를 붙여 넣은 프로필은 아래 기본 판과 같은 길
+    if (l && profileMod.profileNameOf(l) != null && typeof l.content === 'string') {
+      try {
+        const o = JSON.parse(l.content);
+        if (o && o.simcoreProfile) return { ...l, content: JSON.stringify({ ...o, overlay: profileMod.stripOverlayNotes(o.overlay) }) };
+      } catch { return { ...l }; }
+    }
+    if (!l || !profileMod.isSchemaLore(l) || typeof l.content !== 'string') return { ...l };
     try {
       const s = JSON.parse(l.content);
       if (!s || typeof s !== 'object' || !s.meta || s.meta.notes == null) return { ...l };
@@ -41096,9 +41555,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
    *   regexAdd — 덧붙이기 (v1.7.10, 아틀리에 실사고: 퍼메 푸터 제거 3종을 regex로 실었더니 카드의 에셋 정규식까지
    *              통째로 날아가 이미지가 안 나왔다). 카드 정규식은 그대로 두고, 같은 comment만 갈아 끼우고 나머지는 뒤에 붙인다.
    * 순수 함수: char를 고쳐서 돌려줄 뿐 저장(setCharacter)은 호출자 몫.
+   * 🔀 프로필(v1.24.0) — 번들에 없는 ⚙simcore:… 항목(유저가 만든 판)은 남긴다. 로어북 통째 교체가 그것까지 지우면
+   *   봇 업데이트 한 번에 유저의 판이 사라진다 (정규식 regexAdd와 같은 사연). 번들에 같은 이름이 있으면 번들 것.
+   *   (테스트가 이 함수를 소스에서 떼어 돌리므로 바깥 이름을 안 쓴다 — 접두는 글자로)
    */
   function applyBundleToChar(char, data) {
-    char.globalLore = data.lorebook.map((l) => ({ ...l }));
+    const incoming = new Set(data.lorebook.map((l) => l && l.comment));
+    const keepProfiles = (char.globalLore || []).filter((l) => l && typeof l.comment === 'string'
+      && l.comment.startsWith('⚙simcore:') && !incoming.has(l.comment));
+    char.globalLore = [...data.lorebook.map((l) => ({ ...l })), ...keepProfiles.map((l) => ({ ...l }))];
     if (Array.isArray(data.regex)) char.customscript = data.regex.map((r) => ({ ...r }));
     if (Array.isArray(data.regexAdd) && data.regexAdd.length) {
       const names = new Set(data.regexAdd.map((r) => r.comment).filter(Boolean));
@@ -41583,6 +42048,18 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
     return (h >>> 0).toString(36);
   }
+  /**
+   * 🔀 프로필 세트의 지문 (v1.24.0) — [{ name, schema }]. 판 하나(또는 스키마 그대로)면 예전 지문 그대로라
+   * 프로필 없는 봇의 설치된 브리지가 업데이트만으로 노후로 뜨지 않는다.
+   */
+  function bridgeFingerprint(x) {
+    if (!Array.isArray(x)) return schemaFingerprint(x);
+    if (x.length === 1) return schemaFingerprint(x[0].schema);
+    const src = x.map((e) => e.name + '\u0001' + schemaFingerprint(e.schema)).join('\u0002');
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
 
   const BRIDGE_SIG_RE = /--\s*simcore-schema:\s*([0-9a-z]+)/;
 
@@ -41597,32 +42074,75 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   function bridgeIsStale(char, sch) {
     if (!hasLuaBridge(char) || !sch) return false;
     const got = bridgeSchemaSig(char);
-    return got === null || got !== schemaFingerprint(sch); // 서명 없는 구버전 브리지도 노후로 본다
+    return got === null || got !== bridgeFingerprint(sch); // 서명 없는 구버전 브리지도 노후로 본다
   }
 
   function buildLuaBridgeCode(sch) {
+    // 🔀 프로필 (v1.24.0) — sch 자리에 [{ name, schema }] 세트가 오면 판마다 템플릿을 굽고, 루아가 채팅 변수 sim_profile로 고른다.
+    // 판 하나면 예전과 글자 하나 다르지 않은 코드 (설치된 브리지가 업데이트만으로 노후로 뜨지 않게).
+    const set = Array.isArray(sch) ? sch : null;
+    if (set && set.length === 1) sch = set[0].schema;
+    const multi = !!set && set.length > 1;
     // 프롬프트 본문은 JS 빌더를 그대로 재사용하고, 현재값 자리만 ⟦cur:id⟧ 자리표시로 채워
     // 루아가 실행 시점에 채팅 변수(미러)로 치환한다 → 빌더 이원화로 인한 드리프트 방지
-    const fake = { vars: {}, meta: {} };
-    for (const v of sch.vars) fake.vars[v.id] = '⟦cur:' + v.id + '⟧';
-    const ctxTurns = clampContextTurns(sch.updater?.contextTurns);
-    // 맥락 자리는 루아가 실행 시점에 채운다. 1턴이면 아예 자리를 만들지 않는다.
-    // 자리표시자로 굽는 템플릿이라 mentions 필터를 끈다 — 켜 두면 '⟦NARR⟧'에 이름이 없어
-    // 인물 호감도가 통째로 닫힌 채 루아에 박힌다. 브리지 모드는 거르지 않는 게 규약이다.
-    const deltaT = engine.buildAuxPrompt(sch, fake, '⟦NARR⟧', '⟦USER⟧', ctxTurns > 1 ? '⟦HIST⟧' : '',
-      { allowAll: true });
-    const setupT = engine.buildSetupPrompt(sch, fake, '⟦NARR⟧');
-    const ids = sch.vars.map((v) => "'" + v.id + "'").join(', ');
+    const bake = (s) => {
+      const fake = { vars: {}, meta: {} };
+      for (const v of s.vars) fake.vars[v.id] = '⟦cur:' + v.id + '⟧';
+      const ctxTurns = clampContextTurns(s.updater?.contextTurns);
+      // 맥락 자리는 루아가 실행 시점에 채운다. 1턴이면 아예 자리를 만들지 않는다.
+      // 자리표시자로 굽는 템플릿이라 mentions 필터를 끈다 — 켜 두면 '⟦NARR⟧'에 이름이 없어
+      // 인물 호감도가 통째로 닫힌 채 루아에 박힌다. 브리지 모드는 거르지 않는 게 규약이다.
+      const deltaT = engine.buildAuxPrompt(s, fake, '⟦NARR⟧', '⟦USER⟧', ctxTurns > 1 ? '⟦HIST⟧' : '',
+        { allowAll: true });
+      const setupT = engine.buildSetupPrompt(s, fake, '⟦NARR⟧');
+      const ids = s.vars.map((v) => "'" + v.id + "'").join(', ');
+      return { deltaT, setupT, ids, ctxTurns };
+    };
+    // 루아 글자열 — 이름 비교용이라 긴 글자열([==[ ]==])은 못 쓴다(끝에 줄바꿈이 붙는다)
+    const luaQuote = (x) => '"' + String(x).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    let head;
+    if (multi) {
+      const rows = set.map((e) => {
+        const b = bake(e.schema);
+        return '  { n = ' + luaQuote(e.name) + ', ctx = ' + b.ctxTurns + ', ids = { ' + b.ids + ' },\n'
+          + '    d = ' + luaLongString(b.deltaT) + ',\n    s = ' + luaLongString(b.setupT) + ' },';
+      });
+      head = [
+        '-- SimCore 루아 브리지 — 플러그인이 자동 생성/갱신 (직접 수정 금지)',
+        '-- simcore-schema: ' + bridgeFingerprint(set),
+        '-- 플러그인의 보조모델 호출이 차단된 환경에서 axLLM으로 대신 호출해',
+        '-- 결과를 채팅 변수에 남긴다. 캐릭터의 LLA(low level access) 체크 필요.',
+        '-- 🔀 프로필 ' + set.length + '판 — 채팅 변수 sim_profile로 판을 고른다 (없거나 모르는 이름이면 첫 줄 = 기본 판)',
+        'local SIMCORE_P = {',
+        ...rows,
+        '}',
+        "local SIMCORE_DELTA_T, SIMCORE_SETUP_T, SIMCORE_IDS, SIMCORE_CTX = '', '', {}, 1",
+        'local function simcorePick(id)',
+        "  local p = getChatVar(id, 'sim_profile')",
+        '  local e = SIMCORE_P[1]',
+        '  for _, x in ipairs(SIMCORE_P) do',
+        '    if x.n == p then e = x end',
+        '  end',
+        '  SIMCORE_DELTA_T, SIMCORE_SETUP_T, SIMCORE_IDS, SIMCORE_CTX = e.d, e.s, e.ids, e.ctx',
+        'end',
+        '',
+      ];
+    } else {
+      const b = bake(sch);
+      head = [
+        '-- SimCore 루아 브리지 — 플러그인이 자동 생성/갱신 (직접 수정 금지)',
+        '-- simcore-schema: ' + schemaFingerprint(sch),
+        '-- 플러그인의 보조모델 호출이 차단된 환경에서 axLLM으로 대신 호출해',
+        '-- 결과를 채팅 변수에 남긴다. 캐릭터의 LLA(low level access) 체크 필요.',
+        'local SIMCORE_DELTA_T = ' + luaLongString(b.deltaT),
+        'local SIMCORE_SETUP_T = ' + luaLongString(b.setupT),
+        'local SIMCORE_IDS = { ' + b.ids + ' }',
+        'local SIMCORE_CTX = ' + b.ctxTurns + '  -- 보조모델에 함께 보낼 최근 대화 턴 수',
+        '',
+      ];
+    }
     return [
-      '-- SimCore 루아 브리지 — 플러그인이 자동 생성/갱신 (직접 수정 금지)',
-      '-- simcore-schema: ' + schemaFingerprint(sch),
-      '-- 플러그인의 보조모델 호출이 차단된 환경에서 axLLM으로 대신 호출해',
-      '-- 결과를 채팅 변수에 남긴다. 캐릭터의 LLA(low level access) 체크 필요.',
-      'local SIMCORE_DELTA_T = ' + luaLongString(deltaT),
-      'local SIMCORE_SETUP_T = ' + luaLongString(setupT),
-      'local SIMCORE_IDS = { ' + ids + ' }',
-      'local SIMCORE_CTX = ' + ctxTurns + '  -- 보조모델에 함께 보낼 최근 대화 턴 수',
-      '',
+      ...head,
       'local function simcoreFill(id, tpl)',
       '  for _, vid in ipairs(SIMCORE_IDS) do',
       "    local val = getChatVar(id, vid)",
@@ -41634,6 +42154,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       '',
       'onOutput = async(function(id)',
       "  if getChatVar(id, 'simcore_bridge') ~= 'on' then return end",
+      ...(multi ? ['  simcorePick(id)'] : []),
       "  local expect = getChatVar(id, 'simcore_expect')",
       '  local tpl = SIMCORE_DELTA_T',
       "  if expect == 'setup' then tpl = SIMCORE_SETUP_T end",
@@ -41710,6 +42231,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       chat.scriptstate['$simcore_bridge'] = mode === 'lua' ? 'on' : 'off';
       chat.scriptstate['$simcore_expect'] =
         (session && engine.isSetupPending(schema, session.current)) ? 'setup' : 'delta';
+      // 🔀 프로필 (v1.24.0) — 루아가 판을 고르는 열쇠. 미러보다 먼저 확실히 (기본 판 = 빈 글자)
+      if (profileList.length && currentProfile !== null) chat.scriptstate['$' + PROFILE_KEY] = currentProfile;
       await Risuai.setChatToIndex(chaIdx, chatIdx, chat);
     } catch (e) {
       console.log('[simcore] 브리지 제어 기록 실패:', e.message);
@@ -41785,7 +42308,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const HIST_CAP = 80;              // SnapshotStore keepN(60)보다 넉넉히
   function histPut(idx, st) {
     try {
-      const s = engine.reconcileState(schema, JSON.parse(JSON.stringify(st)));
+      // 🔀 그 시점의 판으로 정합 (v1.24.0) — 지금 판으로 하면 판마다 다른 상한에 옛 값이 깎인다 (마법사 체력 최대 80 → 기본 판 시절 90이 80으로)
+      const s = engine.reconcileState(schemaForState(st), JSON.parse(JSON.stringify(st)));
       // 과거 상태창에서 눌리면 안 되는 것 — 갈림길·제안은 좌표 히트테스트로 **현재** 세션을 조작한다
       s.meta.pendingChoice = null;
       s.meta.suggestions = [];
@@ -42030,11 +42554,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function loadForCurrentCharInner() {
     const char = await Risuai.getCharacter();
-    if (!char) { session = null; schema = null; currentChaId = null; panelStatus = { state: 'no-char' }; return; }
+    // 🔀 기본 판이 없거나 깨지면 프로필도 없다 (덧칠할 바탕이 없다)
+    const dropProfiles = () => { baseSchema = null; baseWarnings = []; profileList = []; currentProfile = null; profileNote = null; activeWarnings = null; };
+    if (!char) { session = null; schema = null; currentChaId = null; dropProfiles(); panelStatus = { state: 'no-char' }; return; }
     currentChaId = char.chaId ?? char.name;
     const lore = (char.globalLore || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
     if (!lore) {
-      session = null; schema = null;
+      session = null; schema = null; dropProfiles();
       panelStatus = { state: 'no-schema', charName: char.name };
       return;
     }
@@ -42042,7 +42568,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     try { parsed = JSON.parse(lore.content); }
     catch (e) {
       console.log('[simcore] 스키마 JSON 파싱 실패:', e.message);
-      session = null;
+      session = null; dropProfiles();
       panelStatus = { state: 'parse-error', charName: char.name, report: [{ path: '$', msg: 'JSON 파싱 실패: ' + e.message }] };
       return;
     }
@@ -42051,7 +42577,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     if (!v.ok) {
       console.log('[simcore] 스키마 검증 실패:');
       for (const err of v.errors) console.log(`  - ${err.path}: ${err.msg}`);
-      session = null;
+      session = null; dropProfiles();
       panelStatus = { state: 'invalid', charName: char.name, report: v.errors, warnings: v.warnings };
       return;
     }
@@ -42066,15 +42592,17 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     if (chat && chat._placeholder) { placeholderRetry = true; console.log('[simcore] 채팅 본문 적재 전(placeholder) — 다음 틱에 다시'); return; }
     const chatId = chat?.id ?? `${char.chaId}:${chatIdx}`;
     const key = `${char.chaId}:${chatId}`;
-    if (session && charKey === key) return; // 이미 로드됨
+    if (session && charKey === key) { if (activeWarnings) panelStatus.warnings = activeWarnings; return; } // 이미 로드됨 (경고는 지금 판의 것)
     charKey = key;
     session = null;          // 새 세션이 다 만들어지기 전엔 "로드 안 됨"으로 보인다 (v1.14.10 — 반쯤 만든 세션 노출 방지)
     lastChangeLog = [];      // 다른 채팅의 변화 로그·카드가 새 채팅 최신 상태창에 뜨던 것 (v1.14.10)
     personaCache = null;   // 페르소나는 캐릭터·채팅마다 다를 수 있다 (v1.5.0 막간)
-    schema = parsed;
     mentionGate = { turns: 0, opened: {} }; // 세션 단위 통계 리셋
-    // 모듈 팩 매니페스트 (v0.94) — 옵트인 봇만 db를 읽는다. 실패해도 로드는 계속.
-    try { await scanModulePacks(false); } catch (e) { console.log('[simcore] 모듈 팩 스캔 오류:', e.message); }
+    // 🔀 프로필 (v1.24.0) — 판은 아래에서 이 채팅의 상태를 엿본 뒤 고른다. schema(모듈 팩 병합 포함)는 그 뒤에 선다
+    baseSchema = parsed; baseWarnings = v.warnings;
+    profileList = profileListFor(char, parsed, lore.content);
+    currentProfile = null; profileNote = null; activeWarnings = null;
+    schema = parsed;
 
     // pluginStorage를 SnapshotStore 백엔드로 감싼다
     const backend = {
@@ -42111,6 +42639,33 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     let inherited = false;
     try { inherited = await inheritFromSibling(sess, chat, chaIdx, char.chaId); } catch (e) { console.log('[simcore] 채팅 상속 실패:', e.message); }
     await realignTimeline(chat, lastCharIdx, '로드', { chaIdx, chatIdx, sess });
+    // 🔀 판 고르기 (v1.24.0) — 이 채팅의 상태(sim_profile)를 정합 없이 엿보고, 아직 시작 전(턴 0)이면 캐릭터에 저장된 "새 채팅의 판"이 이긴다
+    // (새 시작 프리셋과 같은 규약). 스냅샷이 없는 채팅(다른 기기에서 가져온 것)은 채팅 변수 미러의 $sim_profile을 믿는다.
+    startProfileKey = `sim:start-profile:${currentChaId}`;
+    try { const raw = await Risuai.pluginStorage.getItem(startProfileKey); startProfile = raw == null ? null : JSON.parse(raw); }
+    catch { startProfile = null; }
+    let freshSwitch = false;
+    if (profileList.length) {
+      let raw = null;
+      try { raw = await sess.peekState(lastCharIdx); } catch { raw = null; }
+      const mirrorP = chat?.scriptstate?.['$' + PROFILE_KEY];
+      const hasMirror = typeof mirrorP === 'string' && mirrorP !== 'null';
+      let want = raw ? (typeof raw.vars?.[PROFILE_KEY] === 'string' ? raw.vars[PROFILE_KEY] : '') : (hasMirror ? mirrorP : '');
+      const fresh = raw ? ((raw.meta?.turn ?? 0) === 0 && !raw.meta?.setupDone) : !hasMirror;
+      if (fresh && typeof startProfile === 'string' && (startProfile === '' || profileMod.findProfile(profileList, startProfile))) {
+        freshSwitch = !!raw && want !== startProfile; // 시작 전 슬롯(boot)이 다른 판으로 서 있었다 — 새 판의 시작값으로 다시 세운다
+        want = startProfile;
+      }
+      const pick = pickProfileSchema(want);
+      schema = JSON.parse(JSON.stringify(pick.schema)); // 사본 — 모듈 팩 병합이 캐시된 판을 더럽히지 않게
+      currentProfile = pick.profile; profileNote = pick.note;
+      activeWarnings = pick.warnings || baseWarnings;
+      panelStatus.warnings = activeWarnings;
+      sess.useSchema(schema, pick.profile);
+      if (pick.note) console.log('[simcore] 🔀', pick.note);
+    }
+    // 모듈 팩 매니페스트 (v0.94) — 옵트인 봇만 db를 읽는다. 실패해도 로드는 계속. (판을 고른 뒤 — v1.24.0)
+    try { await scanModulePacks(false); } catch (e) { console.log('[simcore] 모듈 팩 스캔 오류:', e.message); }
     try { await sess.init(lastCharIdx); }
     catch (e) {
       // 반쯤 초기화된 세션을 남기지 않는다 (v1.14.7) — 전엔 current가 null인 세션이 남아 다음 전송이 initState로 조용히 시작했다 (점검 영역 3 #10)
@@ -42133,6 +42688,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     startPresetKey = `sim:start-preset:${currentChaId}`;
     try { startPresetId = (await Risuai.pluginStorage.getItem(startPresetKey)) || null; }
     catch { startPresetId = null; }
+    // 🔀 시작 전 채팅이 다른 판으로 서 있었으면 새 판의 시작값으로 (v1.24.0) — 정합만 하면 이름이 같은 변수가 옛 판의 시작값을 들고 간다
+    if (freshSwitch) sess.current = sess.stampProfile(engine.initState(schema, { rng: sess._rng(-1, 'start') }));
     session = sess; // 여기서부터 바깥에 보인다 (v1.14.10)
     if (inherited) { try { await mirrorVars(chaIdx, chatIdx); } catch {} }   // 미러는 복사 시점의 원본 최신값 — 상속한 자리의 값으로 (v1.14.13)
     if (startPresetId && session.current.meta.turn === 0 && !session.current.meta.setupDone) { // 최초설정이 끝난 턴 0엔 다시 안 덮는다 (v1.14.7, 영역 3 #3)
@@ -42141,9 +42698,60 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         console.log('[simcore] 새 시작 프리셋 자동 적용:', startPresetId);
       } else startPresetId = null; // 스키마가 바뀌어 이제 없는 프리셋 — 무시
     }
-    console.log('[simcore] 로드 완료:', schema.meta?.name, '/ 상태:', session.current.vars);
+    console.log('[simcore] 로드 완료:', schema.meta?.name, currentProfile ? `/ 🔀 ${currentProfile}` : '', '/ 상태:', session.current.vars);
     histPrefetch(); // 과거 상태창 (v1.0 #1) — 배경 적재, 실패해도 무해 (현재 상태 폴백)
   }
+
+  /**
+   * 🔀 이 채팅의 판을 그 자리에서 갈아 끼운다 (v1.24.0) — 저장소를 다시 읽지 않는다.
+   * 출력 훅 안(되감기가 판까지 돌려놓은 턴)에서도 부르므로 재로드(loadForCurrentChar)를 쓰면 안 된다 —
+   * 그 순간 채팅엔 새 응답이 아직 없어 한 턴 전 스냅샷을 현재로 잡는다.
+   * @param opts.restart 시작 전(턴 0)이면 새 판의 시작값으로 다시 세운다 (정합만 하면 옛 판의 시작값이 남는다)
+   */
+  async function applyProfileInPlace(name, opts = {}) {
+    if (!session || !baseSchema || !profileList.length) return false;
+    const pick = pickProfileSchema(name);
+    schema = JSON.parse(JSON.stringify(pick.schema));
+    try { await scanModulePacks(false); } catch (e) { console.log('[simcore] 모듈 팩 스캔 오류:', e.message); }
+    session.useSchema(schema, pick.profile);
+    currentProfile = pick.profile; profileNote = pick.note;
+    activeWarnings = pick.warnings || baseWarnings;
+    if (panelStatus.state === 'ok') panelStatus.warnings = activeWarnings;
+    if (opts.restart) {
+      session.current = engine.initState(schema, { rng: session._rng(-1, 'start') });
+      if (startPresetId && (schema.setup?.presets || []).some((p) => p.id === startPresetId)) session.applyPreset(startPresetId);
+    } else session.current = engine.reconcileState(schema, session.current);
+    session.stampProfile();
+    lastChangeLog = []; // 옛 판의 변화 카드가 새 판 상태창에 남지 않게
+    console.log('[simcore] 🔀 판 교체:', pick.profile || '기본', pick.note ? `(${pick.note})` : '');
+    return true;
+  }
+
+  /** 🔀 패널에서 판 바꾸기 — 이 채팅에 적용하고 "새 채팅의 판"으로도 저장 (프리셋과 같은 규약) */
+  async function switchProfile(name) {
+    if (!session) return false;
+    const fresh = session.current?.meta?.turn === 0 && !session.current?.meta?.setupDone;
+    if (!(await applyProfileInPlace(name, { restart: fresh }))) return false;
+    startProfile = currentProfile ?? '';
+    try { if (startProfileKey) await Risuai.pluginStorage.setItem(startProfileKey, JSON.stringify(startProfile)); } catch {}
+    await persistCurrent();
+    try {
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+    } catch {}
+    try { await syncControls(); } catch {}     // 판마다 패널 버튼(지도·상점…)이 다를 수 있다
+    try { await refreshStatusDom(); } catch {} // 채팅 속 상태창도 제자리 갱신
+    return true;
+  }
+  // 테스트 배수구 (__simcoreBundle과 같은 결) — 판 고르기·설치를 가짜 리수에서 굴린다
+  try {
+    globalThis.__simcoreProfile = {
+      switchProfile, applyProfileInPlace, installedSchemaFor, schemaForState,
+      install: (parsed, prof, meta) => installSchemaToCurrentChar(parsed, prof, meta),
+      state: () => ({ schema, baseSchema, profileList, currentProfile, profileNote, startProfile, session, panelStatus }),
+    };
+  } catch { /* 전역이 막힌 환경 */ }
 
   // 부팅 로드 (v1.14.7: 던져도 아래 훅 등록은 계속 — 전엔 여기서 던지면 input·beforeRequest·output·display 훅이 하나도 안 붙었다)
   try { await loadForCurrentChar(); } catch (e) { console.log('[simcore] 부팅 로드 실패:', e.message); }
@@ -42983,6 +43591,14 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       }
 
       const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText, pinText);
+      // 🔀 되감기(체크포인트)가 판까지 돌려놓았으면 이 자리에서 그 판으로 (v1.24.0) — 칸에 실린 sim_profile이 이긴다
+      if (profileList.length && session.profile !== null) {
+        const pNow = session.current?.vars?.[PROFILE_KEY];
+        if (typeof pNow === 'string' && pNow !== session.profile) {
+          try { await applyProfileInPlace(pNow); await session.store.save('out', outIndex, session.current); }
+          catch (e) { console.log('[simcore] 되감기 뒤 판 교체 실패:', e.message); }
+        }
+      }
       // 이미지 게이트(when)는 갱신 후 상태로 판단 — 이번 턴 서사가 반영된 값이 기준이다
       let imgTag = null;
       if (mode === 'aux') {
@@ -43070,7 +43686,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (isFinite(idx) && lastIdx >= 0 && idx < lastIdx) {
           const cached = histStates.get(idx);
           if (cached) {
-            return renderStatusHtml(schema, cached, null, null, { includeStyle: true, uid: idxStr });
+            // 🔀 그 시점의 판으로 (v1.24.0) — 판을 바꾼 채팅의 옛 메시지가 새 판 모양에 옛 값으로 그려지던 것
+            return renderStatusHtml(schemaForState(cached), cached, null, null, { includeStyle: true, uid: idxStr });
           }
           histFetch(idx); // 비동기 — 다음 재렌더부터 그 시점 상태
           // ⚠ v1.5.1 — 캐시가 없어도 '과거'라는 사실은 이미 안다. 예전엔 여기서 아래로 떨어져
@@ -44380,7 +44997,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const parts = [];
       // v1.13.2 — 정확히 맞는 것부터 (messenger.personaEntry). 부분 일치만 보면 "리아나"가 앞에 있는
       // "릴리아나" 문항에 걸려 리아나의 답장을 릴리아나의 인격으로 썼다 (베리디아).
-      const pool = lore.filter((l) => l && l.comment !== SCHEMA_LORE_COMMENT);
+      const pool = lore.filter((l) => l && !profileMod.isSchemaLore(l)); // 프로필(⚙simcore:이름)도 빼고 (v1.24.0 — 이름이 인물과 같으면 걸렸다)
       for (const name of members) {
         const hit = msgrMod.personaEntry(pool, name);
         if (hit) parts.push(`◆ ${name}\n${String(hit.content || '').trim().slice(0, 700)}`);
@@ -45632,6 +46249,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-root .sc-report-more[open] > summary { color:var(--sc-text-strong); }
       #sc-root .muted { color:var(--sc-muted); font-size:13px; }
       #sc-root .row { display:flex; gap:7px; flex-wrap:wrap; margin-top:8px; align-items:center; }
+      /* 🔀 프로필 (v1.24.0) — 현황의 판 고르기 · 작업공간의 판 관리 */
+      #sc-root .sc-profile-box { margin-bottom:4px; }
+      #sc-root .sc-profile-row { display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+      #sc-root .sc-profile-list { display:grid; gap:8px; margin-top:4px; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); }
+      #sc-root .sc-profile-item { border:1px solid var(--sc-line); border-radius:8px; padding:8px 10px; }
+      #sc-root .sc-profile-item .sc-profile-name { font-weight:600; color:var(--sc-text-strong); }
+      #sc-root .sc-profile-item .row input { flex:1 1 140px; min-width:0; }
       #sc-root .sc-page { display:none; } #sc-root .sc-page.on { display:block; }
       /* Hallmark-inspired editorial rhythm: restrained hierarchy, existing tokens, no interaction. */
       #sc-root .sc-help { width:100%; max-width:1000px; line-height:1.75; color:var(--sc-text);
@@ -45970,10 +46594,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               <div class="sc-card-head">
                 <div>
                   <h3 class="sc-card-title">새 시작</h3>
-                  <p class="sc-card-desc">고른 프리셋(✓)은 캐릭터에 저장되어 <b>새 채팅을 시작할 때마다 자동 적용</b>돼요.<br>AI 최초설정이 켜진 스키마는 첫 대화에서 시작 상황을 정해요.</p>
+                  <p class="sc-card-desc">고른 프리셋(✓)은 캐릭터에 저장되어 <b>새 채팅을 시작할 때마다 자동 적용</b>돼요.<br>AI 최초설정이 켜진 스키마는 첫 대화에서 시작 상황을 정해요.<br>프로필이 있는 봇은 여기서 이 채팅의 판(🔀)도 골라요.</p>
                 </div>
                 <span class="sc-card-badge">시작 설정</span>
               </div>
+              <div id="sc-profiles" class="sc-card-body sc-profile-box" style="display:none"></div>
               <div id="sc-presets" class="sc-card-body row">-</div>
               <div class="sc-divider"></div>
               <div class="sc-card-actions">
@@ -46060,6 +46685,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               <h2 id="sc-edit-title">AI 어시스턴트</h2>
               <p id="sc-edit-desc">봇 설정을 읽혀 대화로 작업본을 만들고 진단으로 굴려 봐요.
                 어느 도구에서 수정해도 같은 작업본이고, 캐릭터 반영은 [파일관리 → 편집 작업공간]에서 해요.</p>
+              <p id="sc-edit-prof" class="muted" style="display:none"></p>
             </div>
           </header>
           <div class="sc-result-stack">
@@ -46093,6 +46719,17 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
                 <span class="muted">제거하기 전 현재 스키마가 자동으로 백업돼요.</span>
                 <button id="sc-uninstall" class="danger">캐릭터에서 제거</button>
               </div>
+            </section>
+            <section class="sc-card" id="sc-profile-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">🔀 프로필 — 한 봇에 판 여러 벌</h3>
+                  <p class="sc-card-desc">채팅마다 다른 판(변수·상태창·규칙)을 골라 써요 — 고르는 곳은 [현황 → 새 시작].
+                    프로필은 기본 판에서 <b>달라진 부분만</b> 저장해서, 봇이 업데이트돼도 그 위에 다시 얹혀요.</p>
+                </div>
+              </div>
+              <div id="sc-profile-manage" class="sc-card-body">-</div>
+              <div id="sc-profile-report" class="report"></div>
             </section>
             <div class="sc-install-secondary">
               <section class="sc-card">
@@ -46455,9 +47092,9 @@ count(목록)  has(목록, "항목")</pre>
       const latest = keys[keys.length - 1];
       try {
         const parsed = JSON.parse(await Risuai.pluginStorage.getItem(latest));
-        loadIntoEditor(parsed);
+        loadIntoEditor(parsed, ''); // 이 백업은 기본 판(⚙simcore)의 것 — 프로필 백업은 [🔀 프로필 → ↶ 되돌리기] (v1.24.0)
         const when = new Date(parseInt(latest.slice(prefix.length), 10)).toLocaleString();
-        rep.innerHTML = `<span class="status-ok">✓ ${escapeText(when)} 백업을 편집기에 불러옴 — 내용 확인 후 [캐릭터에 적용]을 눌러야 적용됨 (백업 ${keys.length}개 보유)</span>`;
+        rep.innerHTML = `<span class="status-ok">✓ ${escapeText(when)} 백업을 편집기에 불러옴 — 내용 확인 후 [캐릭터에 적용]을 눌러야 적용됨 (백업 ${keys.length}개 보유)${profileList.length ? ' · 기본 판으로 들어가요' : ''}</span>`;
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">백업 해석 실패: ${escapeText(e.message)}</span>`;
       }
@@ -46473,15 +47110,27 @@ count(목록)  has(목록, "항목")</pre>
       }
       char.globalLore = char.globalLore.filter((l) => l.comment !== SCHEMA_LORE_COMMENT);
       char.triggerscript = (char.triggerscript || []).filter((t) => t.comment !== LUA_BRIDGE_COMMENT);
+      // 🔀 프로필(⚙simcore:이름)은 남긴다 (v1.24.0) — 키가 절대 안 걸리는 꺼진 항목이라 무해하고, 기본 판을 다시 설치하면 그대로 이어진다
+      const keptProfiles = char.globalLore.filter((l) => profileMod.profileNameOf(l) != null).length;
       await Risuai.setCharacter(char);
       charKey = null; session = null; schema = null;
       await loadForCurrentChar();
       renderPanel();
+      if (keptProfiles) {
+        const rep = document.getElementById('sc-schema-report');
+        if (rep) rep.innerHTML = `<span class="status-ok">✓ 제거 완료 — 🔀 프로필 ${keptProfiles}개는 로어북에 남겨 뒀어요 (꺼진 항목이라 무해 · 기본 판을 다시 설치하면 그대로 이어져요. 지우려면 리수 로어북에서 ⚙simcore:… 항목을)</span>`;
+      }
     };
     document.getElementById('sc-copy').onclick = async () => {
       const char = await Risuai.getCharacter();
       const lore = (char?.globalLore || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
       if (!lore) return;
+      // 🔀 프로필이 있으면 이 채팅이 도는 판의 설치본 (v1.24.0) — 다른 판은 [🔀 프로필 → 편집기에 열기]
+      if (profileList.length) {
+        const t = editorTargetNow();
+        if (t.schema) { loadIntoEditor(t.schema, t.profile); editorChatProfile = currentProfile ?? ''; renderPanel(); }
+        return;
+      }
       try { loadIntoEditor(JSON.parse(lore.content)); renderPanel(); } catch {}
     };
     const tplSelect = document.getElementById('sc-template');
@@ -46538,7 +47187,7 @@ count(목록)  has(목록, "항목")</pre>
       if (!schema) { rep.innerHTML = '<span class="status-bad">먼저 스키마를 캐릭터에 설치해야 함</span>'; return; }
       const char = await Risuai.getCharacter();
       if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
-      installLuaBridgeOn(char, schema);
+      installLuaBridgeOn(char, bridgeSetCurrent()); // 🔀 프로필이 있으면 판마다 (v1.24.0)
       await Risuai.setCharacter(char);
       rep.innerHTML = '<span class="status-ok">✓ 루아 브리지 설치/갱신 완료 — 이제 플러그인 설정에서 aux_model_mode를 lua로 바꾸면 '
         + '다음 턴부터 루아 경로(axLLM)로 변수 갱신이 돈다. 캐릭터의 LLA(low level access) 체크는 자동으로 켰지만, '
@@ -46587,6 +47236,8 @@ count(목록)  has(목록, "항목")</pre>
         //    (상태만 되돌리고 스키마는 그대로 두면 "가져왔는데 아무것도 안 변한다"가 된다)
         const saved = data.schema && validateSchema(data.schema).ok ? data.schema : null;
         let schemaNote = '';
+        // 🔀 세이브가 다른 판의 것이면 그 판으로 먼저 (v1.24.0) — 아래 대조·남는 변수 알림이 그 판 기준이 된다
+        { const sp = savedProfOf(data); if (session && sp !== null && sp !== (currentProfile ?? '')) await applyProfileInPlace(sp); }
         if (!session) {
           if (!saved) {
             rep.innerHTML = '<span class="status-bad">이 캐릭터에 스키마가 없어서 가져올 수 없음 — 먼저 [편집 작업공간]에서 스키마를 설치해줘'
@@ -46597,22 +47248,24 @@ count(목록)  has(목록, "항목")</pre>
           if (!r.ok || !session) {
             rep.innerHTML = `<span class="status-bad">세이브의 스키마 설치 실패: ${escapeText(r.msg || '세션 생성 안 됨')}</span>`; return;
           }
-          if (editor) loadIntoEditor(saved); // 봇 편집 탭도 복원본을 보게
+          if (editor) loadIntoEditor(saved, ''); // 봇 편집 탭도 복원본을 보게
           schemaNote = ' · 동봉 스키마 설치됨';
-        } else if (saved && JSON.stringify(saved) !== JSON.stringify(schema)) {
+        } else if (saved && sig(saved) !== sig((savedProfOf(data) !== null ? installedSchemaFor(savedProfOf(data)) : schema) ?? {})) {
+          // 🔀 프로필 판의 세이브면 그 판의 설치본과 댄다 (v1.24.0 — 이 채팅의 판과 대면, 또 기본 판으로 복원하면 덧칠 얹은 판이 기본 판을 덮었다)
           // 확인은 이 패널 안의 체크박스로 받는다.
           // (호스트의 alertConfirm은 메인 앱 DOM에 뜨는데 이 패널이 fullscreen으로 그 위를 덮고 있어서
           //  화면에 보이지도, 누를 수도 없다 — 실제로 늘 '취소'로 떨어져 스키마가 복원되지 않았다)
           const yes = !!document.getElementById('sc-import-schema')?.checked;
           if (yes) {
-            const r = await installSchemaToCurrentChar(saved);
+            const sp = savedProfOf(data) || '';
+            const r = await installSchemaToCurrentChar(saved, sp);
             if (!r.ok || !session) {
               rep.innerHTML = `<span class="status-bad">세이브의 스키마 설치 실패: ${escapeText(r.msg || '세션 생성 안 됨')}</span>`; return;
             }
             // 스키마를 통째로 되돌렸으니 [봇 편집]의 변수·규칙·이벤트도 복원본으로 교체.
             // (편집기가 옛 내용을 들고 있으면 다음 [설치]에서 방금 복원한 걸 다시 날린다)
-            if (editor) loadIntoEditor(saved);
-            schemaNote = ' · 동봉 스키마로 복원됨 (편집기 작업본도 갱신)';
+            if (editor) loadIntoEditor(saved, sp);
+            schemaNote = sp ? ` · 동봉 스키마로 🔀 '${sp}' 프로필 복원됨 (편집기 작업본도 갱신)` : ' · 동봉 스키마로 복원됨 (편집기 작업본도 갱신)';
           } else {
             // 스키마를 안 바꾸면 세이브의 변수 중 현재 스키마에 없는 것은 갈 곳이 없다.
             // (상태는 reconcileState로 정합화되므로 깨지진 않지만, 값이 무시된다는 건 알려야 한다)
@@ -46625,6 +47278,9 @@ count(목록)  has(목록, "항목")</pre>
         }
 
         // ② 상태: 스키마 설치로 세션이 새로 만들어졌을 수 있으므로 반드시 이 뒤에 적용
+        // 🔀 세이브의 판으로 먼저 (v1.24.0) — 가져오기의 정합이 다른 판 스키마로 돌면 그 판에만 있는 선택지 값이 깎인다.
+        // 위에서 스키마를 설치했으면 재로드가 이 채팅의 옛 스냅샷으로 판을 다시 골랐으니 여기서 한 번 더
+        { const sp = savedProfOf(data); if (session && sp !== null && sp !== (currentProfile ?? '')) await applyProfileInPlace(sp); }
         const chaIdx = await Risuai.getCurrentCharacterIndex();
         const chatIdx = await Risuai.getCurrentChatIndex();
         const anchor = await lastCharIndex(chaIdx, chatIdx);
@@ -46680,8 +47336,10 @@ count(목록)  has(목록, "항목")</pre>
         a.download = `simcore-bundle-${data.name.replace(/[^\w가-힣-]/g, '_')}.json`;
         a.click();
         URL.revokeObjectURL(a.href);
+        const profN = data.lorebook.filter((l) => profileMod.profileNameOf(l) != null).length; // 🔀 (v1.24.0)
         rep.innerHTML = `<span class="status-ok">✓ 내보내기 완료 — 로어북 ${data.lorebook.length}개 · 정규식 ${data.regex.length}개`
-          + `${hasSchema ? ' · ⚙simcore 동봉' : ' · <b>⚠ ⚙simcore 없음 — 스키마를 먼저 [설치/업데이트] 하고 다시 내보내세요</b>'}</span>`;
+          + `${hasSchema ? ' · ⚙simcore 동봉' : ' · <b>⚠ ⚙simcore 없음 — 스키마를 먼저 [설치/업데이트] 하고 다시 내보내세요</b>'}`
+          + `${profN ? ` · 🔀 프로필 ${profN}개 동봉` : ''}</span>`;
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
       }
@@ -46717,9 +47375,17 @@ count(목록)  has(목록, "항목")</pre>
             if (!v.ok) schemaWarn = ` · <b>⚠ 동봉 ⚙simcore가 검증 실패(${v.errors.length}건)</b> — 적용하면 시스템이 꺼집니다`;
           } catch { schemaWarn = ' · <b>⚠ 동봉 ⚙simcore JSON 손상</b> — 적용하면 시스템이 꺼집니다'; }
         } else if (schema) schemaWarn = ' · <b>⚠ 번들에 ⚙simcore가 없어 현재 시스템 로어북이 제거</b>됩니다';
+        // 🔀 유저가 만든 프로필 중 번들에 없는 것은 남는다 (v1.24.0)
+        let keepN = 0;
+        try {
+          const c0 = await Risuai.getCharacter();
+          const inc = new Set(data.lorebook.map((l) => l && l.comment));
+          keepN = (c0?.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null && !inc.has(l.comment)).length;
+        } catch { keepN = 0; }
         rep.innerHTML = `<span class="status-warn">'${escapeText(data.name)}' — 로어북 ${data.lorebook.length}개`
           + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}${schemaWarn}.<br>`
           + '이 캐릭터의 <b>로어북 전체와 정규식이 교체</b>됩니다 (이전 상태는 자동 백업). '
+          + (keepN ? `🔀 이 캐릭터에서 만든 프로필 ${keepN}개는 남겨요. ` : '')
           + '[번들 가져와 교체]를 한 번 더 누르면 적용해요 (60초 안에).</span>';
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">번들 읽기 실패: ${escapeText(e.message)}</span>`;
@@ -46758,23 +47424,27 @@ count(목록)  has(목록, "항목")</pre>
         // "변수가 하나도 정의되지 않음"으로 거부 — 유저가 세이브 가져오기로 우회해야 했다.
         if (bundled) {
           const want = sig(bundled);
-          for (let i = 0; i < 3 && sig(schema ?? {}) !== want; i++) {
+          const gotBase = () => sig((profileList.length ? baseSchema : schema) ?? {}); // 🔀 이 채팅이 프로필이면 schema는 덧칠 얹은 판 (v1.24.0)
+          for (let i = 0; i < 3 && gotBase() !== want; i++) {
             await new Promise((res) => setTimeout(res, 350));
             charKey = null;
             await loadForCurrentChar();
           }
           // 편집기 작업본도 번들 스키마로 — 세이브 가져오기와 같은 규약. 안 하면 빈/옛
           // 작업본이 더티 배너로 남아 [지금 적용]이 방금 넣은 스키마를 도로 지우려 든다.
-          if (editor) loadIntoEditor(bundled);
+          if (editor) loadIntoEditor(bundled, '');
         }
         // 브리지 재굽기 (v1.14.6) — 번들이 스키마를 바꿨는데 브리지는 옛 템플릿이면 옛 선택지·옛 변수로 보조를 부른다
         if (bundled) {
           try {
             const c2 = await Risuai.getCharacter();
-            if (c2 && hasLuaBridge(c2) && bridgeIsStale(c2, bundled)) { installLuaBridgeOn(c2, bundled); await Risuai.setCharacter(c2); console.log('[simcore] 번들 교체 뒤 루아 브리지 다시 구움'); }
+            const set = c2 ? bridgeSetForChar(c2) : null; // 🔀 프로필이 있으면 판마다 (v1.24.0)
+            if (c2 && set && hasLuaBridge(c2) && bridgeIsStale(c2, set)) { installLuaBridgeOn(c2, set); await Risuai.setCharacter(c2); console.log('[simcore] 번들 교체 뒤 루아 브리지 다시 구움'); }
           } catch (e) { console.log('[simcore] 번들 교체 뒤 브리지 재굽기 실패:', e.message); }
         }
-        const settled = bundled && sig(schema ?? {}) === sig(bundled);
+        const settled = bundled && sig((profileList.length ? baseSchema : schema) ?? {}) === sig(bundled);
+        const profKept = (char.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null).length;
+        const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
         rep.innerHTML = `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
           + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개로 교체` : ''}`
           + `${Array.isArray(data.regexAdd) && data.regexAdd.length ? ` · 정규식 ${data.regexAdd.length}개 덧붙임 (카드 정규식 ${(char.customscript || []).length - data.regexAdd.length}개 유지)` : ''}`
@@ -46782,7 +47452,8 @@ count(목록)  has(목록, "항목")</pre>
             : bundled ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요'
               : data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT)
                 ? ' · ⚠ 동봉 ⚙simcore가 검증을 못 넘어 시스템이 꺼졌습니다 — [교체 되돌리기]로 복구'
-                : ' · ⚠ 번들에 ⚙simcore가 없어 시스템 로어북이 제거되었습니다 — [교체 되돌리기]로 복구'}</span>`;
+                : ' · ⚠ 번들에 ⚙simcore가 없어 시스템 로어북이 제거되었습니다 — [교체 되돌리기]로 복구'}`
+          + `${profKept ? ` · 🔀 프로필 ${profKept}개` : ''}${profBroken.length ? ` · ⚠ 새 기본 판에 못 얹는 프로필 ${profBroken.length}개(${profBroken.slice(0, 3).map(escapeText).join(', ')}) — 그 판의 채팅은 기본 판으로 돌아요` : ''}</span>`;
         renderPanel();
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">교체 실패: ${escapeText(e.message)}</span>`;
@@ -46807,7 +47478,7 @@ count(목록)  has(목록, "항목")</pre>
         // 복구본에 ⚙simcore가 있으면 편집기 작업본도 맞춘다 (적용 경로와 같은 규약)
         try {
           const entry = (bk.lorebook || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
-          if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok && editor) loadIntoEditor(p); }
+          if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok && editor) loadIntoEditor(p, ''); }
         } catch { /* 복구본 스키마 손상 — 편집기는 그대로 */ }
         rep.innerHTML = `<span class="status-ok">✓ 교체 전 상태로 복구 — 로어북 ${(bk.lorebook || []).length}개 · 정규식 ${(bk.regex || []).length}개</span>`;
         renderPanel();
@@ -46822,18 +47493,24 @@ count(목록)  has(목록, "항목")</pre>
   let editorChaId = null;      // 편집기 내용이 어느 캐릭터 기준인지
   let editorLoadedSig = null;  // 편집기에 불러온 직후, 편집기가 빈 칸을 채운 뒤의 서명 (이후 손댔는지 판정용)
   let editorBaseSig = null;    // 그때 불러온 원본의 서명 (설치본을 불러왔는지 판정용 — 위와 따로 둔다, v1.21.4)
+  // 🔀 프로필 (v1.24.0) — 편집기가 고치는 판. [캐릭터에 적용]은 이 판에만 들어간다 (전엔 "지금 채팅의 판"이 받아서,
+  // 검사 판을 열어 둔 채 마법사 채팅으로 옮겨 적용하면 마법사 판이 검사 판으로 덮였다)
+  let editorProfile = '';      // '' = 기본 판
+  let editorChatProfile = '';  // 편집기를 마지막으로 맞출 때 이 채팅의 판 — 채팅이 판을 바꿨는지 알려고
   const BLANK_SCHEMA = () => ({
     simcore: '0.1', meta: { name: '새 시뮬레이션' }, vars: [], statusUI: { mode: 'auto', groups: [] },
   });
   // 스키마 비교 서명 — 모듈 팩(origin:'module')은 걷어내고 잰다 (v1.2.3): 저장본에 안 실리는
   // 손님이라, 세면 설치 되읽기·더티 판정이 모듈 팩 봇에서 영영 안 맞는다 (실사고).
+  // 키 순서·편집기 빈 칸은 안 본다 (v1.24.0) — 프로필은 기본 판에 덧칠을 얹어 만드는데, 얹은 판은 기본 판의 키 순서·모양을 따라
+  // 편집기 작업본(빈 칸을 채운 것)과 글자로는 늘 달라 "반영 안 된 변경" 배너가 안 꺼졌다. 빈 칸 채우기는 profile.shapeFill = editor normalize
   const sig = (o) => {
     try {
       const c = JSON.parse(JSON.stringify(o));
       if (c && c.assets && Array.isArray(c.assets.packs)) {
         c.assets.packs = c.assets.packs.filter((p) => !p || p.origin !== 'module');
       }
-      return JSON.stringify(c);
+      return profileMod.shapeSig(c);
     } catch { return null; }
   };
   const editorSig = () => { try { return editor ? sig(editor.getSchema()) : null; } catch { return null; } };
@@ -46841,17 +47518,29 @@ count(목록)  has(목록, "항목")</pre>
   function editorIsDirty() {
     return !!editor && editorLoadedSig !== null && editorSig() !== editorLoadedSig;
   }
+  /** 🔀 이 채팅이 도는 판의 설치본과 이름 — 편집기가 따라갈 기준 (프로필 없는 봇은 예전 그대로 schema) */
+  function editorTargetNow() {
+    if (!profileList.length) return { profile: '', schema };
+    const p = currentProfile ?? '';
+    const s = installedSchemaFor(p);
+    return s ? { profile: p, schema: s } : { profile: '', schema: baseSchema ?? schema };
+  }
+  /** 🔀 편집기가 고치는 판의 설치본 (더티 배너의 기준). 그 판이 없어졌으면 null */
+  function editorInstalledRef() {
+    if (!editorProfile) return profileList.length ? (baseSchema ?? schema) : schema;
+    return installedSchemaFor(editorProfile);
+  }
   /** 편집기 내용이 설치본과 다른가 (더티 배너) — 손댔거나, 설치본이 아닌 것을 불러왔을 때만.
    *  편집기는 실을 때 빈 칸(statusUI.groups·rules.events …)을 채우므로 편집기 내용과 설치본을 글자로 대면 늘 다르다 (v1.21.4 —
    *  생성기 봇(베리디아)은 번들을 넣을 때마다 [지금 적용]을 한 번 더 눌러야 배너가 사라졌다. 적용은 이미 끝난 뒤였다). */
   function editorDiffersFromInstalled() {
     if (!editor) return false;
-    const installed = sig(schema ?? BLANK_SCHEMA());
+    const installed = sig(editorInstalledRef() ?? BLANK_SCHEMA());
     if (editorSig() === installed) return false;
     return editorIsDirty() || editorBaseSig !== installed;
   }
-  /** 편집기에 스키마를 싣고 기준선을 갱신 */
-  function loadIntoEditor(next) {
+  /** 편집기에 스키마를 싣고 기준선을 갱신. prof를 주면 편집기가 고치는 판도 그것으로 (🔀 v1.24.0) */
+  function loadIntoEditor(next, prof) {
     // 캐릭터가 바뀌었으면 편집기를 새로 만든다 (v1.16.3) — 인스턴스가 전역이라 캐릭터별 상태(캐릭터 정보 캐시·보낼 것 선택·설정집·
     // 대화·작업 내역·접힘)가 이전 봇 것으로 남던 것. 사이드바가 가리키는 층은 그대로 복원한다.
     if (editor && editorChaId !== null && editorChaId !== currentChaId) {
@@ -46865,6 +47554,7 @@ count(목록)  has(목록, "항목")</pre>
     const copy = JSON.parse(JSON.stringify(next));
     editor.setSchema(copy);
     editorChaId = currentChaId;
+    if (typeof prof === 'string') editorProfile = prof;
     editorBaseSig = sig(copy);
     editorLoadedSig = editorSig();
   }
@@ -46876,29 +47566,44 @@ count(목록)  has(목록, "항목")</pre>
    *   [지금 적용]이 runInstall을 부르는데, 스켈레톤 안이면 바깥에서 참조가 끊겨
    *   "runInstall is not defined"로 죽는다 (실사고 — 번들 첫 실기에서 발견).
    */
-  async function installSchemaToCurrentChar(parsed) {
+  async function installSchemaToCurrentChar(parsed, prof = '', meta = null) {
     const char = await Risuai.getCharacter();
     if (!char) return { ok: false, msg: '캐릭터가 선택되지 않음' };
     char.globalLore = char.globalLore || [];
-    const existing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
-    const content = JSON.stringify(parsed);
     let backedUp = false;
-    if (existing && existing.content !== content) {
-      try {
-        const bk = `sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`;
-        await Risuai.pluginStorage.setItem(bk, existing.content);
-        const keys = (await Risuai.pluginStorage.keys())
-          .filter((k) => k.startsWith(`sim:schema-backup:${char.chaId ?? char.name}:`)).sort();
-        for (const k of keys.slice(0, -5)) await Risuai.pluginStorage.removeItem(k);
-        backedUp = true;
-      } catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
+    if (prof) {
+      // 🔀 프로필 (v1.24.0) — 기본 판에서 달라진 부분만 ⚙simcore:<이름>에. 기본 판은 손대지 않는다
+      const baseEntry = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      if (!baseEntry) return { ok: false, msg: '기본 판(⚙simcore)이 없어 프로필을 저장할 수 없어요 — 기본 판부터 설치하세요' };
+      let base;
+      try { base = JSON.parse(baseEntry.content); } catch (e) { return { ok: false, msg: '기본 판 JSON 손상: ' + e.message }; }
+      const comment = profileMod.profileComment(prof);
+      const existing = char.globalLore.find((l) => l.comment === comment);
+      let keep = { desc: '', aka: [] };
+      if (existing) { const pe = profileMod.parseEntry(existing.content, base); if (!pe.error) keep = { desc: pe.desc, aka: pe.aka }; }
+      if (meta && typeof meta.desc === 'string') keep.desc = meta.desc;
+      const content = profileMod.entryContent(profileMod.diffSchema(base, parsed), keep);
+      if (existing && existing.content !== content) backedUp = await backupProfileEntry(char, existing, '수정');
+      if (existing) existing.content = content;
+      else char.globalLore.push(schemaLoreEntry(comment, content));
+    } else {
+      const existing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      const content = JSON.stringify(parsed);
+      if (existing && existing.content !== content) {
+        try {
+          const bk = `sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`;
+          await Risuai.pluginStorage.setItem(bk, existing.content);
+          const keys = (await Risuai.pluginStorage.keys())
+            .filter((k) => k.startsWith(`sim:schema-backup:${char.chaId ?? char.name}:`)).sort();
+          for (const k of keys.slice(0, -5)) await Risuai.pluginStorage.removeItem(k);
+          backedUp = true;
+        } catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
+      }
+      if (existing) existing.content = content;
+      else char.globalLore.push(schemaLoreEntry(SCHEMA_LORE_COMMENT, content));
     }
-    if (existing) existing.content = content;
-    else char.globalLore.push({
-      comment: SCHEMA_LORE_COMMENT, key: ' __simcore_never__', secondkey: '',
-      insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
-    });
-    if (hasLuaBridge(char)) installLuaBridgeOn(char, parsed); // 브리지 자동 동기화 (허용 목록/변수 변경 반영)
+    // 브리지 자동 동기화 (허용 목록/변수 변경 반영) — 프로필이 있으면 판마다 (v1.24.0)
+    if (hasLuaBridge(char)) { const set = bridgeSetForChar(char); if (set) installLuaBridgeOn(char, set); }
     await Risuai.setCharacter(char);
     charKey = null;
     await loadForCurrentChar();
@@ -46914,15 +47619,27 @@ count(목록)  has(목록, "항목")</pre>
     // "여전히 미반영"으로 되그려져 **적용 버튼이 안 먹히는 것처럼 보인다** (실사고 — 배너의
     // [지금 적용]만 안 먹히는 느낌이고 나중에 누른 [캐릭터에 적용]은 된다는 신고. 시차다).
     // 우리가 무엇을 썼는지는 아니까, 되읽은 것이 그것인지 확인하고 아니면 잠깐 뒤 다시 읽는다.
+    // 🔀 대조는 쓴 그 판과 (v1.24.0) — schema는 "이 채팅의 판"이라 다른 판을 고쳤거나 이 채팅이 프로필이면 영영 안 맞는다
     const want = sig(parsed);
-    for (let i = 0; i < 3 && sig(schema ?? {}) !== want; i++) {
+    const got = () => sig((prof ? installedSchemaFor(prof) : (profileList.length ? baseSchema : schema)) ?? {});
+    for (let i = 0; i < 3 && got() !== want; i++) {
       console.log('[simcore] 설치 되읽기 불일치 — 재시도', i + 1);
       await new Promise((res) => setTimeout(res, 350));
       charKey = null;
       await loadForCurrentChar();
     }
-    if (sig(schema ?? {}) !== want) console.log('[simcore] ⚠ 설치 되읽기가 계속 옛 스키마 — 리수 반영 지연');
-    return { ok: true, backedUp };
+    if (got() !== want) console.log('[simcore] ⚠ 설치 되읽기가 계속 옛 스키마 — 리수 반영 지연');
+    return { ok: true, backedUp, brokenProfiles: profileList.filter((p) => !p.ok).map((p) => p.name) };
+  }
+  /** 🔀 프로필 항목을 바꾸기 전에 남긴다 (v1.24.0) — 캐릭터당 최근 8개, [↶ 되돌리기]가 한 단계씩 쓴다 */
+  async function backupProfileEntry(char, entry, why, extra = {}) {
+    try {
+      const pre = `sim:profile-backup:${char.chaId ?? char.name}:`;
+      await Risuai.pluginStorage.setItem(pre + Date.now(), JSON.stringify({ comment: entry.comment, content: entry.content, why, ...extra }));
+      const keys = (await Risuai.pluginStorage.keys()).filter((k) => k.startsWith(pre)).sort();
+      for (const k of keys.slice(0, -8)) await Risuai.pluginStorage.removeItem(k);
+      return true;
+    } catch (e) { console.log('[simcore] 프로필 백업 실패:', e.message); return false; }
   }
   // 적용은 두 곳에서 부른다 (v0.78): [편집 작업공간]의 [캐릭터에 적용] 버튼과,
   // 편집 도구 화면 위에 뜨는 더티 배너의 [지금 적용]. 예전엔 작업공간 전용이라
@@ -46951,13 +47668,18 @@ count(목록)  has(목록, "항목")</pre>
         + '</div>';
       return;
     }
-    const r = await installSchemaToCurrentChar(parsed);
+    const prof = editorProfile; // 🔀 편집기가 고치는 판에만 (v1.24.0)
+    const r = await installSchemaToCurrentChar(parsed, prof);
     if (!r.ok) { rep.innerHTML = `<span class="status-bad">${escapeText(r.msg)}</span>`; return; }
     // 방금 설치한 내용 = 이 캐릭터의 설치본 → 편집기 기준선을 여기로 맞춘다 (더 이상 dirty 아님)
     editorChaId = currentChaId;
     editorBaseSig = sig(parsed);
     editorLoadedSig = editorSig();
-    rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
+    const where = prof ? ` — 🔀 '${escapeText(prof)}' 프로필에 (기본 판에서 달라진 부분만 저장)` : (profileList.length ? ' — 기본 판에' : '');
+    const broken = !prof && r.brokenProfiles?.length
+      ? ` · ⚠ 프로필 ${r.brokenProfiles.length}개(${r.brokenProfiles.slice(0, 3).map(escapeText).join(', ')})가 새 기본 판에 못 얹혀요 — 그 판을 쓰는 채팅은 기본 판으로 돌아요` : '';
+    rep.innerHTML = `<span class="status-ok">✓ 설치 완료${where}${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}`
+      + `${r.backedUp ? (prof ? ' — 이전 판은 자동 백업됨 ([🔀 프로필 → ↶ 되돌리기])' : ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)') : ''}${broken}</span>`;
     renderPanel();
   }
   // 편집기 위층(✨ AI에게 맡기기)에 동봉할 봇 컨텍스트.
@@ -46965,7 +47687,7 @@ count(목록)  has(목록, "항목")</pre>
   async function getBotContextForEditor() {
     const char = await Risuai.getCharacter();
     if (!char) throw new Error('현재 선택된 캐릭터를 찾지 못했습니다.');
-    const all = (char.globalLore || []).filter((l) => l.comment !== SCHEMA_LORE_COMMENT);
+    const all = (char.globalLore || []).filter((l) => !profileMod.isSchemaLore(l)); // 프로필 항목도 (v1.24.0)
     // 📁 폴더 (v1.17.0) — 리수 폴더 = mode:'folder' 항목(key가 폴더 id), 자식은 folder: <그 key>. 봇 제작이 "리수에 있는 폴더"로 보여 주고
     // 그 key로 내보내면 같은 캐릭터로 가져올 때 그 폴더 안으로 들어간다. 폴더 항목은 로어북 목록에서 뺀다(본문이 없다).
     const folders = all.filter((l) => l.mode === 'folder').map((l) => ({ key: String(l.key || ''), name: l.comment || '' })).filter((f) => f.key);
@@ -46981,7 +47703,10 @@ count(목록)  has(목록, "항목")</pre>
 
   function ensureEditor() {
     if (editor) return;
-    const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
+    // 🔀 이 채팅이 도는 판의 설치본으로 시작 (v1.24.0 — 못 얹는 프로필도 얹은 모양 그대로: 고치러 연다). 프로필 없는 봇은 예전 그대로 schema
+    const target = editorTargetNow();
+    editorProfile = target.profile; editorChatProfile = currentProfile ?? '';
+    const base = target.schema ? JSON.parse(JSON.stringify(target.schema)) : BLANK_SCHEMA();
     // 모듈 매니페스트로 병합된 팩은 편집·저장 대상이 아니다 — 모듈이 관리한다.
     // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
     if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
@@ -47102,10 +47827,17 @@ count(목록)  has(목록, "항목")</pre>
    */
   function syncEditorToChar() {
     if (!editor) return;
-    if (editorChaId !== currentChaId) { loadIntoEditor(schema ?? BLANK_SCHEMA()); return; }
-    if (!editorIsDirty() && sig(schema ?? BLANK_SCHEMA()) !== editorBaseSig) {
-      loadIntoEditor(schema ?? BLANK_SCHEMA());
+    const target = editorTargetNow();
+    if (editorChaId !== currentChaId) { loadIntoEditor(target.schema ?? BLANK_SCHEMA(), target.profile); editorChatProfile = currentProfile ?? ''; return; }
+    if (editorIsDirty()) return;
+    // 🔀 프로필 (v1.24.0) — 손대지 않은 편집기는 채팅이 판을 바꾸면 따라간다. [편집기에 열기]로 일부러 연 다른 판은
+    // 채팅이 그대로인 동안 붙잡아 둔다 (늘 "이 채팅의 판"과 대면 열자마자 되돌아간다)
+    if (profileList.length && (currentProfile ?? '') !== editorChatProfile) {
+      loadIntoEditor(target.schema ?? BLANK_SCHEMA(), target.profile); editorChatProfile = currentProfile ?? ''; return;
     }
+    const mine = editorInstalledRef();
+    if (editorProfile && !mine) { loadIntoEditor(target.schema ?? BLANK_SCHEMA(), target.profile); editorChatProfile = currentProfile ?? ''; return; } // 고치던 판이 없어졌다
+    if (sig(mine ?? BLANK_SCHEMA()) !== editorBaseSig) loadIntoEditor(mine ?? BLANK_SCHEMA());
   }
 
   function escapeText(s) {
@@ -47154,6 +47886,284 @@ count(목록)  has(목록, "항목")</pre>
     }
   }
 
+  // ── 🔀 프로필 화면 (v1.24.0) ─────────────────────────────
+  // 현황 [새 시작] 카드 = 이 채팅의 판 고르기 · 작업공간 [🔀 프로필] 카드 = 만들기·편집기에 열기·이름·지우기·되돌리기.
+  // 확인은 패널 안 두 번 누르기 (규칙 #6 — 패널이 떠 있는 동안 리수 alert는 안 보이고 confirm은 조용히 '취소'가 된다)
+  let profileArm = null; // 현황: 진행 중 채팅의 판 바꾸기 { name, until }
+  const profUi = { edit: null, editName: '', editDesc: '', delArm: null, openArm: null, newName: '', newDesc: '', busy: false };
+  const profSay = (cls, html) => { const r = document.getElementById('sc-profile-report'); if (r) r.innerHTML = `<span class="${cls}">${html}</span>`; };
+  const profTaken = (except) => profileList.filter((p) => p.name !== except).flatMap((p) => [p.name, ...(p.aka || [])]);
+  const mkBtn = (text, cls, onclick) => { const b = document.createElement('button'); b.textContent = text; if (cls) b.className = cls; b.onclick = onclick; return b; };
+  const mkInput = (value, placeholder, oninput) => {
+    const i = document.createElement('input'); i.type = 'text'; i.value = value; i.placeholder = placeholder;
+    i.oninput = () => oninput(i.value); return i;
+  };
+
+  function renderProfileChips(div) {
+    if (!session || !profileList.length || currentProfile === null) { div.style.display = 'none'; div.innerHTML = ''; return; }
+    div.style.display = '';
+    const cur = currentProfile ?? '';
+    const fresh = session.current?.meta?.turn === 0 && !session.current?.meta?.setupDone;
+    const armOn = profileArm && Date.now() < profileArm.until ? profileArm.name : null;
+    const items = [{ name: '', label: '기본', desc: '', bad: false },
+      ...profileList.map((p) => ({ name: p.name, label: p.name, desc: p.desc, bad: !p.ok }))];
+    div.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'muted';
+    head.innerHTML = '<b>🔀 이 채팅의 판</b> — ' + (fresh
+      ? '시작 전이라 바로 바뀌어요. 새 채팅도 마지막으로 고른 판으로 시작해요.'
+      : '진행 중에 바꾸면 이름이 같은 변수는 값이 이어지고 새 변수는 시작값에서 출발해요. 지난 메시지의 상태창은 그때 판 그대로예요.');
+    div.appendChild(head);
+    const row = document.createElement('div');
+    row.className = 'sc-profile-row';
+    for (const it of items) {
+      const on = it.name === cur;
+      const armed = !on && armOn === it.name;
+      const b = mkBtn((on ? '✓ ' : '') + it.label + (it.bad ? ' ⚠' : '') + (armed ? ' — 한 번 더 누르면 바꿔요' : ''), on ? 'primary' : '', async () => {
+        if (on) return;
+        if (turnBusy) { head.textContent = TURN_BUSY_MSG; return; }
+        if (!fresh && !armed) { profileArm = { name: it.name, until: Date.now() + 8000 }; renderPanel(); return; }
+        profileArm = null;
+        b.disabled = true;
+        try { await switchProfile(it.name); } catch (e) { console.log('[simcore] 판 바꾸기 실패:', e.message); }
+        syncEditorToChar(); // 손대지 않은 편집기는 새 판을 따라간다 (패널이 열린 채라 openPanel의 맞추기를 기다리지 않는다)
+        renderPanel();
+      });
+      if (it.desc) b.title = it.desc;
+      row.appendChild(b);
+    }
+    div.appendChild(row);
+    const curItem = profileMod.findProfile(profileList, cur);
+    if (curItem?.desc) { const d = document.createElement('div'); d.className = 'muted'; d.textContent = curItem.desc; div.appendChild(d); }
+  }
+
+  function renderProfileManage() {
+    const div = document.getElementById('sc-profile-manage');
+    if (!div) return;
+    const editHead = document.getElementById('sc-edit-prof');
+    if (editHead) {
+      const show = !!editor && (profileList.length > 0 || !!editorProfile);
+      editHead.style.display = show ? '' : 'none';
+      if (show) editHead.textContent = `🔀 편집기가 고치는 판: ${editorProfile || '기본'} — [캐릭터에 적용]은 이 판에만 들어가요`
+        + ((currentProfile ?? '') !== editorProfile ? ` (이 채팅은 '${currentProfile || '기본'}' 판)` : '');
+    }
+    if (!baseSchema) { div.innerHTML = '<span class="muted">기본 판(⚙simcore)을 먼저 설치하면 프로필을 만들 수 있어요.</span>'; return; }
+    const cur = currentProfile ?? '';
+    div.innerHTML = '';
+    const top = document.createElement('div');
+    top.className = 'muted';
+    top.innerHTML = `편집기가 고치는 판: <b>${escapeText(editor ? (editorProfile || '기본') : '(편집기 열기 전 — 이 채팅의 판)')}</b>`
+      + (session ? ` · 이 채팅: <b>${escapeText(cur || '기본')}</b>` : '');
+    div.appendChild(top);
+    const list = document.createElement('div');
+    list.className = 'sc-profile-list';
+    for (const it of [{ base: true, name: '' }, ...profileList]) {
+      const box = document.createElement('div');
+      box.className = 'sc-profile-item';
+      const bits = [];
+      if (it.base) bits.push(`기본 판 · 변수 ${(baseSchema.vars || []).length}개`);
+      else {
+        if (!it.ok) bits.push(`⚠ 못 얹음 — ${it.error || `검증 오류 ${it.errors.length}건`}`);
+        const sum = it.error ? [] : profileMod.summarizeOverlay(baseSchema, it.overlay);
+        bits.push(sum.length ? '덧칠: ' + sum.slice(0, 6).join(' · ') + (sum.length > 6 ? ' …' : '') : '기본 판과 같음');
+        if (it.full) bits.push('통째 스키마로 적혀 있음 (한 번 적용하면 덧칠로 바뀜)');
+      }
+      const head = document.createElement('div');
+      head.innerHTML = `<span class="sc-profile-name">🔀 ${escapeText(it.base ? '기본' : it.name)}</span>`
+        + (session && it.name === cur ? ' <span class="muted">✓ 이 채팅</span>' : '')
+        + (editor && it.name === editorProfile ? ' <span class="muted">✎ 편집기</span>' : '')
+        + (!it.base && it.desc ? ` <span class="muted">— ${escapeText(it.desc)}</span>` : '')
+        + `<div class="muted">${escapeText(bits.join(' · '))}</div>`
+        + (!it.base && !it.ok && it.errors?.length
+          ? `<details class="sc-report-more"><summary>오류 ${it.errors.length}건 보기</summary>${it.errors.slice(0, 12)
+            .map((x) => `<div class="report status-bad">✗ ${escapeText(x.path)} — ${escapeText(x.msg)}</div>`).join('')}</details>` : '');
+      box.appendChild(head);
+      const row = document.createElement('div');
+      row.className = 'row';
+      if (!it.base && profUi.edit === it.name) {
+        row.appendChild(mkInput(profUi.editName, '이름', (v) => { profUi.editName = v; }));
+        row.appendChild(mkInput(profUi.editDesc, '한 줄 설명 (선택)', (v) => { profUi.editDesc = v; }));
+        row.appendChild(mkBtn('저장', 'primary', () => renameProfile(it.name, profUi.editName.trim(), profUi.editDesc)));
+        row.appendChild(mkBtn('취소', '', () => { profUi.edit = null; renderPanel(); }));
+      } else {
+        row.appendChild(mkBtn(profUi.openArm === it.name ? '한 번 더 누르면 작업본을 버리고 열어요' : '편집기에 열기', '', () => openProfileInEditor(it.name)));
+        if (!it.base) {
+          row.appendChild(mkBtn('이름·설명', '', () => { profUi.edit = it.name; profUi.editName = it.name; profUi.editDesc = it.desc || ''; renderPanel(); }));
+          row.appendChild(mkBtn(profUi.delArm === it.name ? '한 번 더 누르면 지워요' : '지우기', 'danger', () => deleteProfile(it.name)));
+        }
+      }
+      box.appendChild(row);
+      list.appendChild(box);
+    }
+    div.appendChild(list);
+    // 새 프로필 — 지금 편집기 작업본으로 (기본 판을 연 채면 기본 판 복제)
+    const full = profileList.length >= profileMod.PROFILE_MAX;
+    const nr = document.createElement('div');
+    nr.className = 'row';
+    nr.appendChild(mkInput(profUi.newName, `새 프로필 이름 (${profileMod.NAME_MAX}자까지)`, (v) => { profUi.newName = v; }));
+    nr.appendChild(mkInput(profUi.newDesc, '한 줄 설명 (선택)', (v) => { profUi.newDesc = v; }));
+    const nb = mkBtn('＋ 지금 작업본을 새 프로필로', 'primary', () => createProfileFromEditor(profUi.newName.trim(), profUi.newDesc));
+    nb.disabled = full || profUi.busy;
+    nr.appendChild(nb);
+    div.appendChild(nr);
+    const hint = document.createElement('div');
+    hint.className = 'muted';
+    hint.textContent = full ? `프로필은 ${profileMod.PROFILE_MAX}개까지예요.`
+      : '작업본 = 편집기에 열린 내용. 기본 판을 연 채로 누르면 기본 판을 복제한 새 판이 생겨요 — 그다음 편집기에서 고치고 [캐릭터에 적용]을 누르면 그 판에만 들어가요.';
+    div.appendChild(hint);
+    const ur = document.createElement('div');
+    ur.className = 'row';
+    const ub = mkBtn('↶ 마지막 프로필 변경 되돌리기', '', () => undoProfileChange());
+    ub.disabled = true;
+    ur.appendChild(ub);
+    div.appendChild(ur);
+    const pre = `sim:profile-backup:${currentChaId}:`;
+    Risuai.pluginStorage.keys().then((keys) => {
+      const n = keys.filter((k) => k.startsWith(pre)).length;
+      ub.disabled = !n;
+      ub.textContent = `↶ 마지막 프로필 변경 되돌리기${n ? ` (보관 ${n}개)` : ' (보관 없음)'}`;
+    }).catch(() => {});
+  }
+
+  /** 편집기에 그 판을 연다 — 반영 안 한 변경이 있으면 두 번 누르기 */
+  function openProfileInEditor(name) {
+    const target = installedSchemaFor(name);
+    if (!target) { profSay('status-bad', '그 판을 찾지 못했어요'); return; }
+    if (editor && editorIsDirty() && profUi.openArm !== name) {
+      profUi.openArm = name;
+      profSay('status-warn', '편집기에 아직 반영 안 한 변경이 있어요 — [편집기에 열기]를 한 번 더 누르면 그 작업을 버리고 열어요.');
+      renderPanel(); return;
+    }
+    profUi.openArm = null;
+    loadIntoEditor(target, name);
+    editorChatProfile = currentProfile ?? ''; // 채팅이 판을 바꾼 게 아니다 — 맞추기가 도로 되돌리지 않게
+    profSay('status-ok', `✓ 편집기에 '${escapeText(name || '기본')}' 판을 열었어요 — 고친 뒤 [캐릭터에 적용]을 누르면 이 판에만 들어가요`
+      + (session && name !== (currentProfile ?? '') ? ' (이 채팅은 다른 판이라 적용해도 여기엔 안 보여요)' : ''));
+    renderPanel();
+  }
+
+  async function createProfileFromEditor(name, desc) {
+    if (profUi.busy) return;
+    const bad = profileMod.checkProfileName(name, profTaken(null));
+    if (bad) { profSay('status-bad', escapeText(bad)); return; }
+    if (profileList.length >= profileMod.PROFILE_MAX) { profSay('status-bad', `프로필은 ${profileMod.PROFILE_MAX}개까지예요`); return; }
+    ensureEditor();
+    const parsed = editor.getSchema();
+    const v = validateSchema(parsed);
+    if (!v.ok) { profSay('status-bad', `작업본에 오류가 ${v.errors.length}건 있어요 — 고친 뒤 다시 (첫 오류: ${escapeText(v.errors[0].msg)})`); return; }
+    profUi.busy = true;
+    try {
+      const r = await installSchemaToCurrentChar(parsed, name, { desc });
+      if (!r.ok) { profSay('status-bad', escapeText(r.msg)); return; }
+      editorProfile = name; editorBaseSig = sig(parsed); editorLoadedSig = editorSig(); editorChatProfile = currentProfile ?? '';
+      profUi.newName = ''; profUi.newDesc = '';
+      profSay('status-ok', `✓ '${escapeText(name)}' 프로필을 만들었어요 — 편집기가 이제 이 판을 고쳐요. 이 채팅에 쓰려면 [현황 → 새 시작]에서 🔀 ${escapeText(name)}`);
+    } finally { profUi.busy = false; renderPanel(); }
+  }
+
+  /** 프로필 항목 하나를 고쳐 쓰고 다시 읽는다 — fn(char, entry, base)가 항목을 고친다. 브리지는 판 세트로 다시 굽는다 */
+  async function editProfileEntry(name, fn) {
+    const char = await Risuai.getCharacter();
+    if (!char?.globalLore) return { ok: false, msg: '캐릭터가 선택되지 않음' };
+    const entry = char.globalLore.find((l) => l.comment === profileMod.profileComment(name));
+    if (!entry) return { ok: false, msg: `'${name}' 프로필 항목을 찾지 못했어요` };
+    const baseEntry = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+    let base = {};
+    try { base = baseEntry ? JSON.parse(baseEntry.content) : {}; } catch { base = {}; }
+    const r = await fn(char, entry, base);
+    if (r && r.ok === false) return r;
+    if (hasLuaBridge(char)) { const set = bridgeSetForChar(char); if (set) installLuaBridgeOn(char, set); }
+    await Risuai.setCharacter(char);
+    charKey = null;
+    await loadForCurrentChar();
+    return { ok: true };
+  }
+  const saveStartProfile = async () => { try { if (startProfileKey) await Risuai.pluginStorage.setItem(startProfileKey, JSON.stringify(startProfile ?? '')); } catch {} };
+  /** 이름이 바뀌면 붙잡고 있던 이름들(새 채팅의 판·편집기)도 따라간다 */
+  const followRename = async (from, to) => {
+    if (startProfile === from) { startProfile = to; await saveStartProfile(); }
+    if (editorProfile === from) editorProfile = to;
+    if (editorChatProfile === from) editorChatProfile = to;
+  };
+
+  async function renameProfile(oldName, newName, desc) {
+    if (profUi.busy) return;
+    if (newName !== oldName) {
+      const bad = profileMod.checkProfileName(newName, profTaken(oldName));
+      if (bad) { profSay('status-bad', escapeText(bad)); return; }
+    }
+    profUi.busy = true;
+    try {
+      const r = await editProfileEntry(oldName, async (char, entry, base) => {
+        const pe = profileMod.parseEntry(entry.content, base);
+        if (pe.error) return { ok: false, msg: `항목이 깨져 있어요 (${pe.error}) — 리수 로어북에서 고치거나 지우세요` };
+        // 옛 이름은 aka로 — 그 이름을 적어 둔 채팅(스냅샷)이 새 이름을 찾아온다
+        const aka = newName !== oldName ? [...pe.aka.filter((x) => x !== newName), oldName] : pe.aka;
+        await backupProfileEntry(char, entry, '이름·설명', newName !== oldName ? { renamedTo: profileMod.profileComment(newName) } : {});
+        entry.comment = profileMod.profileComment(newName);
+        entry.content = profileMod.entryContent(pe.overlay, { desc, aka });
+        return { ok: true };
+      });
+      if (!r.ok) { profSay('status-bad', escapeText(r.msg)); return; }
+      if (newName !== oldName) await followRename(oldName, newName);
+      profUi.edit = null;
+      profSay('status-ok', newName !== oldName
+        ? `✓ '${escapeText(oldName)}' → '${escapeText(newName)}' — 옛 이름을 쓰던 채팅도 새 이름으로 이어져요`
+        : '✓ 설명을 고쳤어요');
+    } finally { profUi.busy = false; renderPanel(); }
+  }
+
+  async function deleteProfile(name) {
+    if (profUi.busy) return;
+    if (profUi.delArm !== name) {
+      profUi.delArm = name;
+      profSay('status-warn', `'${escapeText(name)}' 프로필을 지울까요? [한 번 더 누르면 지워요]를 누르세요. 그 판을 쓰던 채팅은 기본 판으로 돌아요.`);
+      renderPanel(); return;
+    }
+    profUi.delArm = null;
+    profUi.busy = true;
+    try {
+      const r = await editProfileEntry(name, async (char, entry) => {
+        await backupProfileEntry(char, entry, '삭제');
+        char.globalLore = char.globalLore.filter((l) => l !== entry);
+        return { ok: true };
+      });
+      if (!r.ok) { profSay('status-bad', escapeText(r.msg)); return; }
+      if (startProfile === name) { startProfile = ''; await saveStartProfile(); }
+      syncEditorToChar(); // 지운 판을 들고 있던 깨끗한 편집기 → 이 채팅의 판 (손댄 편집기는 그대로 — 배너가 "아직 없는 프로필"이라 알린다)
+      profSay('status-ok', `✓ '${escapeText(name)}' 프로필을 지웠어요 — 그 판을 쓰던 채팅은 기본 판으로 돌아요 (이름은 채팅에 남아서 같은 이름으로 다시 만들면 이어져요). [↶ 되돌리기]로 되살릴 수 있어요`);
+    } finally { profUi.busy = false; renderPanel(); }
+  }
+
+  async function undoProfileChange() {
+    if (profUi.busy) return;
+    profUi.busy = true;
+    try {
+      const char = await Risuai.getCharacter();
+      if (!char) { profSay('status-bad', '캐릭터가 선택되지 않음'); return; }
+      const pre = `sim:profile-backup:${char.chaId ?? char.name}:`;
+      const keys = (await Risuai.pluginStorage.keys()).filter((k) => k.startsWith(pre)).sort();
+      if (!keys.length) { profSay('status-warn', '되돌릴 프로필 변경이 없어요'); return; }
+      const last = keys[keys.length - 1];
+      const bk = JSON.parse(await Risuai.pluginStorage.getItem(last));
+      char.globalLore = char.globalLore || [];
+      if (bk.renamedTo) char.globalLore = char.globalLore.filter((l) => l.comment !== bk.renamedTo);
+      const ex = char.globalLore.find((l) => l.comment === bk.comment);
+      if (ex) ex.content = bk.content; else char.globalLore.push(schemaLoreEntry(bk.comment, bk.content));
+      if (hasLuaBridge(char)) { const set = bridgeSetForChar(char); if (set) installLuaBridgeOn(char, set); }
+      await Risuai.setCharacter(char);
+      await Risuai.pluginStorage.removeItem(last); // 쓴 백업은 소모 — 한 번에 한 단계 (번들 되돌리기와 같은 규약)
+      const oldN = profileMod.profileNameOf({ comment: bk.comment });
+      if (bk.renamedTo) await followRename(profileMod.profileNameOf({ comment: bk.renamedTo }), oldN);
+      charKey = null;
+      await loadForCurrentChar();
+      syncEditorToChar();
+      profSay('status-ok', `✓ 되돌렸어요 — '${escapeText(oldN)}' (${escapeText(bk.why || '변경')} 전으로)`);
+    } catch (e) {
+      profSay('status-bad', `되돌리기 실패: ${escapeText(e.message)}`);
+    } finally { profUi.busy = false; renderPanel(); }
+  }
+
   function renderPanel() {
     buildPanelSkeleton();
     const st = document.getElementById('sc-status');
@@ -47166,12 +48176,12 @@ count(목록)  has(목록, "항목")</pre>
       'no-schema': [`${namedCharacter}에 SimCore 스키마가 없어요.<br>AI 어시스턴트나 JSON 관리자에서 작업본을 연 뒤 [편집 작업공간]에서 설치하세요`, 'status-warn'],
       'parse-error': [`${namedCharacter}의 스키마 JSON 파싱 실패`, 'status-bad'],
       'invalid': [`${namedCharacter}의 스키마 검증 실패`, 'status-bad'],
-      'ok': [`${loadedPrefix}${escapeText(schema?.meta?.name ?? '스키마')} 로드됨`, 'status-ok'],
+      'ok': [`${loadedPrefix}${escapeText(schema?.meta?.name ?? '스키마')} 로드됨${profileList.length && currentProfile !== null ? ` · 🔀 ${escapeText(currentProfile || '기본')}` : ''}`, 'status-ok'],
       'init': ['초기화 중', 'muted'],
     }[panelStatus.state] || ['?', 'muted'];
     const panelTone = (panelStatus.report || []).length
       ? 'bad'
-      : (panelStatus.warnings || []).length || stateMsg[1] === 'status-warn'
+      : (panelStatus.warnings || []).length || stateMsg[1] === 'status-warn' || (panelStatus.state === 'ok' && profileNote)
         ? 'warn'
         : stateMsg[1] === 'status-bad'
           ? 'bad'
@@ -47201,8 +48211,11 @@ count(목록)  has(목록, "항목")</pre>
         + items.map(row).join('') + '</details>';
     };
     st.innerHTML = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`
+      + (panelStatus.state === 'ok' && profileNote ? `<div class="report status-warn">🔀 ${escapeText(profileNote)}</div>` : '')
       + list(panelStatus.report, 'status-bad', '✗')
       + warnList(panelStatus.warnings);
+    // 🔀 프로필 관리 카드 (v1.24.0) — 세션이 없어도(기본 판 미설치) 안내는 그린다
+    try { renderProfileManage(); } catch (e) { console.log('[simcore] 프로필 카드 그리기 실패:', e.message); }
     const warnFold = st.querySelector('details.sc-report-warns');
     if (warnFold) warnFold.addEventListener('toggle', () => { panelWarnOpen = warnFold.open; });
 
@@ -47212,18 +48225,24 @@ count(목록)  has(목록, "항목")</pre>
     for (const warnEl of warnEls) {
       const cur = editorSig();
       if (editor && cur !== null && editorDiffersFromInstalled()) {
+        const inst = editorInstalledRef(); // 🔀 편집기가 고치는 판의 설치본 (v1.24.0)
         let editorSummary = '확인할 수 없어요.';
-        let installedSummary = schema ? '확인할 수 없어요.' : '아직 설치되지 않았어요.';
+        let installedSummary = inst ? '확인할 수 없어요.' : (editorProfile ? '아직 없는 프로필이에요.' : '아직 설치되지 않았어요.');
         try {
           const eS = editor.getSchema();
           editorSummary = `'${eS.meta?.name ?? '이름 없음'}' · 변수 ${(eS.vars || []).length}개`;
-          if (schema) installedSummary = `'${schema.meta?.name ?? '이름 없음'}' · 변수 ${(schema.vars || []).length}개`;
+          if (inst) installedSummary = `'${inst.meta?.name ?? '이름 없음'}' · 변수 ${(inst.vars || []).length}개`;
         } catch {}
+        // 프로필이 있으면 어느 판에 들어가는지 — 이 채팅의 판과 다르면 그것도 (이 채팅엔 안 보인다)
+        const profLine = profileList.length || editorProfile
+          ? `<span><b>판</b> 🔀 ${escapeText(editorProfile || '기본')}${(currentProfile ?? '') !== editorProfile
+            ? ` <span class="muted">(이 채팅은 '${escapeText(currentProfile || '기본')}' — 적용해도 이 채팅엔 안 보여요)</span>` : ''}</span>` : '';
         warnEl.innerHTML = '<div class="sc-editor-diff">'
           + '<div class="sc-editor-diff-title">캐릭터에 아직 반영하지 않은 변경이 있어요.</div>'
           + '<div class="sc-editor-diff-copy">아래 [지금 적용]을 누르면 여기서 바로 반영돼요. '
           + '기존 설치본으로 돌아가려면 [편집 작업공간]의 [설치본 불러오기]를 누르세요.</div>'
           + '<div class="sc-editor-diff-meta">'
+          + profLine
           + `<span><b>작업본</b> ${escapeText(editorSummary)}</span>`
           + `<span><b>설치본</b> ${escapeText(installedSummary)}</span>`
           + '</div>'
@@ -47289,6 +48308,9 @@ count(목록)  has(목록, "항목")</pre>
     }
     const presetsDiv = document.getElementById('sc-presets');
     const clockCard = document.getElementById('sc-clock-card');
+    // 🔀 이 채팅의 판 고르기 (v1.24.0) — 프로필이 있는 봇에서만 보인다
+    const profDiv = document.getElementById('sc-profiles');
+    if (profDiv) { try { renderProfileChips(profDiv); } catch (e) { console.log('[simcore] 프로필 단추 그리기 실패:', e.message); } }
     if (!session) {
       varsDiv.textContent = '스키마 로드 후 표시'; actionsDiv.textContent = '-';
       infoDiv.textContent = ''; presetsDiv.textContent = '-';
@@ -47635,7 +48657,7 @@ count(목록)  has(목록, "항목")</pre>
         const pathTxt = path === 'bridge' ? '차단 확인됨 → 브리지 경유'
           : path === 'direct' ? '직접 호출 가능 확인됨' : '아직 판정 전 (첫 턴에 자동 판정)';
         let bridgeTxt = hasLuaBridge(char) ? '설치됨' : '없음';
-        if (bridgeIsStale(char, schema)) bridgeTxt += ' ⚠ 현재 스키마와 불일치 — [루아 브리지 설치/갱신] 필요';
+        if (bridgeIsStale(char, bridgeSetCurrent())) bridgeTxt += ' ⚠ 현재 스키마와 불일치 — [루아 브리지 설치/갱신] 필요';
         if (auxInfoDiv) {
           auxInfoDiv.textContent += `\n설정: ${argLabel(m)} → 이번 턴 경로: ${resolved}`
             + `\n환경 판정: ${pathTxt}`

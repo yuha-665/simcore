@@ -147,6 +147,7 @@ function validateSchema(schema) {
     const v = vars[i], p = `$.vars[${i}]`;
     if (!v.id || !ID_RE.test(v.id)) { err(p, `잘못된 id: '${v.id}' (영문자/숫자/_, 영문자 시작)`); continue; }
     if (RESERVED.has(v.id)) err(p, `'${v.id}'는 예약어라 변수 id로 쓸 수 없음`);
+    if (v.id === 'sim_profile') err(p, `'sim_profile'은 이 채팅의 프로필 이름을 담는 예약 키입니다 (v1.24.0) — 변수 id를 바꾸세요`);
     if (ids.has(v.id)) err(p, `중복된 id: '${v.id}'`);
     ids.add(v.id);
     // 모르는 키 (v1.14.2) — 실제 제보: AI에게 변수 설명을 채우게 했더니 `description`을 지어 넣어 영문 설명이 통째로

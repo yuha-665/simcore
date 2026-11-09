@@ -10,8 +10,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.23.0', src.includes('//@version 1.23.0'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.23\.0/.test(src), '');
+  ck('버전 1.24.0', src.includes('//@version 1.24.0'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1\.24\.0/.test(src), '');
   // v1.21.5 — 업데이트 버튼. 리수(리스바드·포켓리스 plugins.svelte.ts importPlugin)가 거부하는 머리말을 그대로 옮겨 잰다:
   // 모든 줄의 `//@`를 머리말로 읽는다 · update-url은 https · 그때 버전 필수 · `//@version` 줄 끝이 앞 500바이트 안 · link는 https
   {
@@ -64,8 +64,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   // v1.0.6 회귀 — 실사고: 갓 임포트한 원본 카드에서 번들 적용이 안 먹힘
   ck('적용 후 되읽기 레이스 재시도 (v0.85.1 결)', src.includes('리수 반영이 늦어요'), '');
-  ck('적용 후 편집기 작업본 동기화 (세이브와 같은 규약)', src.includes('if (editor) loadIntoEditor(bundled);'), '');
-  ck('되돌리기도 편집기 동기화', src.includes('validateSchema(p).ok && editor) loadIntoEditor(p);'), '');
+  ck('적용 후 편집기 작업본 동기화 (세이브와 같은 규약 · 기본 판으로 v1.24.0)', src.includes("if (editor) loadIntoEditor(bundled, '');"), '');
+  ck('되돌리기도 편집기 동기화', src.includes("validateSchema(p).ok && editor) loadIntoEditor(p, '');"), '');
   // v1.0.7 회귀 ① — runInstall이 스켈레톤 안에 살면 renderPanel의 배너에서 참조가 끊긴다
   // ("runInstall is not defined" 실사고). IIFE 레벨(2칸 들여쓰기) 선언을 강제한다.
   ck('runInstall은 IIFE 레벨', /\n  async function runInstall\(/.test(src), '');

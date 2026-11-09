@@ -15,7 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ck('캐시·프리페치·저장 랩 존재', src.includes('histPut') && src.includes('histPrefetch')
     && src.includes("if (phase === 'out') histPut(index, state);"), '');
   ck('★ display가 과거 마커를 캐시로 그린다', src.includes('histStates.get(idx)'), '');
-  ck('과거 렌더는 하이라이트·범례 없이', src.includes('renderStatusHtml(schema, cached, null, null'), '');
+  ck('과거 렌더는 하이라이트·범례 없이 (그 시점의 판으로 — v1.24.0)', src.includes('renderStatusHtml(schemaForState(cached), cached, null, null'), '');
   ck('갈림길·제안 유령 제거', src.includes('s.meta.pendingChoice = null;'), '');
 }
 

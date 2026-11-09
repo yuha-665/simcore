@@ -281,6 +281,18 @@ let lastAux = { status: '', raw: '', applied: 0 };
     for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
     return (h >>> 0).toString(36);
   }
+  /**
+   * 🔀 프로필 세트의 지문 (v1.24.0) — [{ name, schema }]. 판 하나(또는 스키마 그대로)면 예전 지문 그대로라
+   * 프로필 없는 봇의 설치된 브리지가 업데이트만으로 노후로 뜨지 않는다.
+   */
+  function bridgeFingerprint(x) {
+    if (!Array.isArray(x)) return schemaFingerprint(x);
+    if (x.length === 1) return schemaFingerprint(x[0].schema);
+    const src = x.map((e) => e.name + '\u0001' + schemaFingerprint(e.schema)).join('\u0002');
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
 
   const BRIDGE_SIG_RE = /--\s*simcore-schema:\s*([0-9a-z]+)/;
 
@@ -295,7 +307,7 @@ let lastAux = { status: '', raw: '', applied: 0 };
   function bridgeIsStale(char, sch) {
     if (!hasLuaBridge(char) || !sch) return false;
     const got = bridgeSchemaSig(char);
-    return got === null || got !== schemaFingerprint(sch); // 서명 없는 구버전 브리지도 노후로 본다
+    return got === null || got !== bridgeFingerprint(sch); // 서명 없는 구버전 브리지도 노후로 본다
   }
 
 

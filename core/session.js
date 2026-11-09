@@ -19,6 +19,7 @@ const engine = require('./engine');
 const { SnapshotStore, mapLimited } = require('./store');
 const IO_CONCURRENCY = 12; // 샌드박스 브리지 동시 요청 수 (너무 키우면 브리지가 밀린다)
 const { seededRng, makeUnstableRng } = require('./rng');
+const { PROFILE_KEY } = require('./profile'); // 🔀 프로필 (v1.24.0) — 상태 예약 키 sim_profile
 
 /** 키 순서에 안 흔들리는 직렬화 — 스냅샷을 두 경로로 만들면 키 순서가 달라질 수 있다 */
 function stableJson(x) {
@@ -48,10 +49,38 @@ class SimSession {
   constructor(schema, backend, opts = {}) {
     this.schema = schema;
     this.chatId = opts.chatId ?? 'chat';
-    this.stableRng = opts.stableRng !== false && schema.rerollStableRng !== false;
+    this.optStableRng = opts.stableRng !== false;
+    this.stableRng = this.optStableRng && schema.rerollStableRng !== false;
     this.random = opts.random ?? Math.random;
     this.store = new SnapshotStore(backend, opts.prefix ?? `sim:${this.chatId}`, opts.keepN ?? 60);
     this.current = null; // 마지막으로 확정된 라이브 상태
+    // 🔀 프로필 (v1.24.0) — 이 세션이 도는 판의 이름 ('' = 기본 판). null = 프로필 없는 봇 → 상태에 손대지 않는다
+    this.profile = typeof opts.profile === 'string' ? opts.profile : null;
+  }
+
+  /** 판 갈아 끼우기 (v1.24.0) — 호스트가 채팅의 프로필을 고른 뒤 부른다. 상태 정합(reconcile)·이름 적기는 호출자 몫 */
+  useSchema(schema, profile = null) {
+    this.schema = schema;
+    this.stableRng = this.optStableRng && schema.rerollStableRng !== false;
+    this.profile = typeof profile === 'string' ? profile : null;
+  }
+
+  /** 상태에 이 세션의 판 이름을 적는다 (v1.24.0) — 스냅샷에 실려 과거 상태창·리롤·되감기가 그 시점의 판을 따른다 */
+  stampProfile(state = this.current) {
+    if (this.profile !== null && state && state.vars) state.vars[PROFILE_KEY] = this.profile;
+    return state;
+  }
+
+  /**
+   * 판 고르기용 엿보기 (v1.24.0) — init이 고를 상태를 정합 없이 날것으로. 없으면 null.
+   * 정합(reconcile)을 안 하는 이유: 다른 판의 스키마로 정합하면 그 판에만 있는 선택지 값이 시작값으로 깎인다
+   */
+  async peekState(latestOutIndex = -1) {
+    if (latestOutIndex >= 0) {
+      const found = await this.store.latestAtOrBelow('out', latestOutIndex);
+      if (found) return found.state;
+    }
+    return (await this.store.load('boot', 0)) || null;
   }
 
   _rng(index, label) {
@@ -67,15 +96,15 @@ class SimSession {
   async init(latestOutIndex = -1) {
     if (latestOutIndex >= 0) {
       const found = await this.store.latestAtOrBelow('out', latestOutIndex);
-      if (found) { this.current = engine.reconcileState(this.schema, found.state); return this.current; }
+      if (found) { this.current = this.stampProfile(engine.reconcileState(this.schema, found.state)); return this.current; }
     }
     // 첫 전송 전 슬롯 (v1.14.7) — char 메시지가 아직 없는 채팅(새 채팅·빈 채팅에 세이브 가져오기)에서 한 조작·가져온 상태.
     // 전엔 앵커가 -1이라 저장을 전부 건너뛰어 재로드·전환이면 증발했다 (점검 영역 3 #7·#8)
     const boot = await this.store.load('boot', 0);
-    if (boot) { this.current = engine.reconcileState(this.schema, boot); return this.current; }
+    if (boot) { this.current = this.stampProfile(engine.reconcileState(this.schema, boot)); return this.current; }
     // 시작 시각 무작위(v0.80)용 rng — 인덱스를 -1로 둬 어느 턴과도 안 겹치는 시드를 쓴다.
     // 리롤 안정이 켜져 있으면 chatId로만 갈리므로 **이 채팅은 늘 같은 시각**, 새 채팅은 새 시각.
-    this.current = engine.initState(this.schema, { rng: this._rng(-1, 'start') });
+    this.current = this.stampProfile(engine.initState(this.schema, { rng: this._rng(-1, 'start') }));
     return this.current;
   }
 
@@ -93,7 +122,7 @@ class SimSession {
    */
   async onSend(sendIndex, userText = '') {
     const existingPre = await this.store.load('pre', sendIndex);
-    let base = existingPre ?? this.current ?? engine.initState(this.schema);
+    let base = existingPre ?? this.current ?? this.stampProfile(engine.initState(this.schema));
     let branched = false;
     if (existingPre) {
       // 유령 시간선 대조 (v1.7.3) — pre:U는 out:U-1(+턴 사이 무장)에서 파생된 캐시다. 직전 응답이
@@ -110,6 +139,11 @@ class SimSession {
           await this.store.pruneFrom(sendIndex);   // 옛 미래(pre/send/out ≥ U)는 여기서 끝난다
         }
       }
+    }
+    // 🔀 판은 유저의 마지막 선택을 따른다 (v1.24.0) — 판을 바꾼 직후 리롤하면 pre:U는 옛 판 이름을 들고 있다.
+    // 세션이 도는 판으로 적어야 상태(옛 판)와 스키마(새 판)가 어긋나지 않는다. 메시지를 지우고 이어 가도 같다
+    if (this.profile !== null && base && base.vars && base.vars[PROFILE_KEY] !== this.profile) {
+      base = this.stampProfile(JSON.parse(JSON.stringify(base)));
     }
     if (!existingPre || branched) await this.store.save('pre', sendIndex, base);
     // userText (v1.6.0): 전투 안무의 맡김/내 수 판단용 — 굴림과 무관하니 리롤 안정성은 그대로
@@ -223,7 +257,7 @@ class SimSession {
       (d, t) => onProgress?.(d, t, '스냅샷 삭제 중'));
     // 초기화는 리롤이 아니라 "판을 지우고 새로 시작"이다 — 시작 시각 무작위를 켰다면
     // **여기서는 새로 굴린다** (chatId 시드를 쓰면 초기화해도 늘 같은 시각이 나온다).
-    this.current = engine.initState(this.schema, { rng: makeUnstableRng(this.random) });
+    this.current = this.stampProfile(engine.initState(this.schema, { rng: makeUnstableRng(this.random) })); // 초기화해도 판은 그대로 (v1.24.0)
     return this.current;
   }
 
@@ -332,7 +366,7 @@ class SimSession {
     if (typeof state.vars.turn === 'number') state.meta.turn = Math.max(0, state.vars.turn - 1);
     // 미러가 있다 = 첫 응답은 이미 지났다. AI 최초설정 봇에서 이걸 안 세우면 다음 전송이 최초설정으로 돌아 복원한 값을 덮는다 (v1.14.7)
     if (restored && this.schema.setup?.ai?.enabled) state.meta.setupDone = true;
-    this.current = eng.reconcileState(this.schema, state);
+    this.current = this.stampProfile(eng.reconcileState(this.schema, state));
     return restored;
   }
 

@@ -111,6 +111,10 @@ const createSchemaEditor = (base) => {
   };
 };
 let schema = null, currentChaId = null;
+// 🔀 프로필 (v1.24.0) — 편집기 절이 읽는 이름들. 프로필 없는 봇 = 예전과 같은 동작
+const profileMod = require(${JSON.stringify(path.resolve(__dirname, '../core/profile.js'))});
+let profileList = [], currentProfile = null, baseSchema = null;
+function installedSchemaFor(name) { if (!name) return baseSchema; const e = profileMod.findProfile(profileList, name); return e ? e.merged : null; }
 ${body}
 ${TESTS}
 `;

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.22.1
-//@display-name SimCore (시뮬 엔진) v1.22.1 🔧 업데이트해도 설정 두 칸이 남는다
+//@version 1.23.0
+//@display-name SimCore (시뮬 엔진) v1.23.0 🗺️ 지도 — 가 본 만큼 채워진다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,28 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.23.0 ───────────────────────────────────────────────
+// **🗺️ 지도 — 가 본 만큼 채워진다.** 유저(2026-11-09, 교토 전도 스샷): "심코어에도 이렇게 지도 그리는 기능" → "아틀리에나 베리디아처럼
+// 지도를 완성해 가면서 채워지는 기믹". 그전 지도는 편성표 템플릿 탭(얼헌 서울 5권역·아틀리에 채집지 격자)으로 칸에 글자를 꽂는 것뿐이었다.
+// - [코어] 새 모듈 `map.js` (게임 패널 7호). 스키마 `map`: 장소(places — 좌표 핀)·구역(zones — 직사각형 땅)·가장자리 이정표(exits)·
+//   분류(categories — 단추로 거르기·핀 색). 좌표는 지도 크기에 대한 %. 누르면 아래 카드에 그곳의 사정(desc).
+// - [코어] **지금 여기** = 위치 변수(locVar) 값이 장소 이름·별칭이나 구역 이름과 같으면 거기. 안 맞으면 "(지도 밖)".
+// - [코어] **채워지는 지도** — `fog: true`면 못 가 본 구역은 안개, 모르는 장소는 안 그린다. 장소마다 known: true(처음부터) / 식(소문·진척) / 없음(가 봐야).
+//   보이지만 안 가 본 곳은 desc 대신 rumor. **발자취(seenVar)는 정산이 적는다**(8.92 — 이벤트·액션이 옮긴 위치까지 끝난 뒤, 체크포인트보다 먼저):
+//   보조 몫이 아니고 새 저장소도 아니다 — 평범한 list 변수라 되감기·현황 손수정·조건식(`count(visited) >= 10`)이 공짜. 꽉 차면 안 민다(밀면 도로 안개).
+// - [코어] **찾아낸 곳(listVar)** — 항목 "이름 (구역)"이 그 구역 빈자리에 핀으로 꽂힌다. 자리는 이름으로 정해져 늘 같고, 이름표끼리·안에 든 작은 구역·
+//   구역 이름표를 비켜 앉는다. 구역을 못 찾은 항목은 버리지 않고 "자리를 못 찾은 곳"으로 알린다 (옛 {목록:tags:구역}은 조용히 빠졌다).
+// - [패널] 우상단 🗺️ 버튼 → 지도 패널(600px). 그림은 코어가 HTML 한 벌로 만든다 — 편집기 미리보기와 같은 그림. 배경 그림(map.bg)은 카드 에셋.
+//   좁은 화면은 컨테이너 쿼리로 글자를 줄이고, 더 좁으면 찾아낸 곳은 점만(누르면 이름).
+// - [편집기] [지도] 탭(세계 묶음) — 기본·위치와 안개·**미리보기(📍 찍기 → 누른 자리로, 구역은 두 번)**·분류·구역·장소·이정표·CSS.
+//   [지도 만들기]는 위치 선택지 이름으로 장소를 격자에 깔아 준다. 탭 AI 창구·규격서·기능 지도·켜진 기능 현황·변수 참조·변수 지우기 정리에 지도.
+// - [검증] 좌표 0~100 · 이름 겹침(장소·구역·별칭 — 위치 값이 모호해진다) · 위치 변수는 값 하나 · 발자취·찾아낸 곳은 list · 공개 조건 식 ·
+//   발자취 maxItems < 장소+구역 경고 · **안개 지도에서 위치 선택지에 없고 known도 없는 장소 = 영영 안개** 경고. 활성 절(변수 없이도 설치)에 지도.
+//   검증 본문은 `map.validateMap` — 규격서가 validateSchema 소스를 통째로 실어 128KB 상한에 2.4KB만 남았었다(추첨 풀과 같은 길, 지금 최대 120.4KB).
+// - [아틀리에] 공방 패널의 지도 탭(격 사다리) → 지도 패널로. 지형 12 + 왕도 = 구역, 공방·카페·뒷골목·지방 도시 = 장소(뒷골목은 이름값 100·실마리 뒤 소문으로),
+//   가 본 채집지(areas) = 핀, 발자취 `visited` 새 변수(시스템이 적음). 구역을 누르면 격·나는 것·계절 특산.
+// - 테스트: `테스트/test-map.js` 93 (그리기·안개·찾아낸 곳·정산·그림·검증·배선·편집기 탭).
 //
 // ── v1.22.1 ───────────────────────────────────────────────
 // **🔧 업데이트해도 설정 두 칸이 남는다 + 남의 요청은 안 다듬는다.** 배포 전 점검(2026-11-08, 유저 "다른 버그는 없나").
@@ -3415,6 +3437,7 @@
   const shopMod = SimCore.require('shop');         // 상점 (v0.96)
   const msgrMod = SimCore.require('messenger');    // 메신저 (v1.2.0)
   const questMod = SimCore.require('quest');       // 의뢰판 (v1.7.9)
+  const mapMod = SimCore.require('map');           // 지도 (v1.23.0)
   const choiceMod = SimCore.require('choice');     // 보조 갈림길 (v1.8.0) — 지연 경로 적용 (v1.14.6)
   const { makeUnstableRng } = SimCore.require('rng');
 
@@ -4384,6 +4407,7 @@
   // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
   let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
   let questView = { tab: 'offers' };                // 의뢰판 (v1.7.9): 'offers' 게시 | 'mine' 수주 중
+  let mapUi = { cat: null, sel: null };             // 지도 (v1.23.0): 분류 거르기 · 고른 장소 열쇠
   let questBusy = false;
   let msgrBusy = false;                             // 메신저 전용 보조 호출 진행 중
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
@@ -5649,6 +5673,9 @@
       if (qb && questMod.questOpen(qb, schema, session.current?.vars || {}, engine.makeLookup)) {
         specs.push({ key: 'quest', kind: 'quest', tab: null, label: qb.label, icon: qb.icon });
       }
+      // 지도 (v1.23.0) — 게임 패널 7호. 보기 전용이라 게이트가 없다
+      const mp = mapMod.mapButtonSpec(schema);
+      if (mp) specs.push({ key: 'map', kind: 'map', tab: null, label: mp.label, icon: mp.icon });
       // 메신저 (v1.2.0) — 게임 패널 5호. 열람은 항상이므로 when이 닫혀도 버튼은 둔다 (보드 규약)
       const mg = msgrMod.msgrConfig(schema);
       if (mg) specs.push({ key: 'msgr', kind: 'msgr', tab: null, label: mg.label, icon: mg.icon });
@@ -5801,6 +5828,7 @@
       #sc-game .scq-cap { font-size:12px; color:#8fd6a8; margin:2px 0 6px; }
       /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
       #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
+      #sc-game .scg-card.scm-card { width:min(600px, 100%); }
       #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
       #sc-game .scb-btn { border:1px solid #3d5384; border-radius:8px; background:#1c2740; color:#dfe7f5;
         padding:5px 12px; font-size:12.5px; cursor:pointer; }
@@ -5957,6 +5985,11 @@
       #sc-game .scc-add input:focus-visible { outline:2px solid #9db8e8; outline-offset:2px; }
     `;
     document.head.appendChild(style);
+    // 지도 (v1.23.0) — 기본 모양은 코어(map.js)에 산다. 편집기 미리보기와 같은 그림이어야 해서 한 벌만 둔다 (.scm-* 고유 접두)
+    const mapStyle = document.createElement('style');
+    mapStyle.id = 'sc-game-map';
+    mapStyle.textContent = mapMod.MAP_CSS;
+    document.head.appendChild(mapStyle);
     const root = document.createElement('div');
     root.id = 'sc-game';
     root.style.display = 'none';
@@ -5975,7 +6008,8 @@
         : gameKind === 'board' ? schema?.board?.css
           : gameKind === 'shop' ? shopMod.shopConfig(schema, shopView?.shopId ?? undefined)?.css
             : gameKind === 'msgr' ? schema?.messenger?.css
-              : gameKind === 'quest' ? schema?.questBoard?.css : null;
+              : gameKind === 'quest' ? schema?.questBoard?.css
+                : gameKind === 'map' ? schema?.map?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -6000,6 +6034,7 @@
     shopView = { shopId: kind === 'shop' ? tabId : null, cat: null, exchQty: '' };
     msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
     questView = { tab: 'offers' };   // 의뢰판은 열 때마다 게시부터
+    mapUi = { cat: null, sel: null };   // 지도는 열 때마다 전체·고른 것 없이
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -6030,6 +6065,56 @@
     else if (gameKind === 'shop') renderShopPanel(root);
     else if (gameKind === 'msgr') renderMsgrPanel(root);
     else if (gameKind === 'quest') renderQuestPanel(root);
+    else if (gameKind === 'map') renderMapPanel(root);
+  }
+
+  // ── 지도 (v1.23.0) — 게임 패널 7호 ────────────────────────────────
+  // 그림은 코어(mapMod.renderMapHtml)가 HTML 한 벌로 만든다 — 편집기 미리보기와 같은 그림. 여기는 제목·닫기와
+  // 위임 클릭(분류 단추 data-scm-cat · 장소 data-scm)만. 우리 iframe DOM이라 data-*가 산다 (상태창 새니타이저와 무관).
+  // 배경 그림(map.bg)은 카드 에셋 이름 — 초상과 같은 길(resolvePortraitUrl)로 읽고, 늦게 오면 자리에 끼운다.
+  function renderMapPanel(root) {
+    const view = mapMod.mapView(schema, session.current, engine.makeLookup);
+    if (!view) { root.innerHTML = ''; return; }
+    if (mapUi.sel && !mapMod.detailOf(view, mapUi.sel)) mapUi.sel = null; // 정산으로 사라진 것을 고르고 있었으면 놓는다
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scm-card';
+    card.addEventListener('click', (ev) => ev.stopPropagation());
+    const title = document.createElement('div');
+    title.className = 'scg-title';
+    title.append(Object.assign(document.createElement('span'), { textContent: `${view.icon} ${view.label}` }));
+    const x = Object.assign(document.createElement('button'), { className: 'scg-x', textContent: '✕', title: '닫기', type: 'button' });
+    x.onclick = () => closeGamePanel();
+    title.appendChild(x);
+    card.appendChild(title);
+    const cacheKey = view.bg ? `${currentChaId}:${view.bg}` : null;
+    const bgUrl = cacheKey && portraitCache.has(cacheKey) ? portraitCache.get(cacheKey) : null;
+    const body = document.createElement('div');
+    body.innerHTML = mapMod.renderMapHtml(view, mapUi, { bgUrl });
+    body.addEventListener('click', (ev) => {
+      const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm-cat],[data-scm]') : null;
+      if (!t) return;
+      if (t.hasAttribute('data-scm-cat')) {
+        const c = t.getAttribute('data-scm-cat') || null;
+        mapUi = { ...mapUi, cat: mapUi.cat === c ? null : c };
+      } else {
+        const k = t.getAttribute('data-scm');
+        mapUi = { ...mapUi, sel: mapUi.sel === k ? null : k };
+      }
+      renderGamePanel();
+    });
+    card.appendChild(body);
+    if (gameNotice) card.appendChild(Object.assign(document.createElement('div'), { className: 'scg-notice', textContent: gameNotice }));
+    root.appendChild(card);
+    if (cacheKey && !portraitCache.has(cacheKey)) {
+      resolvePortraitUrl(view.bg).then((url) => {
+        const surf = body.querySelector('.scm-surface');
+        if (!url || !surf || !surf.isConnected) return;
+        const img = document.createElement('img');
+        img.className = 'scm-bg'; img.alt = ''; img.src = url;
+        surf.insertBefore(img, surf.firstChild);
+      }).catch(() => {});
+    }
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────

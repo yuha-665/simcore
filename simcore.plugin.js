@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.22.1
-//@display-name SimCore (시뮬 엔진) v1.22.1 🔧 업데이트해도 설정 두 칸이 남는다
+//@version 1.23.0
+//@display-name SimCore (시뮬 엔진) v1.23.0 🗺️ 지도 — 가 본 만큼 채워진다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,28 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.23.0 ───────────────────────────────────────────────
+// **🗺️ 지도 — 가 본 만큼 채워진다.** 유저(2026-11-09, 교토 전도 스샷): "심코어에도 이렇게 지도 그리는 기능" → "아틀리에나 베리디아처럼
+// 지도를 완성해 가면서 채워지는 기믹". 그전 지도는 편성표 템플릿 탭(얼헌 서울 5권역·아틀리에 채집지 격자)으로 칸에 글자를 꽂는 것뿐이었다.
+// - [코어] 새 모듈 `map.js` (게임 패널 7호). 스키마 `map`: 장소(places — 좌표 핀)·구역(zones — 직사각형 땅)·가장자리 이정표(exits)·
+//   분류(categories — 단추로 거르기·핀 색). 좌표는 지도 크기에 대한 %. 누르면 아래 카드에 그곳의 사정(desc).
+// - [코어] **지금 여기** = 위치 변수(locVar) 값이 장소 이름·별칭이나 구역 이름과 같으면 거기. 안 맞으면 "(지도 밖)".
+// - [코어] **채워지는 지도** — `fog: true`면 못 가 본 구역은 안개, 모르는 장소는 안 그린다. 장소마다 known: true(처음부터) / 식(소문·진척) / 없음(가 봐야).
+//   보이지만 안 가 본 곳은 desc 대신 rumor. **발자취(seenVar)는 정산이 적는다**(8.92 — 이벤트·액션이 옮긴 위치까지 끝난 뒤, 체크포인트보다 먼저):
+//   보조 몫이 아니고 새 저장소도 아니다 — 평범한 list 변수라 되감기·현황 손수정·조건식(`count(visited) >= 10`)이 공짜. 꽉 차면 안 민다(밀면 도로 안개).
+// - [코어] **찾아낸 곳(listVar)** — 항목 "이름 (구역)"이 그 구역 빈자리에 핀으로 꽂힌다. 자리는 이름으로 정해져 늘 같고, 이름표끼리·안에 든 작은 구역·
+//   구역 이름표를 비켜 앉는다. 구역을 못 찾은 항목은 버리지 않고 "자리를 못 찾은 곳"으로 알린다 (옛 {목록:tags:구역}은 조용히 빠졌다).
+// - [패널] 우상단 🗺️ 버튼 → 지도 패널(600px). 그림은 코어가 HTML 한 벌로 만든다 — 편집기 미리보기와 같은 그림. 배경 그림(map.bg)은 카드 에셋.
+//   좁은 화면은 컨테이너 쿼리로 글자를 줄이고, 더 좁으면 찾아낸 곳은 점만(누르면 이름).
+// - [편집기] [지도] 탭(세계 묶음) — 기본·위치와 안개·**미리보기(📍 찍기 → 누른 자리로, 구역은 두 번)**·분류·구역·장소·이정표·CSS.
+//   [지도 만들기]는 위치 선택지 이름으로 장소를 격자에 깔아 준다. 탭 AI 창구·규격서·기능 지도·켜진 기능 현황·변수 참조·변수 지우기 정리에 지도.
+// - [검증] 좌표 0~100 · 이름 겹침(장소·구역·별칭 — 위치 값이 모호해진다) · 위치 변수는 값 하나 · 발자취·찾아낸 곳은 list · 공개 조건 식 ·
+//   발자취 maxItems < 장소+구역 경고 · **안개 지도에서 위치 선택지에 없고 known도 없는 장소 = 영영 안개** 경고. 활성 절(변수 없이도 설치)에 지도.
+//   검증 본문은 `map.validateMap` — 규격서가 validateSchema 소스를 통째로 실어 128KB 상한에 2.4KB만 남았었다(추첨 풀과 같은 길, 지금 최대 120.4KB).
+// - [아틀리에] 공방 패널의 지도 탭(격 사다리) → 지도 패널로. 지형 12 + 왕도 = 구역, 공방·카페·뒷골목·지방 도시 = 장소(뒷골목은 이름값 100·실마리 뒤 소문으로),
+//   가 본 채집지(areas) = 핀, 발자취 `visited` 새 변수(시스템이 적음). 구역을 누르면 격·나는 것·계절 특산.
+// - 테스트: `테스트/test-map.js` 93 (그리기·안개·찾아낸 곳·정산·그림·검증·배선·편집기 탭).
 //
 // ── v1.22.1 ───────────────────────────────────────────────
 // **🔧 업데이트해도 설정 두 칸이 남는다 + 남의 요청은 안 다듬는다.** 배포 전 점검(2026-11-08, 유저 "다른 버그는 없나").
@@ -1219,6 +1241,7 @@ const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감�
 const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
 const gaugeMod = require('./gauge'); // 사건 게이지 (v1.14.0) — 예약 이름 re_gauge·re_cool·설정·개입 효과 검증
 const sampleMod = require('./sample'); // 추첨 (v1.18.0) — 후보 풀(pools)·추첨 효과 검증
+const mapMod = require('./map'); // 지도 (v1.23.0) — map 절 검증(validateMap)
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -1296,6 +1319,7 @@ function activeSections(schema) {
   if (obj(s.messenger)) out.push('메신저');
   if (obj(s.shop) || n(s.shops)) out.push('상점');
   if (obj(s.questBoard)) out.push('의뢰판');
+  if (obj(s.map)) out.push('지도');
   if (n(s.scenario?.acts)) out.push('시나리오');
   if (n(s.secrets)) out.push('비밀');
   if (obj(s.calendar)) out.push('달력');
@@ -2947,6 +2971,9 @@ function validateSchema(schema) {
       if (Q.when != null) checkExpr(Q.when, `${P}.when`, new Set([...allIds, ...exposedNames]), err, { allowRand: false });
     }
   }
+
+  // ── map (지도 v1.23.0 — 옵트인) — 검증은 map.validateMap (규격서가 이 함수 소스를 통째로 실어 크기 상한이 있다 — 추첨 풀과 같은 길) ──
+  mapMod.validateMap(schema, { vars, exprIds: new Set([...allIds, ...exposedNames]), allIds, err, warn, checkExpr });
 
   // ── liveChoices (보조가 쓰는 갈림길 v1.8.0 — 옵트인. 라벨은 보조가 즉석에서, 결과는 태그가 정한다 — docs/design-갈림길-확장.md) ──
   const liveIds = new Set();
@@ -6282,6 +6309,607 @@ module.exports = {
 
 });
 
+SimCore.define("map", function (require, module, exports) {
+// 지도 (v1.23.0) — 게임 패널 7호. 좌표 위의 장소·구역·이정표 + 현재 위치 + 채워지는 지도.
+//
+// 유저(2026-11-09, 교토 전도 스샷): "심코어에도 이렇게 지도 그리는 기능" → "아틀리에나 베리디아처럼
+// 지도를 완성해 가면서 채워지는 기믹도". 그전 지도는 편성표 템플릿 탭(얼헌 서울 5권역·아틀리에 채집지 격자·
+// 베리디아 탐사 방향 줄)으로 칸에 글자를 꽂는 방식뿐이었다 — 좌표도, 안개도, 누르면 펼쳐지는 사정도 없었다.
+//
+// 원칙
+//   · **새 저장소를 만들지 않는다** (달력과 같은 원칙). 현재 위치 = 기존 위치 변수(locVar),
+//     들른 곳 = 평범한 list 변수(seenVar — 시스템이 적는다), 찾아낸 곳 = 평범한 list 변수(listVar — "이름 (구역)").
+//     그래서 리롤·되감기·현황 탭 손수정·조건식(`has(visited, "기온")`, `count(visited)`)이 공짜로 따라온다.
+//   · **숫자는 시스템** — 들른 곳 기록은 보조 AI가 아니라 정산이 한다 (위치 변수 값이 장소 이름과 같으면).
+//   · 안개(fog)를 켜면 못 가 본 구역은 가리고, 모르는 장소는 안 그린다. 지도는 플레이가 채운다.
+//   · 좌표는 지도 크기에 대한 % (0~100) — 화면 폭이 달라도 같은 자리.
+//   · 그리기 재료(mapView)와 HTML(renderMapHtml)을 여기 둔다 — 패널(어댑터)과 편집기 미리보기가 같은 그림을 쓴다.
+//
+// 스키마 (옵트인):
+//   map: { label?, icon?, note?, ratio?, bg?, locVar?, seenVar?, listVar?, fog?, css?,
+//          categories?: [{ label, color? }],
+//          zones?:  [{ label, x, y, w, h, cat?, color?, desc?, known?, match? }],
+//          places?: [{ name, x, y, sub?, cat?, desc?, rumor?, known?, alias? }],
+//          exits?:  [{ label, dir, at?, known? }] }
+//   known: true = 처음부터 보임 · 식 = 참이 되면 보임 · 없음 = 안개면 가 봐야 보임(안개가 없으면 보임)
+
+const { evaluate, truthy } = require('./expr');
+
+const DIRS = { n: '↑', ne: '↗', e: '→', se: '↘', s: '↓', sw: '↙', w: '←', nw: '↖' };
+const DIR_EDGE = { n: 'top', s: 'bottom', e: 'right', ne: 'right', se: 'right', w: 'left', nw: 'left', sw: 'left' };
+const CAPS = { CATS: 10, ZONES: 40, PLACES: 80, EXITS: 16, DYN: 80, NAME: 30, TEXT: 600 };
+const DEFAULT_RATIO = 1;
+const PALETTE = ['#b3392f', '#2f5fa8', '#7a3fa0', '#3f8a4a', '#b07a1c', '#2b8a8a', '#a33a6b', '#5a6b2f', '#8a5a2b', '#4a4a8a'];
+
+function mapConfig(schema) {
+  const m = schema?.map;
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
+  return m;
+}
+
+/** 우상단 버튼 사양 — 어댑터가 registerButton에 그대로 쓴다 (달력과 같은 계약) */
+function mapButtonSpec(schema) {
+  const m = mapConfig(schema);
+  if (!m) return null;
+  return { label: str(m.label) || '지도', icon: str(m.icon) || '🗺️' };
+}
+
+const str = (v) => (typeof v === 'string' ? v.trim() : '');
+const norm = (v) => String(v ?? '').trim().toLowerCase();
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+const pct = (v) => { const n = num(v); return n == null ? null : Math.max(0, Math.min(100, n)); };
+const arr = (v) => (Array.isArray(v) ? v : []);
+const round1 = (n) => Math.round(n * 10) / 10;
+
+/** 세로 ÷ 가로 (0.4~2.5) */
+function ratioOf(m) {
+  const r = num(m?.ratio);
+  return r == null ? DEFAULT_RATIO : Math.max(0.4, Math.min(2.5, r));
+}
+
+/** 목록 항목 "이름 (구역) @12" → { name, tag } — 기한 표기는 떼고, 끝 괄호를 구역 꼬리표로 */
+function splitTag(raw) {
+  const s = String(raw ?? '').replace(/\s*@[+-]?\d+(?:\.\d+)?\S*/g, '').trim();
+  const m = s.match(/^(.*?)\s*[(（]([^()（）]+)[)）]\s*$/);
+  if (m && m[1].trim()) return { name: m[1].trim(), tag: m[2].trim() };
+  return { name: s, tag: null };
+}
+
+// 문자열 해시 (FNV-1a) — 찾아낸 곳의 자리를 이름으로 정한다. 같은 이름은 늘 같은 자리.
+function hash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h >>> 0;
+}
+
+function knownOf(entry, lookup, fog, dflt) {
+  const k = entry?.known;
+  if (k === true) return true;
+  if (k === false) return false;
+  if (typeof k === 'string' && k.trim()) {
+    try { return truthy(evaluate(k, lookup, null)); } catch { return false; }
+  }
+  return dflt ?? !fog;
+}
+
+/** 분류 — 이름(label)이 열쇠다. 색이 없으면 팔레트 순서로 */
+function categoriesOf(m) {
+  const out = [];
+  const seen = new Set();
+  for (const c of arr(m?.categories)) {
+    const label = str(typeof c === 'string' ? c : c?.label);
+    if (!label || seen.has(label) || out.length >= CAPS.CATS) continue;
+    seen.add(label);
+    out.push({ label, color: str(c?.color) || PALETTE[out.length % PALETTE.length] });
+  }
+  return out;
+}
+
+/**
+ * 구역의 빈자리 — 칸을 나눠 이름 해시 순으로 탐색한다. 고정 장소 근처·이미 앉은 자리는 건너뛴다.
+ * 칸이 다 차면 구역 가운데 근처에 조금씩 비켜 앉힌다 (사라지는 것보다 겹치는 게 낫다).
+ */
+// 핀 이름표가 차지하는 가로 폭(지도 %의 어림) — 겹침은 점이 아니라 이름표끼리 난다
+const labelW = (name) => Math.min(30, 3 + String(name || '').length * 2.2);
+const LABEL_LEFT_AT = 62;   // 이보다 오른쪽 핀은 이름표를 왼쪽에 단다 (지도 밖으로 안 나가게) — 그리기와 같은 문턱
+/** 핀 + 이름표의 가로 구간과 세로 띠 */
+function pinBox(p) {
+  const w = labelW(p.name);
+  const [x0, x1] = p.x > LABEL_LEFT_AT ? [p.x - 2 - w, p.x + 1.5] : [p.x - 1.5, p.x + 2 + w];
+  return { x0, x1, y0: p.y - 2.2, y1: p.y + 2.2 };
+}
+const boxHit = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+function placeInZone(z, name, taken, inner = []) {
+  const cols = Math.max(1, Math.round(z.w / 9));
+  const rows = Math.max(1, Math.round(z.h / 7));
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      cells.push({ x: z.x + (z.w * (c + 0.5)) / cols, y: z.y + (z.h * (r + 0.5)) / rows, name });
+    }
+  }
+  // 탐색 순서 = 이름으로 섞은 칸 순서 (같은 이름은 늘 같은 순서). 보폭으로 건너뛰면 보폭이 칸 수와 약수를 나눌 때
+  // 일부 칸만 돌고 "자리 없음"으로 떨어졌다 (25칸·보폭 5 → 다섯 칸만 봄)
+  const order = cells.map((c, i) => [hash(name + '#' + i), c]).sort((a, b) => a[0] - b[0]).map(([, c]) => c);
+  // 비켜 앉을 것: 구역 이름표(왼쪽 위) · 안에 든 작은 구역(성 안의 도시 — 들판 핀이 왕도 칸에 떨어지면 왕도 것처럼 보인다) ·
+  // 이미 앉은 핀의 이름표. 첫 바퀴는 이름표까지 구역 안에 드는 자리만, 둘째 바퀴는 넘쳐도 된다.
+  const blocks = [
+    { x0: z.x, x1: z.x + labelW(z.label) + 15, y0: z.y, y1: z.y + 4.5 },   // +15 = "📍 현재 위치" 뱃지가 붙을 자리
+    ...inner.map((o) => ({ x0: o.x - 1, x1: o.x + o.w + 1, y0: o.y - 1, y1: o.y + o.h + 1 })),
+    ...taken.map(pinBox),
+  ];
+  const within = (b) => b.x0 >= z.x - 1 && b.x1 <= z.x + z.w + 1;
+  for (const strict of [true, false]) {
+    for (const p of order) {
+      const b = pinBox(p);
+      if ((!strict || within(b)) && !blocks.some((o) => boxHit(b, o))) return { x: round1(p.x), y: round1(p.y) };
+    }
+  }
+  const k = taken.length;
+  return { x: round1(z.x + z.w / 2 + ((k % 3) - 1) * 3), y: round1(z.y + z.h / 2 + ((Math.floor(k / 3) % 3) - 1) * 3) };
+}
+
+/**
+ * 그리기 재료. 상태를 바꾸지 않는다.
+ * opts.reveal = true면 안개를 걷은 모습 (편집기 미리보기 "다 밝힌 모습").
+ * 반환: { label, icon, note, ratio, bg, fog, cats, zones, places, pins, exits, stray, here, loc, counts }
+ */
+function mapView(schema, state, makeLookup, opts = {}) {
+  const m = mapConfig(schema);
+  if (!m) return null;
+  const vars = state?.vars || {};
+  const lookup = typeof makeLookup === 'function' ? makeLookup(schema, vars) : (n) => vars[n];
+  const byId = Object.fromEntries(arr(schema.vars).filter(Boolean).map((v) => [v.id, v]));
+  const read = (id) => {
+    if (!id || typeof id !== 'string') return undefined;
+    let v;
+    try { v = lookup(id); } catch { v = undefined; }
+    return v === undefined ? byId[id]?.init : v;
+  };
+  const listOf = (id) => { const v = read(id); return Array.isArray(v) ? v.map(String) : []; };
+  const reveal = !!opts.reveal;
+  const fog = m.fog === true && !reveal;
+  const cats = categoriesOf(m);
+  const catColor = (c) => cats.find((x) => x.label === c)?.color ?? null;
+  const locRaw = read(m.locVar);
+  const loc = locRaw == null ? '' : String(locRaw).trim();
+  const seenSet = new Set(listOf(m.seenVar).map(norm));
+
+  // ① 구역
+  const zones = [];
+  arr(m.zones).slice(0, CAPS.ZONES).forEach((z, i) => {
+    if (!z || typeof z !== 'object') return;
+    const label = str(z.label);
+    const x = pct(z.x), y = pct(z.y), w = pct(z.w), h = pct(z.h);
+    if (!label || x == null || y == null || !w || !h) return;
+    zones.push({
+      key: `z${i}`, label, x, y, w: Math.min(w, 100 - x), h: Math.min(h, 100 - y),
+      cat: str(z.cat) || null, color: str(z.color) || catColor(str(z.cat)) || null,
+      desc: str(z.desc), match: [label, ...arr(z.match).map(str).filter(Boolean)],
+      known: reveal || knownOf(z, lookup, fog, !fog), seen: reveal || seenSet.has(norm(label)),
+      here: false, open: false, pins: [], places: [],
+    });
+  });
+  const zoneAt = (x, y) => {
+    let best = null;
+    for (const z of zones) {
+      if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h && (!best || z.w * z.h < best.w * best.h)) best = z;
+    }
+    return best;
+  };
+  const zoneByTag = (tag, text) => {
+    if (tag) {
+      const t = norm(tag);
+      const hit = zones.find((z) => z.match.some((mm) => norm(mm) === t));
+      if (hit) return hit;
+    }
+    // 꼬리표가 없거나 안 맞으면 항목 글에 든 구역 이름 (상태창 {목록:tags:구역}과 같은 '품은 글' 규약) — 긴 이름 우선
+    const all = norm(text);
+    let best = null, bestLen = 0;
+    for (const z of zones) for (const mm of z.match) {
+      const n = norm(mm);
+      if (n && all.includes(n) && n.length > bestLen) { best = z; bestLen = n.length; }
+    }
+    return best;
+  };
+
+  // ② 고정 장소
+  const places = [];
+  arr(m.places).slice(0, CAPS.PLACES).forEach((p, i) => {
+    if (!p || typeof p !== 'object') return;
+    const name = str(p.name);
+    const x = pct(p.x), y = pct(p.y);
+    if (!name || x == null || y == null) return;
+    const alias = arr(p.alias).map(str).filter(Boolean);
+    const cat = str(p.cat) || null;
+    const zone = zoneAt(x, y);
+    places.push({
+      key: `p${i}`, name, sub: str(p.sub), x, y, cat, color: catColor(cat),
+      desc: str(p.desc), rumor: str(p.rumor), alias, zone: zone ? zone.key : null,
+      known: reveal || knownOf(p, lookup, fog, !fog),
+      seen: reveal || seenSet.has(norm(name)) || alias.some((a) => seenSet.has(norm(a))),
+      here: false, state: 'hidden',
+    });
+    if (zone) zone.places.push(`p${i}`);
+  });
+
+  // ③ 찾아낸 곳 (listVar) — "이름 (구역)"이 그 구역에 핀으로 꽂힌다
+  const pins = [];
+  const stray = [];
+  const taken = places.map((p) => ({ x: p.x, y: p.y, name: p.name }));
+  for (const raw of listOf(m.listVar).slice(0, CAPS.DYN)) {
+    const { name, tag } = splitTag(raw);
+    if (!name) continue;
+    const z = zoneByTag(tag, raw);
+    if (!z) { stray.push({ name, raw: String(raw), tag }); continue; }
+    const inner = zones.filter((o) => o !== z && o.x >= z.x && o.y >= z.y && o.x + o.w <= z.x + z.w && o.y + o.h <= z.y + z.h);
+    const pos = placeInZone(z, name, taken, inner);
+    taken.push({ ...pos, name });
+    const key = `d${pins.length}`;
+    pins.push({ key, name, raw: String(raw), x: pos.x, y: pos.y, zone: z.key, cat: z.cat, color: z.color, here: false });
+    z.pins.push(key);
+  }
+
+  // ④ 지금 여기 — 장소(이름·별칭) > 찾아낸 곳 > 구역 순
+  let here = null;
+  if (loc) {
+    const L = norm(loc);
+    const p = places.find((q) => norm(q.name) === L || q.alias.some((a) => norm(a) === L));
+    if (p) { p.here = true; p.seen = true; here = { kind: 'place', key: p.key, name: p.name }; }
+    if (!here) {
+      const d = pins.find((q) => norm(q.name) === L);
+      if (d) { d.here = true; here = { kind: 'pin', key: d.key, name: d.name }; }
+    }
+    if (!here) {
+      const z = zones.find((q) => q.match.some((mm) => norm(mm) === L));
+      if (z) { z.here = true; z.seen = true; here = { kind: 'zone', key: z.key, name: z.label }; }
+    }
+  }
+
+  for (const p of places) p.state = p.seen ? 'seen' : p.known ? 'known' : 'hidden';
+  const zoneOf = (k) => zones.find((z) => z.key === k);
+  for (const z of zones) {
+    z.open = !fog || z.known || z.seen || z.here || z.pins.length > 0
+      || z.places.some((k) => places.find((p) => p.key === k)?.state === 'seen')
+      || (here && here.kind !== 'zone' && (places.find((p) => p.key === here.key)?.zone === z.key || pins.find((d) => d.key === here.key)?.zone === z.key));
+  }
+
+  // ⑤ 이정표 — 같은 변에 선 것들은 순서대로 고르게 나눈다 (at을 적은 것만 그 자리)
+  const exits = [];
+  const ORDER = { ne: 0, nw: 0, n: 1, s: 1, e: 1, w: 1, se: 2, sw: 2 };
+  arr(m.exits).slice(0, CAPS.EXITS).forEach((e, i) => {
+    if (!e || typeof e !== 'object') return;
+    const label = str(e.label);
+    const dir = DIRS[e.dir] ? e.dir : null;
+    if (!label || !dir) return;
+    if (!(reveal || knownOf(e, lookup, fog, true))) return;
+    exits.push({ key: `e${i}`, label, dir, arrow: DIRS[dir], edge: DIR_EDGE[dir], at: pct(e.at), i });
+  });
+  for (const edge of ['top', 'bottom', 'left', 'right']) {
+    const on = exits.filter((e) => e.edge === edge && e.at == null).sort((a, b) => (ORDER[a.dir] - ORDER[b.dir]) || (a.i - b.i));
+    on.forEach((e, k) => { e.at = round1(on.length === 1 ? (ORDER[e.dir] === 0 ? 10 : ORDER[e.dir] === 2 ? 90 : 50) : 10 + (80 * k) / (on.length - 1)); });
+  }
+
+  const counts = {
+    places: places.length,
+    seen: places.filter((p) => p.state === 'seen').length,
+    known: places.filter((p) => p.state !== 'hidden').length,
+    zones: zones.length,
+    open: zones.filter((z) => z.open).length,
+    pins: pins.length,
+  };
+  return {
+    label: str(m.label) || '지도', icon: str(m.icon) || '🗺️', note: str(m.note), ratio: ratioOf(m),
+    bg: str(m.bg) || null, fog, fogOn: m.fog === true, cats, zones, places, pins, exits, stray,
+    here, loc, counts, zoneOf,
+  };
+}
+
+/**
+ * 들른 곳 기록 — 정산 끝에 엔진이 부른다. 위치 변수 값이 장소(이름·별칭)나 구역이면 그 이름을 seenVar에 넣는다.
+ * 상태를 직접 바꾼다 (엔진 정산 안에서만 부를 것). 반환: 넣은 이름 | null.
+ * 목록이 꽉 찼으면 넣지 않는다 — 오래된 발자취를 밀어내면 지도가 도로 안개에 덮인다 (검증이 크기를 경고한다).
+ */
+function recordVisit(schema, state, makeLookup) {
+  const m = mapConfig(schema);
+  if (!m || !m.seenVar || !state?.vars) return null;
+  const def = arr(schema.vars).find((v) => v && v.id === m.seenVar);
+  if (!def || def.type !== 'list') return null;
+  const view = mapView(schema, state, makeLookup);
+  if (!view || !view.here || view.here.kind === 'pin') return null;
+  const name = view.here.name;
+  const cur = Array.isArray(state.vars[m.seenVar]) ? state.vars[m.seenVar] : [];
+  if (cur.some((x) => norm(x) === norm(name))) return null;
+  const maxItems = Number.isInteger(def.maxItems) ? def.maxItems : 20;
+  const maxLen = Number.isInteger(def.itemMaxLength) ? def.itemMaxLength : 40;
+  if (cur.length >= maxItems || name.length > maxLen) return null;
+  state.vars[m.seenVar] = [...cur, name];
+  return name;
+}
+
+/**
+ * 검증 — validate.js가 부른다. ctx { vars, exprIds, allIds, err, warn, checkExpr }.
+ * 모듈에 두는 이유: 규격서가 validateSchema 소스를 통째로 싣는데 128KB 상한이 코앞이었다 (sample.validatePools와 같은 길).
+ * 규칙 요지는 편집기 SCHEMA_MAP_RULES가 AI에게 말한다.
+ */
+function validateMap(schema, { vars, exprIds, allIds, err, warn, checkExpr }) {
+  if (schema.map == null) return;
+  const M = schema.map; const P = '$.map';
+  if (typeof M !== 'object' || Array.isArray(M)) err(P, 'map은 객체여야 함');
+  else {
+    for (const k of ['label', 'note', 'css', 'bg']) if (M[k] != null && typeof M[k] !== 'string') err(`${P}.${k}`, `${k}는 문자열이어야 함`);
+    if (M.icon != null && (typeof M.icon !== 'string' || M.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
+    if (M.ratio != null && (typeof M.ratio !== 'number' || M.ratio < 0.4 || M.ratio > 2.5)) err(`${P}.ratio`, 'ratio(세로÷가로)는 0.4~2.5 숫자');
+    if (M.fog != null && typeof M.fog !== 'boolean') err(`${P}.fog`, 'fog는 true/false');
+    const knownChk = (v, p) => { if (v != null && typeof v !== 'boolean') checkExpr(v, p, exprIds, err, { allowRand: false }); };
+    const pctChk = (v, p, name) => { if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 100) { err(p, `${name}는 0~100 숫자 (지도 크기에 대한 %)`); return false; } return true; };
+    const listVarChk = (k, name) => {
+      if (M[k] == null) return null;
+      const lv = vars.find((v) => v && v.id === M[k]);
+      if (typeof M[k] !== 'string' || !lv) { err(`${P}.${k}`, `${name} '${M[k]}'가 vars에 없음`); return null; }
+      if (lv.type !== 'list') { err(`${P}.${k}`, `${name} '${M[k]}'는 list 타입이어야 함 (현재: ${lv.type})`); return null; }
+      return lv;
+    };
+    let locDef = null;
+    if (M.locVar == null) warn(`${P}.locVar`, '현재 위치 변수(locVar)가 없어 "지금 여기"도, 들른 곳 기록도 안 됩니다');
+    else if (typeof M.locVar !== 'string' || !allIds.has(M.locVar)) err(`${P}.locVar`, `위치 변수 '${M.locVar}'가 vars·파생에 없음`);
+    else {
+      locDef = vars.find((v) => v && v.id === M.locVar) || null;
+      if (locDef && locDef.type === 'list') err(`${P}.locVar`, '위치 변수는 값 하나여야 함 (list는 발자취·찾아낸 곳 칸에)');
+    }
+    const seenDef = listVarChk('seenVar', '발자취 목록');
+    listVarChk('listVar', '찾아낸 곳 목록');
+    if (seenDef && M.locVar == null) warn(`${P}.seenVar`, '발자취는 위치 변수를 보고 적힙니다 — locVar가 없으면 비어 있습니다');
+    const cats = new Set();
+    if (M.categories != null) {
+      if (!Array.isArray(M.categories)) err(`${P}.categories`, '분류는 [{ label, color }] 배열');
+      else {
+        if (M.categories.length > 10) err(`${P}.categories`, '분류는 10개까지');
+        M.categories.forEach((c, i) => {
+          const label = typeof c === 'string' ? c : c?.label;
+          if (typeof label !== 'string' || !label.trim()) err(`${P}.categories[${i}].label`, '분류 이름(label) 필요');
+          else if (cats.has(label.trim())) err(`${P}.categories[${i}].label`, `중복 분류 '${label}'`);
+          else cats.add(label.trim());
+          if (c && typeof c === 'object' && c.color != null && typeof c.color !== 'string') err(`${P}.categories[${i}].color`, '색(color)은 문자열 (#rrggbb)');
+        });
+      }
+    }
+    const catChk = (v, p) => { if (v != null && (typeof v !== 'string' || !cats.has(v.trim()))) warn(p, `분류 '${v}'가 categories에 없습니다 — 분류 단추로 거를 수 없어요`); };
+    const names = new Set();
+    for (const [k, cap, what] of [['zones', 40, '구역'], ['places', 80, '장소'], ['exits', 16, '이정표']]) {
+      if (M[k] == null) continue;
+      if (!Array.isArray(M[k])) { err(`${P}.${k}`, `${what}(${k})은 배열`); continue; }
+      if (M[k].length > cap) err(`${P}.${k}`, `${what}은 ${cap}개까지`);
+      M[k].forEach((e, i) => {
+        const ep = `${P}.${k}[${i}]`;
+        if (!e || typeof e !== 'object' || Array.isArray(e)) { err(ep, `${what}은 객체`); return; }
+        const nm = k === 'places' ? e.name : e.label;
+        if (typeof nm !== 'string' || !nm.trim()) err(`${ep}.${k === 'places' ? 'name' : 'label'}`, `${what} 이름 필요`);
+        else if (k !== 'exits') {
+          for (const n of [nm, ...(Array.isArray(e.alias) ? e.alias : []), ...(Array.isArray(e.match) ? e.match : [])]) {
+            if (typeof n !== 'string') { err(ep, '별칭·match는 문자열 배열'); continue; }
+            if (names.has(n.trim())) err(ep, `이름 '${n}'이 다른 장소·구역과 겹칩니다 — 위치 값이 어디를 가리키는지 모호해집니다`);
+            names.add(n.trim());
+          }
+        }
+        for (const t of ['desc', 'rumor', 'sub', 'color']) if (e[t] != null && typeof e[t] !== 'string') err(`${ep}.${t}`, `${t}는 문자열`);
+        knownChk(e.known, `${ep}.known`);
+        if (k === 'exits') {
+          if (!['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].includes(e.dir)) err(`${ep}.dir`, 'dir은 n·ne·e·se·s·sw·w·nw 중 하나');
+          if (e.at != null) pctChk(e.at, `${ep}.at`, 'at(변을 따라 놓을 자리)');
+          return;
+        }
+        catChk(e.cat, `${ep}.cat`);
+        const okX = pctChk(e.x, `${ep}.x`, 'x'), okY = pctChk(e.y, `${ep}.y`, 'y');
+        if (k === 'zones') {
+          const okW = pctChk(e.w, `${ep}.w`, 'w'), okH = pctChk(e.h, `${ep}.h`, 'h');
+          if (okW && okH && (!e.w || !e.h)) err(ep, '구역 너비·높이(w·h)는 0보다 커야 함');
+          if (okX && okY && okW && okH && (e.x + e.w > 100.5 || e.y + e.h > 100.5)) warn(ep, '구역이 지도 밖으로 나갑니다 — 넘친 만큼 잘려 그려집니다');
+        }
+      });
+    }
+    const nPlaces = Array.isArray(M.places) ? M.places.length : 0, nZones = Array.isArray(M.zones) ? M.zones.length : 0;
+    if (M.listVar != null && !nZones) warn(`${P}.listVar`, '찾아낸 곳은 구역에 꽂힙니다 — 구역(zones)이 없으면 전부 "자리를 못 찾은 곳"이 됩니다');
+    if (seenDef && (seenDef.maxItems ?? 20) < nPlaces + nZones) warn(`${P}.seenVar`, `발자취 목록 '${seenDef.id}'의 maxItems(${seenDef.maxItems ?? 20})가 장소+구역 수(${nPlaces + nZones})보다 작습니다 — 꽉 차면 더 적지 못해 새로 간 곳이 안개에 남습니다`);
+    // 안개 지도에서 위치 선택지에 없는 장소 = 영영 못 가 보는 곳 (known도 없으면 끝까지 안 보인다)
+    if (M.fog === true && locDef && locDef.type === 'enum' && Array.isArray(locDef.enum) && Array.isArray(M.places)) {
+      const en = new Set(locDef.enum.map((x) => String(x).trim()));
+      const never = M.places.filter((p) => p && typeof p.name === 'string' && p.known == null
+        && ![p.name, ...(Array.isArray(p.alias) ? p.alias : [])].some((n) => en.has(String(n).trim()))).map((p) => p.name);
+      if (never.length) warn(`${P}.places`, `위치 선택지(${M.locVar})에 없고 known도 없는 장소 ${never.length}곳 — 갈 수 없어 끝까지 안개 속입니다: ${never.slice(0, 5).join(', ')}${never.length > 5 ? ' …' : ''}`);
+    }
+  }
+}
+
+// ── 그리기 ─────────────────────────────────────────────────
+
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const safeColor = (c) => (/^#[0-9a-f]{3,8}$|^[a-z]+$|^(rgb|hsl)a?\([\d\s.,%]+\)$/i.test(String(c || '')) ? c : null);
+
+/** 지금 고른 것의 사정 — 장소·찾아낸 곳·구역 */
+function detailOf(view, key) {
+  if (!key) return null;
+  const p = view.places.find((x) => x.key === key);
+  if (p && p.state !== 'hidden') {
+    const z = p.zone ? view.zoneOf(p.zone) : null;
+    const badge = p.here ? '📍 지금 여기' : p.state === 'seen' ? (view.fogOn ? '✓ 가 본 곳' : '') : view.fog ? '소문으로만 아는 곳' : '';
+    const text = (p.state === 'seen' || !view.fog) ? p.desc : (p.rumor || '아직 가 보지 않은 곳이다.');
+    return { title: p.name, sub: p.sub, where: [z?.open ? z.label : null, p.cat].filter(Boolean).join(' · '), badge, text, list: [] };
+  }
+  const d = view.pins.find((x) => x.key === key);
+  if (d) {
+    const z = view.zoneOf(d.zone);
+    return { title: d.name, sub: '', where: [z?.label, d.cat].filter(Boolean).join(' · '), badge: d.here ? '📍 지금 여기' : '✓ 찾아낸 곳',
+      text: d.raw !== d.name ? d.raw : '', list: [] };
+  }
+  const z = view.zoneOf(key);
+  if (z) {
+    if (!z.open) return { title: '？', sub: '', where: '', badge: '아직 그려지지 않은 곳', text: '아무도 이곳을 지도에 옮기지 않았다.', list: [] };
+    const names = [
+      ...z.places.map((k) => view.places.find((p) => p.key === k)).filter((p) => p && p.state !== 'hidden').map((p) => p.name),
+      ...z.pins.map((k) => view.pins.find((q) => q.key === k)?.name).filter(Boolean),
+    ];
+    return { title: z.label, sub: '', where: z.cat || '', badge: z.here ? '📍 지금 여기' : (view.fogOn && z.seen ? '✓ 가 본 곳' : ''),
+      text: z.desc, list: names };
+  }
+  return null;
+}
+
+/**
+ * 지도 몸통 HTML — 패널과 편집기 미리보기가 같이 쓴다. 제목·닫기는 부르는 쪽 몫.
+ * ui { cat: 분류 이름|null, sel: 고른 열쇠|null }, opts { bgUrl, pick: 편집기 찍기 중인가 }
+ * 상호작용은 data-scm(고르기)·data-scm-cat(분류) 속성 — 부르는 쪽이 위임 클릭으로 받는다.
+ */
+function renderMapHtml(view, ui = {}, opts = {}) {
+  if (!view) return '';
+  const cat = ui.cat && view.cats.some((c) => c.label === ui.cat) ? ui.cat : null;
+  const dim = (c) => (cat && c !== cat ? ' scm-dim' : '');
+  const color = (c) => { const ok = safeColor(c); return ok ? `--scm-c:${ok};` : ''; };
+  const sel = ui.sel || null;
+  const h = [];
+  h.push(`<div class="scm${opts.pick ? ' scm-picking' : ''}">`);
+  if (view.cats.length) {
+    h.push('<div class="scm-filters" role="toolbar" aria-label="분류">');
+    h.push(`<button type="button" class="scm-fbtn${cat ? '' : ' scm-on'}" data-scm-cat="">전체</button>`);
+    for (const c of view.cats) {
+      h.push(`<button type="button" class="scm-fbtn${cat === c.label ? ' scm-on' : ''}" data-scm-cat="${esc(c.label)}" style="${color(c.color)}"><i class="scm-sw"></i>${esc(c.label)}</button>`);
+    }
+    h.push('</div>');
+  }
+  h.push(`<div class="scm-frame" style="--scm-ratio:${round1(view.ratio * 100)}%"><div class="scm-surface">`);
+  if (opts.bgUrl) h.push(`<img class="scm-bg" src="${esc(opts.bgUrl)}" alt="">`);
+  for (const z of view.zones) {
+    const cls = `scm-zone${z.open ? '' : ' scm-fog'}${z.here ? ' scm-here' : ''}${sel === z.key ? ' scm-sel' : ''}${dim(z.cat)}`;
+    h.push(`<button type="button" class="${cls}" data-scm="${z.key}" style="left:${z.x}%;top:${z.y}%;width:${z.w}%;height:${z.h}%;${z.open ? color(z.color) : ''}" aria-label="${esc(z.open ? z.label : '아직 그려지지 않은 곳')}${z.here ? ' (현재 위치)' : ''}">`
+      // 구역이 '지금 여기'면 가운데 점 대신 이름표에 붙인다 — 가운데엔 그 구역의 핀들이 앉는다
+      + `<span class="scm-zl">${esc(z.open ? z.label : '？')}${z.here ? '<b class="scm-zhere">📍 현재 위치</b>' : ''}</span></button>`);
+  }
+  const side = (x) => (x > LABEL_LEFT_AT ? ' scm-left' : '');
+  for (const p of view.places) {
+    if (p.state === 'hidden') continue;
+    // 안개가 없는 지도에선 '소문' 모양(빈 마름모)을 안 쓴다 — 다 아는 곳이다
+    const cls = `scm-pin scm-st-${view.fog ? p.state : 'seen'}${p.here ? ' scm-here' : ''}${sel === p.key ? ' scm-sel' : ''}${side(p.x)}${dim(p.cat)}`;
+    h.push(`<button type="button" class="${cls}" data-scm="${p.key}" style="left:${p.x}%;top:${p.y}%;${color(p.color)}" aria-label="${esc(p.name)}${p.here ? ' (현재 위치)' : ''}">`
+      + `<i class="scm-dot"></i><span class="scm-name">${esc(p.name)}${p.state === 'known' && view.fog ? ' ?' : ''}</span>`
+      + (p.here ? '<span class="scm-now">현재 위치</span>' : '') + '</button>');
+  }
+  for (const d of view.pins) {
+    const cls = `scm-pin scm-dyn${d.here ? ' scm-here' : ''}${sel === d.key ? ' scm-sel' : ''}${side(d.x)}${dim(d.cat)}`;
+    h.push(`<button type="button" class="${cls}" data-scm="${d.key}" style="left:${d.x}%;top:${d.y}%;${color(d.color)}" aria-label="${esc(d.name)}${d.here ? ' (현재 위치)' : ''}">`
+      + `<i class="scm-dot"></i><span class="scm-name">${esc(d.name)}</span>`
+      + (d.here ? '<span class="scm-now">현재 위치</span>' : '') + '</button>');
+  }
+  for (const e of view.exits) {
+    const pos = e.edge === 'top' || e.edge === 'bottom' ? `left:${e.at}%` : `top:${e.at}%`;
+    h.push(`<span class="scm-exit scm-edge-${e.edge}" style="${pos}">${e.arrow} ${esc(e.label)}</span>`);
+  }
+  h.push('</div></div>');
+
+  // 아래 — 지금 · 채운 정도 · 고른 곳의 사정
+  h.push('<div class="scm-under">');
+  if (view.loc) h.push(`<div class="scm-hereline">📍 <b>${esc(view.loc)}</b>${view.here ? '' : ' <span class="scm-off">(지도 밖)</span>'}</div>`);
+  const cnt = [];
+  if (view.counts.places) cnt.push(view.fogOn ? `장소 ${view.counts.seen} / ${view.counts.places}` : `장소 ${view.counts.places}곳`);
+  if (view.counts.zones && view.fogOn) cnt.push(`지역 ${view.counts.open} / ${view.counts.zones}`);
+  if (view.counts.pins) cnt.push(`찾아낸 곳 ${view.counts.pins}`);
+  if (view.exits.length) cnt.push(`이정표 ${view.exits.length}`);
+  if (cnt.length) h.push(`<div class="scm-count">${cnt.join(' · ')}</div>`);
+  if (view.note) h.push(`<div class="scm-note">${esc(view.note)}</div>`);
+  const dt = detailOf(view, sel);
+  if (dt) {
+    h.push('<div class="scm-detail">');
+    h.push(`<div class="scm-dt-head"><b class="scm-dt-title">${esc(dt.title)}</b>${dt.sub ? ` <span class="scm-dt-sub">${esc(dt.sub)}</span>` : ''}${dt.badge ? ` <span class="scm-dt-badge">${esc(dt.badge)}</span>` : ''}</div>`);
+    if (dt.where) h.push(`<div class="scm-dt-where">${esc(dt.where)}</div>`);
+    if (dt.text) h.push(`<div class="scm-dt-text">${esc(dt.text)}</div>`);
+    if (dt.list.length) h.push(`<div class="scm-dt-list">${dt.list.map((n) => `<span>${esc(n)}</span>`).join('')}</div>`);
+    h.push('</div>');
+  } else {
+    h.push('<div class="scm-hint">장소를 누르면 그곳의 사정을 볼 수 있어요. 다시 누르면 닫혀요.</div>');
+  }
+  if (view.stray.length) {
+    h.push(`<div class="scm-stray">자리를 못 찾은 곳 — ${view.stray.map((s) => esc(s.raw)).join(', ')}<br><small>항목 끝에 구역 이름을 괄호로 붙이면 그 구역에 놓여요 (예: "이름 (${esc(view.zones[0]?.label || '구역')})")</small></div>`);
+  }
+  h.push('</div></div>');
+  return h.join('');
+}
+
+// 기본 모양 — 낡은 종이 지도. 봇의 map.css가 #sc-game 범위로 덮어쓴다 (편집기 미리보기는 .sce-map-preview 범위)
+const MAP_CSS = `
+.scm{font-size:13px}
+.scm *{box-sizing:border-box}
+.scm-filters{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 9px}
+.scm-fbtn{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(128,128,128,.45);border-radius:999px;background:rgba(128,128,128,.12);color:inherit;padding:3px 11px;font-size:12.5px;cursor:pointer;font-family:inherit}
+.scm-fbtn:hover{border-color:rgba(128,128,128,.8)}
+.scm-fbtn.scm-on{background:#7d2a20;border-color:#c0574a;color:#fff;font-weight:700}
+.scm-sw{display:inline-block;width:8px;height:8px;transform:rotate(45deg);background:var(--scm-c,#8a2a22)}
+.scm-frame{position:relative;width:100%;container-type:inline-size;border-radius:10px;overflow:hidden;border:2px solid #5a4630;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.scm-frame::before{content:'';display:block;padding-top:var(--scm-ratio,100%)}
+.scm-surface{position:absolute;inset:0;color:#3b2a1a;background-color:#e8dcbf;
+  background-image:linear-gradient(rgba(120,95,60,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(120,95,60,.10) 1px,transparent 1px),radial-gradient(ellipse at center,rgba(255,250,235,.55),rgba(160,130,85,.25));
+  background-size:24px 24px,24px 24px,100% 100%}
+.scm-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+.scm-zone{position:absolute;display:block;margin:0;padding:3px 5px;text-align:left;border:1.5px solid rgba(90,70,48,.45);border-radius:9px;
+  background:rgba(120,150,90,.16);background:color-mix(in srgb,var(--scm-c,#7d9a5a) 20%,transparent);cursor:pointer;font-family:inherit;color:inherit;z-index:1}
+.scm-zone:hover{border-color:rgba(90,70,48,.8)}
+.scm-zl{position:absolute;left:4px;top:3px;display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#4a3626;background:rgba(255,250,238,.7);border-radius:4px;padding:0 4px;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scm-zhere{margin-left:4px;color:#a3271b;font-weight:800}
+.scm-zone.scm-fog{background:repeating-linear-gradient(45deg,rgba(105,96,82,.42) 0 7px,rgba(105,96,82,.26) 7px 14px);border-style:dashed;border-color:rgba(80,70,58,.5)}
+.scm-zone.scm-fog .scm-zl{left:50%;top:50%;transform:translate(-50%,-50%);background:none;color:rgba(60,50,40,.6);font-size:15px}
+.scm-zone.scm-here{border-color:#a3271b;border-width:2px}
+.scm-zone.scm-sel{outline:2px solid #2b1d10;outline-offset:1px}
+.scm-pin{position:absolute;width:0;height:0;margin:0;padding:0;border:0;background:none;cursor:pointer;z-index:3;font-family:inherit}
+.scm-dot{position:absolute;left:-6px;top:-6px;width:12px;height:12px;transform:rotate(45deg);background:var(--scm-c,#8a2a22);border:1.5px solid #fff8e8;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.scm-name{position:absolute;left:9px;top:-9px;font-size:11px;font-weight:700;line-height:16px;color:#2b1d10;background:rgba(255,250,238,.93);border:1px solid rgba(90,70,48,.55);border-radius:4px;padding:0 5px;white-space:nowrap}
+.scm-pin.scm-left .scm-name{left:auto;right:9px}
+.scm-pin:hover .scm-name,.scm-pin:focus-visible .scm-name{background:#fff;border-color:#2b1d10}
+.scm-st-known .scm-dot{background:transparent;border:1.5px dashed var(--scm-c,#8a2a22);box-shadow:none}
+.scm-st-known .scm-name{opacity:.8;font-style:italic}
+.scm-dyn .scm-dot{width:9px;height:9px;left:-4.5px;top:-4.5px;border-radius:50%;transform:none}
+.scm-dyn .scm-name{font-weight:600;font-size:10.5px;left:7px;top:-8px;line-height:15px}
+.scm-dyn.scm-left .scm-name{right:7px}
+.scm-pin.scm-sel .scm-name{background:#2b1d10;color:#fff8e8;border-color:#2b1d10}
+.scm-pin.scm-here .scm-dot{background:#a3271b;border-color:#fff}
+.scm-pin.scm-here .scm-dot::after{content:'';position:absolute;inset:-7px;border:2px solid #a3271b;border-radius:3px;animation:scm-ping 1.6s ease-out infinite}
+.scm-now{position:absolute;left:-30px;top:10px;width:60px;text-align:center;font-size:10px;font-weight:800;color:#a3271b;text-shadow:0 0 3px #fff8e8,0 0 3px #fff8e8}
+@keyframes scm-ping{from{opacity:.9;transform:scale(.7)}to{opacity:0;transform:scale(1.5)}}
+@media (prefers-reduced-motion:reduce){.scm-pin.scm-here .scm-dot::after{animation:none}}
+.scm-dim{opacity:.22}
+.scm-exit{position:absolute;z-index:2;font-size:11px;font-weight:700;line-height:17px;color:#f3e6c8;background:#4a3423;border:1px solid #2c1f14;border-radius:4px;padding:0 6px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.35);pointer-events:none}
+.scm-edge-top{top:5px;transform:translateX(-50%)}
+.scm-edge-bottom{bottom:5px;transform:translateX(-50%)}
+.scm-edge-left{left:5px;transform:translateY(-50%)}
+.scm-edge-right{right:5px;transform:translateY(-50%)}
+.scm-under{margin-top:9px}
+.scm-hereline{display:inline-block;border:1px solid rgba(163,39,27,.7);background:rgba(163,39,27,.12);color:inherit;border-radius:7px;padding:3px 10px;font-size:12.5px}
+.scm-off{opacity:.65;font-size:11.5px}
+.scm-count{margin-top:6px;opacity:.75;font-size:12px}
+.scm-note{margin-top:4px;opacity:.65;font-size:12px}
+.scm-hint{margin-top:6px;opacity:.6;font-size:12px}
+.scm-detail{margin-top:8px;background:#f4ead6;color:#2b1d10;border-left:4px solid #7d2a20;border-radius:8px;padding:10px 12px}
+.scm-dt-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
+.scm-dt-title{font-size:15px}
+.scm-dt-sub{color:#7a6650;font-size:12px}
+.scm-dt-badge{margin-left:auto;font-size:11px;font-weight:700;color:#7d2a20;border:1px solid rgba(125,42,32,.45);border-radius:999px;padding:0 8px}
+.scm-dt-where{margin-top:2px;color:#7a6650;font-size:11.5px}
+.scm-dt-text{margin-top:7px;font-size:13px;line-height:1.6;white-space:pre-wrap}
+.scm-dt-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.scm-dt-list span{font-size:11.5px;border:1px solid rgba(90,70,48,.4);border-radius:999px;padding:0 8px;background:rgba(255,255,255,.5)}
+.scm-stray{margin-top:8px;font-size:12px;border-left:3px solid #c98a1a;padding-left:8px}
+.scm-stray small{opacity:.7}
+/* 좁은 화면 — 이름표는 px이고 자리는 %라 폭이 줄면 겹친다. 글자를 줄이고, 더 좁으면 찾아낸 곳은 점만 (누르거나 지금 여기면 이름) */
+@container (max-width:460px){.scm-name{font-size:10px;line-height:14px;padding:0 3px;top:-8px}.scm-zl{font-size:9.5px}.scm-exit{font-size:10px;line-height:15px;padding:0 4px}.scm-now{font-size:9px}}
+@container (max-width:380px){.scm-dyn .scm-name{display:none}.scm-dyn.scm-sel .scm-name,.scm-dyn.scm-here .scm-name,.scm-dyn:focus-visible .scm-name{display:block}}
+.scm-picking .scm-surface{cursor:crosshair;outline:2px dashed #ffd166;outline-offset:-2px}
+`;
+
+module.exports = {
+  DIRS, DIR_EDGE, CAPS, PALETTE, DEFAULT_RATIO, MAP_CSS,
+  mapConfig, mapButtonSpec, mapView, recordVisit, validateMap, renderMapHtml, detailOf, splitTag, categoriesOf, ratioOf,
+};
+
+});
+
 SimCore.define("choice", function (require, module, exports) {
 // 보조가 쓰는 갈림길 (v1.8.0) — liveChoices. 갈림길 확장 셋의 셋째 조각 (docs/design-갈림길-확장.md).
 //
@@ -8025,7 +8653,7 @@ const UNSUPPORTED_HINT = {
   statusUI: '[상태창] 탭', onTurn: '[규칙·이벤트] 탭 첫 절(매 턴 정산)', setup: '[새 시작] 탭', meta: '[상태창] 탭 제목 칸·📌 작업 지침',
   promptState: '[AI 설정] 탭', suggest: '[AI 설정] 탭', simcore: '(버전 표식 — 손대지 않음)', time: '[시간] 탭',
   checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋 관리자]', party: '[편성표] 탭',
-  calendar: '[달력] 탭', board: '[보드] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
+  calendar: '[달력] 탭', board: '[보드] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭', map: '[지도] 탭',
   liveChoices: '[규칙·이벤트] 탭 보조 갈림길 절', scenario: '[시나리오] 탭', secrets: '[비밀] 탭', rerollStableRng: '[규칙·이벤트] 탭',
   pools: '[변수] 탭 🎲 후보 풀 (v1.18.0)',
 };
@@ -8579,7 +9207,7 @@ const DIFF_AREAS = [
   ['setup', (s) => s?.setup, '새 시작(setup)'], ['updater', (s) => { const u = { ...(s?.updater || {}) }; delete u.allow; return u; }, '보조 AI 설정(updater, allow 제외)'],
   ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
-  ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
+  ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['map', (s) => s?.map, '지도'], ['assets', (s) => s?.assets, '에셋'],
   ['secrets', (s) => s?.secrets, '비밀'], ['shops', (s) => s?.shops, '상점(여러)'], ['liveChoices', (s) => s?.liveChoices, '보조 갈림길'],
   ['rerollStableRng', (s) => s?.rerollStableRng, '리롤 안정'], // (v1.14.9 — 전엔 비밀만 바뀐 판이 "같습니다"로 나왔다)
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
@@ -8661,6 +9289,7 @@ const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트�
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
 const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
+const mapMod = require('./map');        // 지도 (v1.23.0) — 들른 곳 기록, 옵트인
 const choiceMod = require('./choice');  // 보조가 쓰는 갈림길 (v1.8.0) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
@@ -10628,6 +11257,14 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
 
   // 8.9 이번 정산에서 흐른 시간(turn_min) 소진 (v1.9.11) — onTurn·이벤트가 다 읽었다. 다음 전송부터 다시 쌓인다.
   if (typeof state.vars[TURN_MIN_KEY] === 'number' && state.vars[TURN_MIN_KEY] !== 0) state.vars[TURN_MIN_KEY] = 0;
+
+  // 8.92 지도 발자취 (v1.23.0) — 위치 변수가 지도의 장소·구역을 가리키면 그 이름을 발자취 목록(seenVar)에 적는다.
+  // 이벤트·액션이 옮긴 위치까지 다 끝난 뒤, 체크포인트 저장보다 먼저 (저장이 그 턴의 발자취를 담는다). 보조가 아니라 시스템이 적는다.
+  {
+    const seenId = schema.map?.seenVar;
+    const from = seenId ? state.vars[seenId] : undefined;
+    if (mapMod.recordVisit(schema, state, makeLookup)) changeLog.push({ id: seenId, from, to: state.vars[seenId], source: 'map' });
+  }
 
   // 8.95 체크포인트 (v1.11.0) — 이벤트·막 전환·비밀까지 다 끝난 뒤. 막 onEnter의 저장이 그 턴의 전환·진입 효과·열린 비밀까지 담고,
   // 게임오버 이벤트의 되감기가 이번 턴에 벌어진 모든 것을 되돌린다. 안내는 다음 전송에 (통지).
@@ -12865,6 +13502,8 @@ function writerMap(schema) {
     if (qb.listVar) add(qb.listVar, '의뢰판');
     for (const f of [...(Array.isArray(qb.accept) ? qb.accept : []), ...(Array.isArray(qb.cancel) ? qb.cancel : [])]) add(f?.set, '의뢰판');
   }
+  // 지도 발자취(v1.23.0) — 정산이 위치 변수를 보고 들른 곳 이름을 적는다
+  if (schema.map && typeof schema.map === 'object' && schema.map.seenVar) add(schema.map.seenVar, '지도');
   // 무대 뒤 단계 효과·전투 결착 효과·상점 거래 (v1.14.11 — 빠져 있어 '고정 변수' 오탐)
   for (const f of (require('./front').frontsConfig(schema) || [])) for (const st of (f.stages || [])) for (const e of (st.effects || [])) for (const _w of effTargets(e)) add(_w, '무대 뒤');
   for (const c of (schema.checks || [])) for (const e of (c.fight?.win?.effects || [])) for (const _w of effTargets(e)) add(_w, '판정');
@@ -14352,6 +14991,7 @@ const { composeName, renderTag, resolveInPack, auxImageSpec, mainInjectionText }
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 const { INTENSITIES } = require('./scenario');
 const secretMod = require('./secret'); // 비밀 (v1.10.0) — 종류·존재 알림 상수
+const mapMod = require('./map');       // 지도 (v1.23.0) — 미리보기 그림·기본 모양 (패널과 같은 한 벌)
 
 // 편집기 크롬 CSS — v1.7.13: 커뮤니티 UI 개조본(v1.0.7 기준, 그래파이트·얇은 선·파란 강조·반응형)의 CSS 층을 이식.
 // 개조본 DOM 전용 셀렉터(우리 DOM에 없는 클래스 1,233규칙)는 걸러냈고, 기존 클래스 재스타일·토큰·@media만 남겼다.
@@ -17973,6 +18613,22 @@ const CSS = `
 }
 /* 실행 중 실황 진단줄 (v1.2.4) — 2열 그리드의 전폭 행으로. 셀에 흘러들면 셀렉트가 짜부라진다 (실사고) */
 .sce .sce-assets-live { grid-column:1 / -1; min-width:0; margin:0; overflow-wrap:anywhere; line-height:1.5; }
+/* 지도 탭 (v1.23.0) — 미리보기를 누르면 좌표가 찍힌다 */
+.sce .sce-map-preview { max-width:560px; }
+.sce .sce-map-tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 8px; }
+.sce .sce-map-pickbar { border:1px dashed var(--sce-warning); border-radius:8px; padding:6px 10px; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-map-rows { display:flex; flex-direction:column; gap:6px; }
+.sce .sce-map-row { border:1px solid var(--sce-line); border-radius:9px; padding:7px 8px; background:var(--sce-surface-soft); }
+.sce .sce-map-row.is-sel { border-color:var(--sce-accent); }
+.sce .sce-map-row-main { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.sce .sce-map-row-main > input[type=number] { width:64px; }
+.sce .sce-map-row-main > input[type=color] { width:38px; height:28px; padding:0 2px; }
+.sce .sce-map-row-main select { max-width:150px; }
+.sce .sce-map-row details { margin-top:6px; }
+.sce .sce-map-row details > summary { cursor:pointer; color:var(--sce-muted); font-size:12px; }
+.sce .sce-map-row details textarea { width:100%; min-height:54px; margin-top:4px; }
+.sce .sce-map-xy { color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-map-issues { display:flex; flex-direction:column; gap:4px; margin:0 0 10px; }
 `;
 
 const VAR_TYPES = [
@@ -18701,6 +19357,18 @@ const SCHEMA_QUEST_RULES = [
   '- `mainInject`(기본 true)면 **지금 붙어 있는 게시 전부**(의뢰인·제목·등급·보수·기한·사정)가 메인 프롬프트에 실립니다 — 게시판(board)과 반대로 원문을 줍니다. 안 주면 모델이 벽보 장면마다 여기 없는 의뢰를 지어 붙입니다. when이 닫힌 곳에선 빠집니다.',
 ];
 
+// 지도(map, v1.23.0) — 좌표 위 장소·구역·이정표 + 안개로 채워지는 지도.
+const SCHEMA_MAP_RULES = [
+  '- 지도는 **우상단 버튼이 여는 그림 지도 패널**입니다. 좌표는 지도 크기에 대한 % (x 0=왼쪽~100=오른쪽, y 0=위~100=아래). `ratio`는 세로÷가로(기본 1).',
+  '- `places`: [{ "name", "x", "y", "sub"?, "cat"?, "desc"?, "rumor"?, "known"?, "alias"? }] — 핀 하나, 누르면 desc가 펼쳐집니다. `cat`은 `categories`([{ "label", "color" }])의 이름 — 분류 단추로 거릅니다.',
+  '- `zones`: [{ "label", "x", "y", "w", "h", "cat"?, "desc"?, "known"? }] — 구역(직사각형: 권역·지형·방향). `exits`: [{ "label", "dir": "n|ne|e|se|s|sw|w|nw" }] — 가장자리 이정표(지도 밖으로 이어지는 곳).',
+  '- `locVar` = 현재 위치 변수(enum 추천). 값이 장소 name·alias나 구역 label과 **똑같으면** 거기에 "현재 위치"가 찍힙니다 — **장소 이름을 위치 선택지와 맞추세요.**',
+  '- **채워지는 지도**: `fog: true`면 못 가 본 구역은 안개로 가리고 모르는 장소는 안 그립니다. `seenVar`(list 변수)를 주면 **시스템이** 들른 장소·구역 이름을 적어 한 번 간 곳은 계속 보입니다 (allow에 안 넣어도 됨, maxItems ≥ 장소+구역 수).',
+  '- `known`: true = 처음부터 보임(집·출발지), 조건식 = 참이 되면 보임(소문·탐사 진척), 없음 = 가 봐야 보임. 보이지만 안 가 본 곳은 desc 대신 `rumor`가 나옵니다.',
+  '- `listVar`(list 변수) 항목 "이름 (구역)"은 그 구역 빈자리에 핀으로 꽂힙니다 — 보조가 서사로 찾아낸 곳(채집지·던전·발견물)을 적는 목록에. 그 목록 desc에 "이름 (구역)" 꼴을 못박으세요.',
+  '- 조건식이 들른 곳을 읽습니다 — `has(visited, "기온")`, `count(visited) >= 10` (지도를 채운 만큼 열리는 이벤트·막).',
+];
+
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
 // 이식: 표면 상황만 / 내막·반전은 secret 칸으로 분리 / 주인공의 행동·결말 금지.
 // (그 규칙이 좋은 축을 만든다는 것은 v1.3이 실전에서 증명했다 — 설계 §1)
@@ -18802,6 +19470,10 @@ const FEATURE_MAP = [
     what: '보조가 의뢰를 게시, 수락·취소는 버튼 — 보수 밴드·기한을 시스템이 처리',
     need: '수락한 의뢰가 들어갈 목록(list 변수)', on: (s) => fmObj(s.questBoard),
     words: /의뢰|퀘스트|일감|\bquests?\b/i, rules: SCHEMA_QUEST_RULES },
+  { id: 'map', name: '지도', keys: ['map'], where: '[지도] 탭',
+    what: '좌표 위 장소·구역·이정표 그림 지도 — 현재 위치 표시, 안개를 켜면 가 본 만큼 채워짐',
+    need: '현재 위치 변수(enum 추천)', on: (s) => fmObj(s.map),
+    words: /지도|약도|안개|\bmap\b/i, rules: SCHEMA_MAP_RULES },
   { id: 'party', name: '편성표', keys: ['party'], where: '[편성표] 탭',
     what: '인물을 자리에 앉히는 편성·포인트로 올리는 스킬 탭·대장 화면',
     on: (s) => fmObj(s.party), words: /편성|파티|스킬\s?트리|\bparty\b/i, rules: SCHEMA_PARTY_RULES },
@@ -18900,7 +19572,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `shop`·`shops`(선택 — 사고파는 일이 있는 봇만), `board`(선택 — 세계 안 게시판이 어울리는 봇만), `messenger`(선택 — 문자·편지가 오가는 봇만), `questBoard`(선택 — 의뢰를 받아 수행하는 봇만), `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만), `fronts`(선택 — 유저가 안 봐도 움직이는 세력이 있는 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `shop`·`shops`(선택 — 사고파는 일이 있는 봇만), `board`(선택 — 세계 안 게시판이 어울리는 봇만), `messenger`(선택 — 문자·편지가 오가는 봇만), `questBoard`(선택 — 의뢰를 받아 수행하는 봇만), `map`(선택 — 장소를 오가는 봇만), `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만), `fronts`(선택 — 유저가 안 봐도 움직이는 세력이 있는 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     ...featureMapLines(),
@@ -18935,6 +19607,9 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 의뢰판(questBoard) — 의뢰를 받아 수행하는 봇이면 (선택)',
     ...SCHEMA_QUEST_RULES,
+    '',
+    '## 지도(map) — 장소를 오가는 봇이면 (선택)',
+    ...SCHEMA_MAP_RULES,
     '',
     '## 편성표(party) — 인물을 자리에 앉히는 봇이면 (선택)',
     ...SCHEMA_PARTY_RULES,
@@ -19155,6 +19830,10 @@ function featureDigestLines(s) {
   if (fmObj(s.board)) lines.push(`- **보드**: ${brief(s.board)}`);
   if (fmObj(s.messenger)) lines.push(`- **메신저**: ${brief(s.messenger)}${held(s.messenger.contactsVar, s.messenger.notesVar)}`);
   if (fmObj(s.questBoard)) lines.push(`- **의뢰판**: ${brief(s.questBoard)}${held(s.questBoard.listVar)}`);
+  if (fmObj(s.map)) {
+    const M = s.map;
+    lines.push(`- **지도**: ${brief({ label: M.label, locVar: M.locVar, seenVar: M.seenVar, listVar: M.listVar, fog: M.fog, places: fmN(M.places), zones: fmN(M.zones), exits: fmN(M.exits) })}${held(M.locVar, M.seenVar, M.listVar)}`);
+  }
   const acts = Array.isArray(s.scenario?.acts) ? s.scenario.acts.filter(fmObj) : [];
   if (acts.length) {
     lines.push(`- **시나리오**: 막 ${acts.length}개 — ${acts.map((a) => `\`${a.id}\`${a.label ? `(${a.label})` : ''}${a.unlock ? ` ← \`${a.unlock}\`` : ''}`).join(' → ')}. `
@@ -19282,7 +19961,7 @@ function schemaIsBlank(s) {
     + n(s.setup && s.setup.presets)
     // 변수 없이 도는 절 (v1.15.1) — 시나리오·게시판·비밀만 있는 봇도 빈 봇이 아니다. validate.activeSections와 같은 목록을
     // 여기 다시 적는 건 테스트 하니스가 이 함수를 잘라 쓰기 때문(금지 #8) — 절이 늘면 둘 다 고친다.
-    + [s.board, s.messenger, s.shop, s.questBoard, s.calendar, s.party, s.checkpoint, s.liveChoices, s.time, s.suggest]
+    + [s.board, s.messenger, s.shop, s.questBoard, s.map, s.calendar, s.party, s.checkpoint, s.liveChoices, s.time, s.suggest]
       .filter((o) => o && typeof o === 'object' && !Array.isArray(o)).length
     + n(s.shops) + n(s.scenario && s.scenario.acts) + n(s.secrets) + n(s.fronts) + n(s.liveChoices) === 0;
 }
@@ -19915,6 +20594,10 @@ function varReferenceIndex(schema) {
     for (const k of ['accept', 'cancel']) for (const e of (Array.isArray(schema.questBoard[k]) ? schema.questBoard[k] : [])) add(e?.set, '의뢰판', `${k} 효과`);
     ex(schema.questBoard.when, '의뢰판', 'when');
   }
+  if (schema.map && typeof schema.map === 'object') { // 지도 (v1.23.0)
+    add(schema.map.locVar, '지도', '현재 위치'); add(schema.map.seenVar, '지도', '발자취'); add(schema.map.listVar, '지도', '찾아낸 곳');
+    for (const k of ['zones', 'places', 'exits']) for (const e of (Array.isArray(schema.map[k]) ? schema.map[k] : [])) if (typeof e?.known === 'string') ex(e.known, '지도', `${e.name ?? e.label ?? '?'} 공개 조건`);
+  }
   for (const L of (Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [])) { // 보조 갈림길 (v1.8.0, 여러 벌 v1.13.0)
     if (!L || typeof L !== 'object') continue;
     ex(L.when, '보조 갈림길', 'when');
@@ -20252,6 +20935,11 @@ function planVarPurge(schema0, rootIds) {
     for (const k of ['accept', 'cancel']) if (Array.isArray(Q[k])) Q[k] = dropEffects(Q[k], `의뢰판 ${k}`);
     dropWhen(Q, 'when', '의뢰판', '여는 조건');
   }
+  if (schema.map && typeof schema.map === 'object') { // 지도 (v1.23.0) — 연결 변수는 정체성(막는다), 공개 조건은 빼낸다(가 봐야 보임으로)
+    const M = schema.map;
+    for (const [k, nm] of [['locVar', '현재 위치 변수'], ['seenVar', '발자취 목록'], ['listVar', '찾아낸 곳 목록']]) if (doomed.has(M[k])) block('지도', `${nm} '${M[k]}'`);
+    for (const k of ['zones', 'places', 'exits']) for (const e of (Array.isArray(M[k]) ? M[k] : [])) dropWhen(e, 'known', '지도', `'${e?.name ?? e?.label ?? '?'}'의 공개 조건 — 빼냄`);
+  }
   if (schema.calendar && typeof schema.calendar === 'object' && doomed.has(schema.calendar.list)) block('달력', `일정 목록 변수 '${schema.calendar.list}'`);
   for (const pk of (Array.isArray(schema.assets?.packs) ? schema.assets.packs : [])) dropWhen(pk, 'when', '에셋', `팩 '${pk?.id ?? ''}'의 여는 조건`);
 
@@ -20358,6 +21046,8 @@ const TAB_SLICES = {
   msgr: { keys: ['messenger'], label: '메신저' },
   // 의뢰판(v1.7.9) — questBoard 객체 통째 교체. css·guide 원문 보존 규약.
   quest: { keys: ['questBoard'], label: '의뢰판' },
+  // 지도(v1.23.0) — map 객체 통째 교체. 좌표·css·desc는 제작자 손값이라 원문 보존.
+  map: { keys: ['map'], label: '지도' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -20384,6 +21074,7 @@ const TAB_WANT_PH = {
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
   board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
   msgr: '예: 단말기 문자 — 연락처는 동료 명부와 연동, 게이트 안에선 통신 두절',
+  map: '예: 교토 전도 — 권력·유흥·영험·거리 분류, 못 가 본 곳은 안개, 가장자리에 교토 밖 이정표',
   quest: '예: 길드 의뢰판 — 등급은 F~A, 보수는 등급별 밴드, 취소하면 평판 -3, 던전 안에선 안 보임',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
@@ -20424,6 +21115,7 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); if (schema.shops) out.push(['shops', schema.shops.length]); }
   else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
   else if (tabKey === 'quest') { if (schema.questBoard) out.push(['questBoard', 1]); }
+  else if (tabKey === 'map') { push('map.places', schema.map?.places); push('map.zones', schema.map?.zones); push('map.exits', schema.map?.exits); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'secrets') {
@@ -21028,6 +21720,28 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "days": [2, 14], "postDays": [3, 8], "maxOffers": 6, "minOffers": 2, "refillEvery": 3,',
       '  "cancel": [{ "set": "renown", "expr": "max(renown - 3, 0)" }], "when": "not in_dungeon",',
       '  "guide": "길드 접수대에 붙는 의뢰 — 토벌·채집·호위·심부름. 보수는 위험과 품에 비례." } }',
+      '```',
+      '');
+  } else if (tabKey === 'map') {
+    const ones = (schema.vars || []).filter((v) => v.type === 'enum' || v.type === 'text');
+    const listsM = (schema.vars || []).filter((v) => v.type === 'list');
+    body.push('## 지도 규격', ...SCHEMA_MAP_RULES, '',
+      '## 이미 있는 변수 — locVar는 값 하나짜리(enum/text), seenVar·listVar는 list 중에서만',
+      ones.length ? ones.map((v) => `- \`${v.id}\` ${v.label ?? ''} (${v.type})${Array.isArray(v.enum) ? ' — 선택지: ' + v.enum.slice(0, 30).join(', ') : ''}`).join('\n') : '(위치 변수 없음 — [변수] 탭에서 위치 enum을 먼저 만드세요)',
+      listsM.length ? listsM.map((v) => `- \`${v.id}\` ${v.label ?? ''} (list, maxItems ${v.maxItems ?? 20})`).join('\n') : '(list 변수 없음 — 발자취를 쓰려면 [변수] 탭에서 list를 먼저)',
+      '',
+      '## ⚠ 좌표·css·desc가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 맞춘 값입니다. 고치라는 요청이 없는 한 옮기지도, 지어내지도 마세요. 새 장소는 겹치지 않게 (서로 6 이상 떨어지게) 놓으세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 목록의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "map": { "label": "교토 전도", "icon": "🗺️", "ratio": 1, "locVar": "location", "seenVar": "visited", "fog": true,',
+      '  "categories": [{ "label": "권력", "color": "#b3392f" }, { "label": "유흥", "color": "#7a3fa0" }],',
+      '  "zones": [{ "label": "가모가와 동안", "x": 62, "y": 10, "w": 30, "h": 70, "desc": "강 건너 사찰과 유곽" }],',
+      '  "places": [{ "name": "어소", "sub": "御所", "cat": "권력", "x": 44, "y": 18, "known": true, "desc": "천황의 거처" },',
+      '    { "name": "기온", "cat": "유흥", "x": 74, "y": 46, "known": "has(rumors, \\"기온\\")", "rumor": "밤새 등불이 꺼지지 않는다는 거리", "desc": "…" }],',
+      '  "exits": [{ "label": "에도", "dir": "e" }, { "label": "오사카", "dir": "sw" }] } }',
       '```',
       '');
   } else if (tabKey === 'time') {
@@ -21792,6 +22506,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let reportWarnOpen = false; // 검증 리포트의 경고 접기 상태 — rerender에도 유지
   // 변수 정리 상태 — rerender가 DOM을 새로 만들므로 탭 함수 바깥에 둔다
   let purge = null, purgeDone = null, purgeBackup = null;
+  // 지도 탭 (v1.23.0) — 찍기 대기(어느 칸에 좌표를 넣을지)·미리보기에서 고른 것·안개 걷은 모습
+  let mapPick = null, mapSel = null, mapReveal = true;
   // 변수 카드의 접힘 상태는 편집 화면에만 남기고 스키마에는 기록하지 않는다.
   // v1.9.29: 예전엔 카드 **객체**를 열쇠로 한 WeakSet이라, 어시스턴트 패치·되돌리기·가져오기처럼 스키마 객체가 통째로 바뀌는
   // 순간 전부 풀렸고 편집기를 닫으면 사라졌다 (커뮤니티 제보: "변수 접고 AI 가이드 보고 돌아오면 도로 펼쳐져 있어 매번 다시 접는다").
@@ -21920,14 +22636,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }).catch(() => {});
   }
 
-  const style = h('style', {}, CSS);
+  const style = h('style', {}, CSS + mapMod.MAP_CSS); // 지도 미리보기 (v1.23.0) — 패널과 같은 기본 모양
   const root = h('div', { class: 'sce' });
   container.appendChild(style);
   container.appendChild(root);
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'], ['secrets', '비밀'], ['fronts', '무대 뒤'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['map', '지도'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'], ['secrets', '비밀'], ['fronts', '무대 뒤'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -22505,7 +23221,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 탭 내비 묶음 (v1.7.13 개조본 이식) — 메신저·의뢰판은 우리 쪽 탭.
   // v1.9.0: 기본 → 진행 → 세계 순. 세계 묶음은 전부 선택 모듈인데 필수 흐름(변수 → 규칙) 한가운데 앉아 있어서
   // 처음 만드는 사람이 [규칙·이벤트]를 못 보고 규칙을 변수 설명에 적었다 (실기 제보 — 얼추 돌다가 정산에서 깨짐).
-  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'secrets', 'fronts', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['자동화', ['ai']]];
+  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'secrets', 'fronts', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest', 'map']], ['자동화', ['ai']]];
   // 만드는 순서 띠 (v1.9.0) — 3층 머리에. 처음 설치 순서(1층)와 같은 모양으로 "변수 → AI 설정 → 규칙 → 상태창"
   const DEEP_FLOW = [
     ['vars', '① 변수', '추적할 값을 만들어요 — 설명(desc)에는 뜻만, 언제 어떻게 바뀌는지는 ③에'],
@@ -23223,6 +23939,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.board\b/, '보드', false],
     [/^\$\.shops?\b/, '상점', false],
     [/^\$\.questBoard\b/, '의뢰판', false],
+    [/^\$\.map\b/, '지도', false],
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     [/^\$\.secrets\b/, '비밀', true],
@@ -23510,7 +24227,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const varsMode = tabKey === 'vars';
     const commandsMode = tabKey === 'commands';
     const compactMode = varsMode || commandsMode;
-    const guidedWorldMode = tabKey === 'msgr' || tabKey === 'quest';
+    const guidedWorldMode = tabKey === 'msgr' || tabKey === 'quest' || tabKey === 'map';
     const wrap = h('div', { class: `sce-block sce-tab-ai-tools${compactMode ? ' sce-tab-ai-vars sce-tab-ai-compact' : ''}${guidedWorldMode ? ' sce-tab-ai-world' : ''}` });
     if (!compactMode && !guidedWorldMode) wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
     // 커스텀 템플릿 봇에서 이 창구는 헛돈다 — groups는 그려지지 않는다 (v1.7.4 실기 제보).
@@ -26203,6 +26920,281 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', onclick: () => {
         if (confirm('의뢰판을 지울까요? (게시 상태는 세이브에 남아 있다가 다시 켜면 이어집니다)')) { delete schema.questBoard; rerender(); }
       } }, '의뢰판 삭제')));
+    wrap.appendChild(aiTools());
+    return wrap;
+  }
+
+  // 지도 (v1.23.0) — 규칙 #3: 엔진 기능엔 편집기 칸. 좌표는 손으로 치지 말고 미리보기를 눌러 찍는다.
+  function tabMap() {
+    const wrap = h('div', { class: 'sce-board-editor sce-map-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const section = (step, title, copy, ...children) => h('section',
+      { class: 'sce-board-section' },
+      h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, step),
+        h('div', { class: 'sce-board-section-title' }, title),
+        h('div', { class: 'sce-board-section-copy' }, copy)),
+      h('div', { class: 'sce-board-section-body' }, ...children));
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 지도 만들기'),
+          h('small', {}, '장소·구역·좌표를 한 번에 만들거나 고칠 때 사용해요. 위치 변수의 선택지에 맞춰 장소를 놓아 줘요.')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('map')));
+    const ones = (schema.vars || []).filter((v) => v.type === 'enum' || v.type === 'text');
+    const lists = (schema.vars || []).filter((v) => v.type === 'list');
+    if (!schema.map) {
+      wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+        h('h3', {}, '지도'),
+        h('p', {}, '장소·구역·이정표를 좌표에 놓는 그림 지도예요. 위치 변수가 가리키는 곳에 "현재 위치"가 찍히고, 안개를 켜면 가 본 만큼 지도가 채워져요.'))));
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '🗺'),
+        h('div', {}, h('h4', {}, '아직 지도가 없어요'),
+          h('p', {}, ones.length ? '만든 뒤 미리보기를 눌러 장소를 찍어요. 위치 선택지(enum)가 있으면 그 이름들로 장소를 미리 채워 둘게요.'
+            : '위치 변수(enum)가 있으면 "현재 위치"와 발자취가 돌아요. 없어도 지도는 만들 수 있어요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          const loc = ones.find((v) => /loc|place|위치|장소/i.test(v.id + (v.label ?? ''))) ?? ones[0];
+          const M = { label: '지도', icon: '🗺️' };
+          if (loc) M.locVar = loc.id;
+          if (loc && Array.isArray(loc.enum) && loc.enum.length) {
+            // 선택지를 격자로 늘어놓는다 — 찍기로 옮기면 된다
+            const n = Math.min(loc.enum.length, 40), cols = Math.ceil(Math.sqrt(n));
+            M.places = loc.enum.slice(0, n).map((name, i) => ({ name: String(name), x: Math.round(12 + (76 * (i % cols)) / Math.max(1, cols - 1)), y: Math.round(12 + (76 * Math.floor(i / cols)) / Math.max(1, Math.ceil(n / cols) - 1)) }));
+          }
+          schema.map = M; mapPick = null; mapSel = null; rerender();
+        } }, '지도 만들기')));
+      wrap.appendChild(aiTools());
+      return wrap;
+    }
+    const M = schema.map;
+    const arrOf = (k) => (Array.isArray(M[k]) ? M[k] : (M[k] = []));
+    const cats = (Array.isArray(M.categories) ? M.categories : []).map((c) => (typeof c === 'string' ? c : c?.label)).filter(Boolean);
+    const fogOn = M.fog === true;
+    const n2 = (x) => { const v = Number(x); return isFinite(v) ? Math.max(0, Math.min(100, Math.round(v * 10) / 10)) : null; };
+    const numInput = (val, apply, ph = '') => bindInput(val ?? '', (x) => { const v = n2(x); apply(v); rerender(); }, { type: 'number', ph, cls: '' });
+    const catSelect = (val, apply) => bindSelect(val ?? '', [['', '(분류 없음)'], ...cats.map((c) => [c, c])], (x) => { apply(x || undefined); rerender(); });
+    // 공개 조건 — true(처음부터) / 없음(가 봐야) / 식
+    const knownCtl = (e, { always = false } = {}) => {
+      const mode = e.known === true ? 'start' : typeof e.known === 'string' ? 'expr' : (always ? 'start' : 'visit');
+      const opts = always ? [['start', '항상 보임'], ['expr', '조건식이 참이면']]
+        : [['start', '처음부터 보임'], ['visit', '가 봐야 보임'], ['expr', '조건식이 참이면']];
+      const sel = bindSelect(mode, opts, (x) => {
+        if (x === 'start') { if (always) delete e.known; else e.known = true; }
+        else if (x === 'visit') delete e.known;
+        else e.known = typeof e.known === 'string' ? e.known : 'false';
+        rerender();
+      });
+      const exprIn = mode === 'expr' ? bindInput(e.known, (x) => { const t = x.trim(); if (t) e.known = t; else delete e.known; rerender(); }, { cls: 'sce-w-m', ph: '예: has(rumors, "기온")' }) : null;
+      return [sel, exprIn];
+    };
+    const pickBtn = (pick, label = '📍 찍기') => h('button', { type: 'button', class: 'sce-btn sce-mini', title: '누른 뒤 미리보기 지도를 누르면 그 자리로 옮겨요',
+      onclick: () => { mapPick = pick; rerender(); } }, label);
+    const delBtn = (k, i) => h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', title: '삭제', onclick: () => {
+      arrOf(k).splice(i, 1); if (!M[k].length) delete M[k]; mapSel = null; mapPick = null; rerender();
+    } }, '✕');
+
+    // 검증 — 이 탭 몫만
+    const v = validateSchema(schema);
+    const mine = [...v.errors.map((e) => ({ ...e, err: true })), ...v.warnings].filter((e) => String(e.path).startsWith('$.map'));
+    const nPl = (M.places || []).length, nZo = (M.zones || []).length, nEx = (M.exits || []).length;
+    wrap.appendChild(h('header', { class: 'sce-board-head' },
+      h('div', {}, h('h3', {}, '지도'),
+        h('p', {}, '미리보기에서 📍 찍기를 누르고 지도를 누르면 그 자리에 놓여요. 구역은 두 번(한 모서리 → 맞은편 모서리) 눌러요.')),
+      h('div', { class: 'sce-board-summary' },
+        h('span', {}, `${M.icon || '🗺️'} ${M.label || '지도'}`),
+        h('span', {}, `장소 ${nPl}`), h('span', {}, `구역 ${nZo}`), h('span', {}, `이정표 ${nEx}`),
+        h('span', {}, fogOn ? '안개 켬' : '안개 끔'))));
+    if (mine.length) {
+      wrap.appendChild(h('div', { class: 'sce-map-issues' }, ...mine.slice(0, 12).map((e) => h('div', { class: 'sce-warn' },
+        `${e.err ? '× ' : '! '}${String(e.path).replace(/^\$\.map\.?/, '') || 'map'} — ${e.msg}`))));
+    }
+
+    wrap.appendChild(section('01', '기본 정보', '패널 버튼과 제목, 지도 모양을 정해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('지도 이름', bindInput(M.label, (x) => { M.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '지도' }), '버튼과 패널 제목에 보여요.'),
+        field('아이콘', bindInput(M.icon, (x) => { M.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '🗺️' }), '버튼 아이콘이에요.'),
+        field('세로 비율', bindInput(M.ratio ?? '', (x) => { const r = Number(x); if (x !== '' && isFinite(r)) M.ratio = Math.max(0.4, Math.min(2.5, r)); else delete M.ratio; rerender(); },
+          { type: 'number', cls: 'sce-w-s', ph: '1' }), '세로 ÷ 가로. 1은 정사각, 1.3은 세로로 긴 지도예요.'),
+        field('배경 그림', bindInput(M.bg, (x) => { M.bg = x.trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '카드 에셋 이름 (선택)' }),
+          '카드에 넣은 이미지 에셋 이름이에요. 비우면 종이 지도 바탕을 써요. (편집기 미리보기엔 안 보여요)'),
+        field('아래 설명', bindInput(M.note, (x) => { M.note = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '예: 교토 17곳 · 교토 밖 11곳' }), '지도 아래 작은 글씨예요.', true))));
+
+    wrap.appendChild(section('02', '위치와 채워지는 지도', '어느 변수가 "지금 여기"인지, 가 본 곳을 어디에 적을지 정해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('현재 위치 변수', bindSelect(M.locVar ?? '', [['', '(없음)'], ...ones.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
+          (x) => { if (x) M.locVar = x; else delete M.locVar; rerender(); }), '값이 장소 이름·구역 이름과 똑같으면 거기에 현재 위치가 찍혀요. 선택지(enum)를 장소 이름과 맞추세요.'),
+        field('발자취 목록', h('div', { class: 'sce-map-tools' },
+          bindSelect(M.seenVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
+            (x) => { if (x) M.seenVar = x; else delete M.seenVar; rerender(); }),
+          !M.seenVar && !(schema.vars || []).some((x) => x.id === 'visited') ? h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
+            schema.vars.push({ id: 'visited', label: '발자취', type: 'list', init: [], maxItems: Math.max(20, nPl + nZo + 4), itemMaxLength: 30,
+              desc: '지도에서 들른 곳 — 시스템이 위치를 보고 적는다. 직접 고치지 않는다.' });
+            M.seenVar = 'visited'; rerender();
+          } }, '발자취 목록 만들기') : null),
+          '시스템이 들른 장소·구역 이름을 여기 적어요. 한 번 간 곳은 안개가 다시 덮지 않아요.'),
+        field('찾아낸 곳 목록', bindSelect(M.listVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
+          (x) => { if (x) M.listVar = x; else delete M.listVar; rerender(); }), '항목 "이름 (구역)"이 그 구역 빈자리에 핀으로 꽂혀요. 보조 AI가 서사로 찾은 곳을 적는 목록에 써요.'),
+        h('div', { class: 'sce-board-toggle' },
+          h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '안개 — 가 본 만큼 채워지는 지도'),
+            h('span', {}, '못 가 본 구역은 가리고, 모르는 장소는 안 그려요. 장소마다 "처음부터 보임 / 가 봐야 보임 / 조건식"을 고를 수 있어요.')),
+          bindCheck(fogOn, (x) => { if (x) M.fog = true; else delete M.fog; rerender(); }, '사용')))));
+
+    // 미리보기 + 찍기
+    let st0;
+    try { st0 = engine.initState(schema); } catch { st0 = { vars: {} }; }
+    const view = mapMod.mapView(schema, st0, engine.makeLookup, { reveal: mapReveal });
+    const prev = h('div', { class: 'sce-map-preview' });
+    if (M.css) prev.appendChild(h('style', {}, scopeCssFn(String(M.css), '.sce-map-preview')));
+    const art = h('div', {});
+    art.innerHTML = mapMod.renderMapHtml(view, { sel: mapSel }, { pick: !!mapPick });
+    prev.appendChild(art);
+    const pickLabel = !mapPick ? null
+      : mapPick.kind === 'new' ? '새 장소를 놓을 자리를 누르세요'
+        : mapPick.kind === 'zone' ? (mapPick.step ? '맞은편 모서리를 누르세요' : `구역 '${M.zones?.[mapPick.i]?.label ?? ''}'의 한 모서리를 누르세요`)
+          : `'${M.places?.[mapPick.i]?.name ?? ''}'를 놓을 자리를 누르세요`;
+    art.onclick = (ev) => {
+      if (mapPick) {
+        const surf = art.querySelector('.scm-surface');
+        if (!surf) return;
+        const r = surf.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        const x = n2(((ev.clientX - r.left) / r.width) * 100), y = n2(((ev.clientY - r.top) / r.height) * 100);
+        if (x == null || y == null) return;
+        if (mapPick.kind === 'new') {
+          const list = arrOf('places');
+          list.push({ name: `새 장소 ${list.length + 1}`, x, y });
+          mapSel = `p${list.length - 1}`; mapPick = null;
+        } else if (mapPick.kind === 'place') {
+          const pl = M.places?.[mapPick.i]; if (pl) { pl.x = x; pl.y = y; }
+          mapPick = null;
+        } else if (mapPick.kind === 'zone') {
+          if (!mapPick.step) { mapPick = { ...mapPick, step: 1, x0: x, y0: y }; rerender(); return; }
+          const z = M.zones?.[mapPick.i];
+          if (z) {
+            z.x = Math.min(x, mapPick.x0); z.y = Math.min(y, mapPick.y0);
+            z.w = Math.max(3, Math.round(Math.abs(x - mapPick.x0) * 10) / 10); z.h = Math.max(3, Math.round(Math.abs(y - mapPick.y0) * 10) / 10);
+          }
+          mapPick = null;
+        }
+        rerender();
+        return;
+      }
+      const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm]') : null;
+      if (t) { const k = t.getAttribute('data-scm'); mapSel = mapSel === k ? null : k; rerender(); }
+    };
+    wrap.appendChild(section('03', '미리보기', '여기를 눌러 장소를 찍어요. 장소를 누르면 아래 칸이 표시돼요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' },
+        h('div', { class: 'sce-map-tools' },
+          pickBtn({ kind: 'new' }, '＋ 장소 찍어 넣기'),
+          bindCheck(mapReveal, (x) => { mapReveal = x; rerender(); }, '안개 걷은 모습'),
+          mapPick ? h('span', { class: 'sce-map-pickbar' }, `📍 ${pickLabel}`) : null,
+          mapPick ? h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => { mapPick = null; rerender(); } }, '찍기 취소') : null),
+        prev,
+        h('small', {}, '안개 걷은 모습을 끄면 새 시작 직후 플레이어가 보는 모습이에요 (발자취·공개 조건 반영).'))));
+
+    // 분류
+    const catRows = h('div', { class: 'sce-map-rows' });
+    (Array.isArray(M.categories) ? M.categories : []).forEach((c, i) => {
+      if (typeof c === 'string') M.categories[i] = c = { label: c };
+      catRows.appendChild(h('div', { class: 'sce-map-row' }, h('div', { class: 'sce-map-row-main' },
+        bindInput(c.label, (x) => {
+          const old = c.label; const t = x.trim(); if (!t) return;
+          c.label = t;
+          for (const k of ['places', 'zones']) for (const e of (M[k] || [])) if (e && e.cat === old) e.cat = t; // 이름이 열쇠 — 같이 바꾼다
+          rerender();
+        }, { cls: 'sce-w-m', ph: '분류 이름' }),
+        bindInput(c.color || mapMod.PALETTE[i % mapMod.PALETTE.length], (x) => { c.color = x; rerender(); }, { type: 'color', cls: '' }),
+        delBtn('categories', i))));
+    });
+    wrap.appendChild(section('04', '분류', '지도 위 분류 단추(전체/권력/유흥…)와 핀 색이에요. 없어도 돼요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' }, catRows,
+        h('div', {}, h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
+          const list = arrOf('categories'); if (list.length >= 10) return;
+          list.push({ label: `분류 ${list.length + 1}`, color: mapMod.PALETTE[list.length % mapMod.PALETTE.length] }); rerender();
+        } }, '＋ 분류')))));
+
+    // 구역
+    const zoneRows = h('div', { class: 'sce-map-rows' });
+    (M.zones || []).forEach((z, i) => {
+      if (!z || typeof z !== 'object') return;
+      zoneRows.appendChild(h('div', { class: `sce-map-row${mapSel === `z${i}` ? ' is-sel' : ''}` },
+        h('div', { class: 'sce-map-row-main' },
+          bindInput(z.label, (x) => { const t = x.trim(); if (t) z.label = t; rerender(); }, { cls: 'sce-w-m', ph: '구역 이름' }),
+          cats.length ? catSelect(z.cat, (x) => { if (x) z.cat = x; else delete z.cat; }) : null,
+          numInput(z.x, (x) => { z.x = x ?? 0; }, 'x'), numInput(z.y, (x) => { z.y = x ?? 0; }, 'y'),
+          numInput(z.w, (x) => { z.w = x || 10; }, 'w'), numInput(z.h, (x) => { z.h = x || 10; }, 'h'),
+          pickBtn({ kind: 'zone', i }, '📍 두 번 찍기'),
+          ...(fogOn ? knownCtl(z) : []),
+          delBtn('zones', i)),
+        h('details', {}, h('summary', {}, '설명 · 다른 이름'),
+          bindArea(z.desc, (x) => { z.desc = x || undefined; rerender(); }, '누르면 펼쳐질 이 구역의 사정'),
+          bindInput((z.match || []).join(', '), (x) => { const a = x.split(',').map((t) => t.trim()).filter(Boolean); if (a.length) z.match = a; else delete z.match; rerender(); },
+            { cls: 'sce-w-full', ph: '다른 이름 (쉼표) — 위치 값·찾아낸 곳 꼬리표가 이 이름이어도 이 구역' }))));
+    });
+    wrap.appendChild(section('05', '구역', '권역·지형·방향처럼 넓은 땅이에요. 안개는 구역 단위로 걷혀요. 찾아낸 곳 "이름 (구역)"이 여기 꽂혀요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' }, zoneRows,
+        h('div', {}, h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
+          const list = arrOf('zones'); list.push({ label: `구역 ${list.length + 1}`, x: 10, y: 10, w: 30, h: 25 });
+          mapPick = { kind: 'zone', i: list.length - 1 }; rerender();
+        } }, '＋ 구역 (두 번 찍기)')))));
+
+    // 장소
+    const placeRows = h('div', { class: 'sce-map-rows' });
+    (M.places || []).forEach((pl, i) => {
+      if (!pl || typeof pl !== 'object') return;
+      placeRows.appendChild(h('div', { class: `sce-map-row${mapSel === `p${i}` ? ' is-sel' : ''}` },
+        h('div', { class: 'sce-map-row-main' },
+          bindInput(pl.name, (x) => { const t = x.trim(); if (t) pl.name = t; rerender(); }, { cls: 'sce-w-m', ph: '장소 이름' }),
+          bindInput(pl.sub, (x) => { pl.sub = x.trim() || undefined; rerender(); }, { cls: 'sce-w-s', ph: '부제 (御所)' }),
+          cats.length ? catSelect(pl.cat, (x) => { if (x) pl.cat = x; else delete pl.cat; }) : null,
+          h('span', { class: 'sce-map-xy' }, `(${pl.x ?? '?'}, ${pl.y ?? '?'})`),
+          pickBtn({ kind: 'place', i }),
+          ...(fogOn ? knownCtl(pl) : []),
+          delBtn('places', i)),
+        h('details', {}, h('summary', {}, '설명 · 소문 · 다른 이름'),
+          bindArea(pl.desc, (x) => { pl.desc = x || undefined; rerender(); }, '누르면 펼쳐질 이곳의 사정'),
+          fogOn ? bindArea(pl.rumor, (x) => { pl.rumor = x || undefined; rerender(); }, '소문 — 보이지만 아직 안 가 본 때 설명 대신 나와요') : null,
+          bindInput((pl.alias || []).join(', '), (x) => { const a = x.split(',').map((t) => t.trim()).filter(Boolean); if (a.length) pl.alias = a; else delete pl.alias; rerender(); },
+            { cls: 'sce-w-full', ph: '다른 이름 (쉼표) — 위치 값이 이 이름이어도 여기' }))));
+    });
+    wrap.appendChild(section('06', '장소', '핀 하나가 한 곳이에요. 좌표는 📍 찍기로 옮겨요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' }, placeRows,
+        h('div', {}, pickBtn({ kind: 'new' }, '＋ 장소 찍어 넣기')))));
+
+    // 이정표
+    const exitRows = h('div', { class: 'sce-map-rows' });
+    const DIR_OPTS = Object.entries(mapMod.DIRS).map(([k, a]) => [k, `${a} ${k}`]);
+    (M.exits || []).forEach((e, i) => {
+      if (!e || typeof e !== 'object') return;
+      exitRows.appendChild(h('div', { class: 'sce-map-row' }, h('div', { class: 'sce-map-row-main' },
+        bindInput(e.label, (x) => { const t = x.trim(); if (t) e.label = t; rerender(); }, { cls: 'sce-w-m', ph: '이정표 (예: 에도)' }),
+        bindSelect(e.dir ?? 'n', DIR_OPTS, (x) => { e.dir = x; rerender(); }),
+        numInput(e.at, (x) => { if (x == null) delete e.at; else e.at = x; }, '자리(자동)'),
+        ...knownCtl(e, { always: true }),
+        delBtn('exits', i))));
+    });
+    wrap.appendChild(section('07', '가장자리 이정표', '지도 밖으로 이어지는 곳이에요. 같은 변에 선 것들은 자동으로 나눠 놓여요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' }, exitRows,
+        h('div', {}, h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
+          const list = arrOf('exits'); list.push({ label: `이정표 ${list.length + 1}`, dir: 'e' }); rerender();
+        } }, '＋ 이정표')))));
+
+    wrap.appendChild(section('08', '화면 꾸미기', '필요할 때만 지도 모양을 CSS로 바꿔요.',
+      h('details', { class: 'sce-board-advanced' },
+        h('summary', {}, '고급 CSS 열기'),
+        h('div', { class: 'sce-board-advanced-body' },
+          field('지도 CSS', bindArea(M.css, (x) => { M.css = x || undefined; rerender(); },
+            '.scm-surface(바탕) .scm-zone(구역) .scm-pin .scm-dot .scm-name(핀) .scm-exit(이정표) .scm-detail(사정 카드)를 덮어써요 (#sc-game 범위로 자동 격리)'),
+            '비워 두면 낡은 종이 지도 모양이에요.', true)))));
+
+    wrap.appendChild(h('section', { class: 'sce-board-danger' },
+      h('div', {}, h('strong', {}, '지도 설정 삭제'),
+        h('span', {}, '설정만 지워요. 발자취·찾아낸 곳 목록 변수는 그대로 남아요.')),
+      h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', onclick: () => {
+        if (confirm('지도를 지울까요? (발자취 목록은 남습니다)')) { delete schema.map; mapPick = null; mapSel = null; rerender(); }
+      } }, '지도 삭제')));
     wrap.appendChild(aiTools());
     return wrap;
   }
@@ -31362,7 +32354,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, secrets: tabSecrets, fronts: tabFronts, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, map: tabMap, scenario: tabScenario, secrets: tabSecrets, fronts: tabFronts, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, deepFlowStrip(), body);
   }
@@ -31384,6 +32376,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (p.startsWith('$.setup')) return '새 시작';
       if (p.startsWith('$.messenger')) return '메신저';
       if (p.startsWith('$.questBoard')) return '의뢰판';
+      if (p.startsWith('$.map')) return '지도';
       if (p.startsWith('$.board')) return '보드';
       if (p.startsWith('$.shop') || p.startsWith('$.shops')) return '상점';
       if (p.startsWith('$.assets')) return '에셋 팩';
@@ -39963,6 +40956,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const shopMod = SimCore.require('shop');         // 상점 (v0.96)
   const msgrMod = SimCore.require('messenger');    // 메신저 (v1.2.0)
   const questMod = SimCore.require('quest');       // 의뢰판 (v1.7.9)
+  const mapMod = SimCore.require('map');           // 지도 (v1.23.0)
   const choiceMod = SimCore.require('choice');     // 보조 갈림길 (v1.8.0) — 지연 경로 적용 (v1.14.6)
   const { makeUnstableRng } = SimCore.require('rng');
 
@@ -40932,6 +41926,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
   let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
   let questView = { tab: 'offers' };                // 의뢰판 (v1.7.9): 'offers' 게시 | 'mine' 수주 중
+  let mapUi = { cat: null, sel: null };             // 지도 (v1.23.0): 분류 거르기 · 고른 장소 열쇠
   let questBusy = false;
   let msgrBusy = false;                             // 메신저 전용 보조 호출 진행 중
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
@@ -42197,6 +43192,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       if (qb && questMod.questOpen(qb, schema, session.current?.vars || {}, engine.makeLookup)) {
         specs.push({ key: 'quest', kind: 'quest', tab: null, label: qb.label, icon: qb.icon });
       }
+      // 지도 (v1.23.0) — 게임 패널 7호. 보기 전용이라 게이트가 없다
+      const mp = mapMod.mapButtonSpec(schema);
+      if (mp) specs.push({ key: 'map', kind: 'map', tab: null, label: mp.label, icon: mp.icon });
       // 메신저 (v1.2.0) — 게임 패널 5호. 열람은 항상이므로 when이 닫혀도 버튼은 둔다 (보드 규약)
       const mg = msgrMod.msgrConfig(schema);
       if (mg) specs.push({ key: 'msgr', kind: 'msgr', tab: null, label: mg.label, icon: mg.icon });
@@ -42349,6 +43347,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-game .scq-cap { font-size:12px; color:#8fd6a8; margin:2px 0 6px; }
       /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
       #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
+      #sc-game .scg-card.scm-card { width:min(600px, 100%); }
       #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
       #sc-game .scb-btn { border:1px solid #3d5384; border-radius:8px; background:#1c2740; color:#dfe7f5;
         padding:5px 12px; font-size:12.5px; cursor:pointer; }
@@ -42505,6 +43504,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-game .scc-add input:focus-visible { outline:2px solid #9db8e8; outline-offset:2px; }
     `;
     document.head.appendChild(style);
+    // 지도 (v1.23.0) — 기본 모양은 코어(map.js)에 산다. 편집기 미리보기와 같은 그림이어야 해서 한 벌만 둔다 (.scm-* 고유 접두)
+    const mapStyle = document.createElement('style');
+    mapStyle.id = 'sc-game-map';
+    mapStyle.textContent = mapMod.MAP_CSS;
+    document.head.appendChild(mapStyle);
     const root = document.createElement('div');
     root.id = 'sc-game';
     root.style.display = 'none';
@@ -42523,7 +43527,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         : gameKind === 'board' ? schema?.board?.css
           : gameKind === 'shop' ? shopMod.shopConfig(schema, shopView?.shopId ?? undefined)?.css
             : gameKind === 'msgr' ? schema?.messenger?.css
-              : gameKind === 'quest' ? schema?.questBoard?.css : null;
+              : gameKind === 'quest' ? schema?.questBoard?.css
+                : gameKind === 'map' ? schema?.map?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -42548,6 +43553,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     shopView = { shopId: kind === 'shop' ? tabId : null, cat: null, exchQty: '' };
     msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
     questView = { tab: 'offers' };   // 의뢰판은 열 때마다 게시부터
+    mapUi = { cat: null, sel: null };   // 지도는 열 때마다 전체·고른 것 없이
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -42578,6 +43584,56 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     else if (gameKind === 'shop') renderShopPanel(root);
     else if (gameKind === 'msgr') renderMsgrPanel(root);
     else if (gameKind === 'quest') renderQuestPanel(root);
+    else if (gameKind === 'map') renderMapPanel(root);
+  }
+
+  // ── 지도 (v1.23.0) — 게임 패널 7호 ────────────────────────────────
+  // 그림은 코어(mapMod.renderMapHtml)가 HTML 한 벌로 만든다 — 편집기 미리보기와 같은 그림. 여기는 제목·닫기와
+  // 위임 클릭(분류 단추 data-scm-cat · 장소 data-scm)만. 우리 iframe DOM이라 data-*가 산다 (상태창 새니타이저와 무관).
+  // 배경 그림(map.bg)은 카드 에셋 이름 — 초상과 같은 길(resolvePortraitUrl)로 읽고, 늦게 오면 자리에 끼운다.
+  function renderMapPanel(root) {
+    const view = mapMod.mapView(schema, session.current, engine.makeLookup);
+    if (!view) { root.innerHTML = ''; return; }
+    if (mapUi.sel && !mapMod.detailOf(view, mapUi.sel)) mapUi.sel = null; // 정산으로 사라진 것을 고르고 있었으면 놓는다
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scm-card';
+    card.addEventListener('click', (ev) => ev.stopPropagation());
+    const title = document.createElement('div');
+    title.className = 'scg-title';
+    title.append(Object.assign(document.createElement('span'), { textContent: `${view.icon} ${view.label}` }));
+    const x = Object.assign(document.createElement('button'), { className: 'scg-x', textContent: '✕', title: '닫기', type: 'button' });
+    x.onclick = () => closeGamePanel();
+    title.appendChild(x);
+    card.appendChild(title);
+    const cacheKey = view.bg ? `${currentChaId}:${view.bg}` : null;
+    const bgUrl = cacheKey && portraitCache.has(cacheKey) ? portraitCache.get(cacheKey) : null;
+    const body = document.createElement('div');
+    body.innerHTML = mapMod.renderMapHtml(view, mapUi, { bgUrl });
+    body.addEventListener('click', (ev) => {
+      const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm-cat],[data-scm]') : null;
+      if (!t) return;
+      if (t.hasAttribute('data-scm-cat')) {
+        const c = t.getAttribute('data-scm-cat') || null;
+        mapUi = { ...mapUi, cat: mapUi.cat === c ? null : c };
+      } else {
+        const k = t.getAttribute('data-scm');
+        mapUi = { ...mapUi, sel: mapUi.sel === k ? null : k };
+      }
+      renderGamePanel();
+    });
+    card.appendChild(body);
+    if (gameNotice) card.appendChild(Object.assign(document.createElement('div'), { className: 'scg-notice', textContent: gameNotice }));
+    root.appendChild(card);
+    if (cacheKey && !portraitCache.has(cacheKey)) {
+      resolvePortraitUrl(view.bg).then((url) => {
+        const surf = body.querySelector('.scm-surface');
+        if (!url || !surf || !surf.isConnected) return;
+        const img = document.createElement('img');
+        img.className = 'scm-bg'; img.alt = ''; img.src = url;
+        surf.insertBefore(img, surf.firstChild);
+      }).catch(() => {});
+    }
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────

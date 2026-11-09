@@ -1,6 +1,6 @@
 ---
 name: simcore
-description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.21.1 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀·⏪ 되감기·🎭 무대 뒤·🎲 보조 갈림길 여러 벌 포함), 편집기 18탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약, 이 PC의 Claude Code·Codex 다리(tools/cli-bridge)를 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
+description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.21.1 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·🗺️ 지도·시나리오·🔒 비밀·⏪ 되감기·🎭 무대 뒤·🎲 보조 갈림길 여러 벌 포함), 편집기 19탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약, 이 PC의 Claude Code·Codex 다리(tools/cli-bridge)를 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
 ---
 
 # SimCore — 시뮬 엔진 플러그인
@@ -25,13 +25,13 @@ v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정
 **v1.20.1 🧹 패치로 지운 변수의 참조도 같이 정리** → **v1.20.2 🔌 다리에 못 닿으면 못 닿았다고** →
 **v1.21 🗺 대화가 자기 기능을 안다**(편집기 `FEATURE_MAP` 표 하나가 기능 지도·켜진 기능 현황·대화에 나온 기능의 규격을 먹인다, 패치 `note`) →
 **v1.22 🎨 꾸미기가 봇을 보고 디자인**(디자인 지침·봇 정보 동봉·재질 프리셋 10종 — 기본 모양은 그대로, editor.md "상태창 꾸미기"). 얼헌(얼터헌터) 개조가
-v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **28개**.
+v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **29개** (v1.23.0 `map` 🗺️ 지도 — 좌표 위 장소·구역·이정표, 안개로 가 본 만큼 채워짐).
 
 ## 파일 위치 (실수 잦음)
 
 | | |
 |---|---|
-| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **28개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·**sample**·**bible**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
+| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **29개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**map**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·**sample**·**bible**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
 | 테스트 | `simcore\테스트\test-*.js` (실측 **120종** — 2026-10-31) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
 | 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.20.0 ①). 가짜 실행 파일로 도는 `테스트/test-clibridge.js`. 배포판 = `node tools/cli-bridge/pack.js` → `배포\SimCore-bridge.zip`(bat·js·사용법 README.txt, 고치면 다시 만들 것) |
@@ -82,7 +82,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 | 문서 | 내용 |
 |---|---|
 | [references/schema.md](references/schema.md) | 스키마 전 필드 · 타입 · 검증 규칙 · 표현식 문법 (전투 안무 `checks[].fight` v1.6 · 상점 units/exchange/shops v1.3~1.4 · 막간 v1.5 · 의뢰판 v1.7.9 · liveChoices v1.8 · **secrets v1.10** 포함) |
-| [references/editor.md](references/editor.md) | 편집기 **18개 탭**(v1.12.0 [무대 뒤] 포함 — editor.md 본문은 17탭 기준)의 UI 라벨과 가져오기 동작 (`TAB_SLICES`), 3층 구조, 기능 추가 카드, v1.9.28 번호 섹션(`sce-board-*`) 규약 |
+| [references/editor.md](references/editor.md) | 편집기 **19개 탭**(v1.12.0 [무대 뒤]·v1.23.0 [지도] 포함 — editor.md 본문은 17탭 기준, [지도]는 schema.md map 절)의 UI 라벨과 가져오기 동작 (`TAB_SLICES`), 3층 구조, 기능 추가 카드, v1.9.28 번호 섹션(`sce-board-*`) 규약 |
 | [references/templates.md](references/templates.md) | 내장 템플릿 16종 실측표 — 뭘 열고 뭘 닫았나 |
 | [references/risu-facts.md](references/risu-facts.md) | 리수 내부 확정 사실 (소스맵 검증) — 여기 어긋나면 조용히 깨진다 |
 | [references/publishing.md](references/publishing.md) | 아카라이브 배포글·가이드 시리즈 규격과 현황 |

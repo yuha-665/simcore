@@ -23,6 +23,7 @@ const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트�
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
 const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
+const mapMod = require('./map');        // 지도 (v1.23.0) — 들른 곳 기록, 옵트인
 const choiceMod = require('./choice');  // 보조가 쓰는 갈림길 (v1.8.0) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
@@ -1990,6 +1991,14 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
 
   // 8.9 이번 정산에서 흐른 시간(turn_min) 소진 (v1.9.11) — onTurn·이벤트가 다 읽었다. 다음 전송부터 다시 쌓인다.
   if (typeof state.vars[TURN_MIN_KEY] === 'number' && state.vars[TURN_MIN_KEY] !== 0) state.vars[TURN_MIN_KEY] = 0;
+
+  // 8.92 지도 발자취 (v1.23.0) — 위치 변수가 지도의 장소·구역을 가리키면 그 이름을 발자취 목록(seenVar)에 적는다.
+  // 이벤트·액션이 옮긴 위치까지 다 끝난 뒤, 체크포인트 저장보다 먼저 (저장이 그 턴의 발자취를 담는다). 보조가 아니라 시스템이 적는다.
+  {
+    const seenId = schema.map?.seenVar;
+    const from = seenId ? state.vars[seenId] : undefined;
+    if (mapMod.recordVisit(schema, state, makeLookup)) changeLog.push({ id: seenId, from, to: state.vars[seenId], source: 'map' });
+  }
 
   // 8.95 체크포인트 (v1.11.0) — 이벤트·막 전환·비밀까지 다 끝난 뒤. 막 onEnter의 저장이 그 턴의 전환·진입 효과·열린 비밀까지 담고,
   // 게임오버 이벤트의 되감기가 이번 턴에 벌어진 모든 것을 되돌린다. 안내는 다음 전송에 (통지).

@@ -451,48 +451,66 @@ for (const [n] of BOOK_ALL) addSrc(n, '조합');
 // 분류표·분류명 재료·산지표도 같이 싣는다 — 변환기가 "(연료 — 연료·숯·… 중 하나)"와 "산지: …"로 굽는다.
 require('fs').writeFileSync(__P('조합서.json'), JSON.stringify({ book: RECIPE_BOOK, classes: MAT_CLASS, generic: GENERIC, sources: SOURCE_OF }, null, 1));
 
-const MAP_TEMPLATE = (() => {
-  const rows = [];
-  for (let t = 0; t <= 5; t++) {
-    // 나는 것 — 산지표의 조합서 재료 (계절 특산은 특산표가 따로 말한다). "어디서 구하나"의 정답지가 지도다 (2026-09-08)
-    const cells = PLACES.filter(([, tier]) => tier === t).map(([p]) => t === 0
-      ? `<span class="amap-town">${p}</span>`
-      : `<div class="amap-cell"><div class="amap-pn">${p}</div>{areas:tags:${p}}<div class="amap-src">${(MAT_SOURCE[p] || []).join(' · ')}</div></div>`).join('');
-    rows.push(`<div class="amap-row amap-t${t}"><div class="amap-tier"><b>격 ${t}</b><span>${TIER_NAME[t]}</span></div>`
-      + `<div class="amap-cells">${cells}</div></div>`);
-  }
-  return `
-<div class="amap">
-  <div class="amap-head">란타르나 채집 지도<span class="amap-now">지금 {location} · 격 {area_tier}</span></div>
-  ${rows.join('\n  ')}
-  <div class="amap-foot">채집 목표치 = 8 + 격×2 · 탐사는 격 2부터 · 가 본 곳은 "이름 (지형)"으로 적혀야 제 칸에 든다 · 작은 글씨는 거기서 나는 조합서 재료 (계절 특산은 따로)</div>
-</div>
-<style>
-/* 아틀리에 스킨 — 크림 종이 위 코코아 글자 (SKIN 팔레트) */
-.amap { font-family: ${SKIN.font}; color: ${SKIN.ink}; }
-.amap-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 14px;
-  letter-spacing: .04em; color: ${SKIN.peach}; border-bottom: 2px dashed ${SKIN.line}; padding-bottom: 5px; margin-bottom: 8px; }
-.amap-now { font-size: 12px; font-weight: 600; color: ${SKIN.honey}; }
-.amap-row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed ${SKIN.lineSoft}; }
-.amap-tier { display: flex; flex-direction: column; color: ${SKIN.honey}; }
-.amap-tier b { font-size: 13px; } .amap-tier span { font-size: 11px; color: ${SKIN.muted}; }
-.amap-cells { display: flex; flex-wrap: wrap; gap: 6px; }
-.amap-town { font-size: 12px; color: ${SKIN.ink}; background: ${SKIN.honeySoft}; border: 1px solid ${SKIN.honey}; border-radius: 999px; padding: 2px 10px; }
-.amap-cell { min-width: 120px; flex: 1 1 120px; border: 1px solid ${SKIN.line}; border-radius: 12px;
-  padding: 6px 9px; background: ${SKIN.cream}; }
-.amap-pn { font-size: 12.5px; font-weight: 800; color: ${SKIN.ink}; margin-bottom: 3px; }
-.amap-cell .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 2px 0; font-size: 11.5px;
-  background: ${SKIN.mintSoft}; border: 1px solid ${SKIN.mint}; border-radius: 999px; padding: 1px 8px; color: #2f6f55; }
-.amap-cell .sim-empty { font-size: 11px; color: ${SKIN.faint}; }
-.amap-src { margin-top: 3px; font-size: 10.5px; line-height: 1.35; color: ${SKIN.muted}; }
-.amap-t3 .amap-cell { background: ${SKIN.honeySoft}; border-color: ${SKIN.honey}; }
-.amap-t4 .amap-cell { background: ${SKIN.peachSoft}; border-color: ${SKIN.peach}; }
-.amap-t4 .amap-pn { color: #b34d2e; }
-.amap-t5 .amap-cell { background: ${SKIN.lavenderSoft}; border-color: ${SKIN.lavender}; }
-.amap-t5 .amap-pn { color: #6f4fa8; }
-.amap-foot { margin-top: 8px; font-size: 11px; color: ${SKIN.muted}; }
-</style>`;
-})();
+// ══════════ 지도 패널 (플러그인 v1.23.0 🗺️) — 지형표에서 그대로 굽는다 (표와 어긋날 수 없다) ══════════
+// 옛 판(2026-09-05)은 공방 패널 둘째 탭의 격 사다리 템플릿({areas:tags:지형})이었다. 유저(2026-11-09): "지도를 완성해 가면서
+// 채워지는 기믹" → 지도 패널로 옮긴다. 지형 = 구역, 마을 = 장소, 가 본 채집지(areas "이름 (지형)") = 그 구역에 꽂히는 핀,
+// 안개 = 가 본 만큼 걷힌다 (발자취 visited는 시스템이 위치를 보고 적는다 — 보조 몫이 아니다).
+// 배치는 원작 지도가 아니라 지어낸 약도다 — 왕도를 가운데, 격이 높을수록 바깥. [x, y, w, h] (지도에 대한 %)
+const MAP_LAYOUT = {
+  '왕도': [40, 40, 20, 17],
+  '왕도 주변 들판': [28, 30, 44, 36],
+  '프리겐·시골': [4, 50, 22, 16],
+  '강가·폭포': [4, 28, 22, 20],
+  '숲': [28, 4, 36, 23],
+  '광산·동굴': [2, 3, 24, 22],
+  '설산 능선': [66, 3, 18, 22],
+  '세계의 끝': [86, 3, 13, 20],
+  '꽃밭·초원': [72, 28, 26, 18],
+  '습지·늪': [72, 60, 26, 18],
+  '유적·마나 이상 지대': [72, 80, 26, 17],
+  '해안': [28, 70, 42, 27],
+  '사막': [2, 70, 24, 27],
+};
+const MAP_TIER_CAT = ['격0 마을', '격1 근교', '격2 들·물가', '격3 땅속·늪', '격4 오지', '격5 끝'];
+const MAP_TIER_COLOR = ['#c98a1a', '#4f9d6b', '#3f86b8', '#b0603a', '#7d5bb5', '#b5405c'];
+// 마을 장소 — 위치 선택지 이름 그대로 (값이 같아야 "현재 위치"가 찍힌다). [이름, x, y, desc, rumor, known]
+const MAP_TOWN = [
+  ['공방', 44, 45, '네 아틀리에 — 가마와 서고, 진열대가 있는 곳. 조합·휴식·진열이 여기서 시작된다.', null, true],
+  ['별의 고치 카페', 44, 49.5, '왕도 사람들이 모이는 카페. 소문과 의뢰가 오가고, 축제 날엔 하루 종일 붐빈다.', '왕도 광장 근처에 늘 붐비는 카페가 있다더라.', true],
+  ['왕도 뒷골목', 44, 54, '월영회의 그늘, 출처를 묻지 않는 거래처가 있는 곳. 낮에도 어둡다. 귀한 것은 여기서 돈으로 산다.',
+    '왕도에도 해가 안 드는 골목이 있다더라 — 이름이 좀 알려지거나 실마리를 쥐면 발을 들일 이유가 생긴다.', 'renown >= 100 or clues >= 1'],
+  ['지방 도시', 85, 53, '왕도 밖의 작은 도시. 상점가와 씨앗 상사가 있고, 장날엔 좌판이 선다.', '동쪽 길을 따라가면 장이 서는 도시가 있다.', true],
+];
+const MAP_ZONE_KNOWN = new Set(['왕도', '왕도 주변 들판', '프리겐·시골']);
+const zoneDesc = (place, tier) => {
+  if (tier === 0) return '상점가·씨앗 상사·어시장 좌판·별의 고치 카페가 있는 곳. 살 것과 팔 것이 여기 있다. (채집 없음)';
+  const lines = [`격 ${tier} · ${TIER_NAME[tier]} — 채집 목표치 ${8 + tier * 2}${tier >= 2 ? ' · 탐사 가능' : ''}`,
+    `나는 것: ${(MAT_SOURCE[place] || []).join(' · ')}`];
+  const sp = SPECIALS[place];
+  if (sp) lines.push('계절 특산 — ' + SEASONS.map((se, i) => `${se} ${sp[i].join('·')}`).join(' / '));
+  return lines.join('\n');
+};
+const MAP_CSS = PANEL_CSS + `
+.scm-frame { border-color: ${SKIN.line}; border-radius: 16px; box-shadow: ${SKIN.shadow}; }
+.scm-surface { background-color: #fbf1dc; }
+.scm-fbtn { border-color: ${SKIN.line}; background: ${SKIN.cream}; color: ${SKIN.ink}; }
+.scm-fbtn.scm-on { background: ${SKIN.peach}; border-color: ${SKIN.peach}; color: #fff; }
+.scm-hereline { border-color: ${SKIN.peach}; background: ${SKIN.peachSoft}; color: ${SKIN.ink}; }
+.scm-detail { background: ${SKIN.cream}; color: ${SKIN.ink}; border-left-color: ${SKIN.peach}; border-radius: 14px; }
+.scm-dt-badge { color: #b34d2e; border-color: ${SKIN.peach}; }
+.scm-stray { border-left-color: ${SKIN.honey}; }
+`;
+const MAP = {
+  label: '란타르나 지도', icon: '🗺️', ratio: 1.1, css: MAP_CSS,
+  locVar: 'location', seenVar: 'visited', listVar: 'areas', fog: true,
+  note: '왕도에서 멀수록 격이 높다 — 위험하고 귀한 것이 난다. 가 본 채집지는 "이름 (지형)"으로 적혀야 제 구역에 꽂힌다.',
+  categories: MAP_TIER_CAT.map((label, i) => ({ label, color: MAP_TIER_COLOR[i] })),
+  zones: PLACES.filter(([pl]) => MAP_LAYOUT[pl]).map(([pl, tier]) => {
+    const [x, y, w, h] = MAP_LAYOUT[pl];
+    return { label: pl, x, y, w, h, cat: MAP_TIER_CAT[tier], desc: zoneDesc(pl, tier), ...(MAP_ZONE_KNOWN.has(pl) ? { known: true } : {}) };
+  }),
+  places: MAP_TOWN.map(([name, x, y, desc, rumor, known]) => ({ name, x, y, cat: MAP_TIER_CAT[0], desc, ...(rumor ? { rumor } : {}), known })),
+};
 
 const BOOK_CATS = Object.keys(RECIPE_BOOK);
 // 서고 단수별 묶음 머리 — "이 단부터 열린다"가 곧 진행 사다리
@@ -808,8 +826,11 @@ const S = {
       desc: '가진 채집 도구 (곡괭이·낫·낚싯대·채집망·폭탄 망치…). 도구 수가 곧 채집 보정이다.' },
     { id: 'areas', label: '아는 채집지', type: 'list', init: ['왕도 근교 (왕도 주변 들판)'], maxItems: 12, itemMaxLength: 40,
       desc: '가 본 채집지. **"이름 (지형)" 꼴**로 적는다 — 지형은 위치 목록의 값 그대로 '
-        + '(예: "잊혀진 평원 (왕도 주변 들판)", "버려진 갱도 (광산·동굴)"). 지형이 붙어야 지도의 제 칸에 들어간다. '
+        + '(예: "잊혀진 평원 (왕도 주변 들판)", "버려진 갱도 (광산·동굴)"). 지형이 붙어야 지도의 제 구역에 핀으로 꽂힌다. '
         + '난이도는 시스템이 지형에서 뽑는다.' },
+    // 발자취 (지도 v1.23.0) — 시스템이 위치를 보고 적는다(보조 allow에 없다). 한 번 간 곳은 지도의 안개가 다시 덮지 않는다
+    { id: 'visited', label: '발자취', type: 'list', init: ['공방', '왕도'], maxItems: 24, itemMaxLength: 20,
+      desc: '지도에서 들른 곳 — 시스템이 위치를 보고 적는다. 직접 고치지 않는다.' },
     { id: 'quests', label: '수주 의뢰', type: 'list', init: [], maxItems: 3, itemMaxLength: 80,
       desc: '받은 의뢰. **최대 3개** — 꽉 차면 새 의뢰를 받지 마라. '
         + '형식: "의뢰인 · 내용 (등급) @+기한일 +보수". 등급은 심부름/기초/필드/위험/중대, 보수는 반드시 맨 끝. 예) "별의 고치 카페 · 감기약 3병 (기초) @+5 +400". '
@@ -1729,7 +1750,7 @@ const S = {
 
   party: {
     label: '공방', icon: '🏠', nav: 'tabs', css: PANEL_CSS,
-    wide: true,   // 조합서 분야 탭 6개·지도 사다리 — 440px에선 탭이 두 줄로 꺾인다 (실기 제보, v1.7.6)
+    wide: true,   // 조합서 분야 탭 6개 — 440px에선 탭이 두 줄로 꺾인다 (실기 제보, v1.7.6)
     tabs: [
       // ⚠ fab을 달지 않는다 — 탭이 하나뿐인데 fab을 달면 패널 버튼(🏠 공방)과
       // 탭 버튼(🏠 설비)이 같은 곳을 여는 버튼 두 개가 된다 (실기 제보).
@@ -1766,12 +1787,14 @@ const S = {
           { var: 'bath', max: 5, cost: '(bath + 1) * 1000',
             note: '🛁 목욕 (1단부터) — 체력 +15 +5/단, 씻은 날은 피로 벌점(체력 30 미만 -3)이 없다 · 5단은 온천 수준' },
         ] },
-      // 지도 — 새 패널이 아니라 이 패널의 둘째 탭. fab은 달지 않는다 (버튼은 🏠 하나).
-      { id: 'map', label: '지도', template: MAP_TEMPLATE },
+      // 지도는 v1.23.0부터 따로 — 🗺️ 지도 패널 (아래 map). 탭으로 두면 같은 것이 두 군데다.
       // 조합서 — 컬렉션. 도감은 생성기에 굽고, 해금은 recipes의 has()로, 소재 보유는 materials의 has()로 본다.
       { id: 'book', label: '조합서', template: BOOK_TEMPLATE },
     ],
   },
+
+  // 🗺️ 지도 (플러그인 v1.23.0) — 위 MAP. 지형 = 구역, 마을 = 장소, 가 본 채집지 = 핀, 안개는 가 본 만큼 걷힌다
+  map: MAP,
 
   // ══════════ P2 경영 — 상점 2곳 ══════════
   // 가격 감각은 로어북 150(경제와 보상 규칙)을 밴드로 옮긴 것. 어휘 밖 등급은 거부되고
@@ -2537,7 +2560,7 @@ console.log('\n━━ 스킨 — 아틀리에풍 (밝고 귀여운) 상태창·�
   ok('패널 9곳(공방·달력·게시판·의뢰판·서신·상점 4)이 같은 스킨을 단다', panels.every((p) => p && p.css === PANEL_CSS), panels.map((p) => !!p?.css).join(','));
   ok('패널 스킨: 배경막·카드·탭·칩·상점·게시판·달력·서신 클래스를 다 덮는다',
     ['#sc-game {', '.scg-card {', '.scg-tab.scg-on', '.scg-chip.scg-on', '.sch-tab.sch-on', '.scb-body', '.scc-day.scc-today', '.scm-mine .scm-bubble', '.scq-days'].every((k) => PANEL_CSS.includes(k)), '');
-  ok('조합서·지도 템플릿도 같은 팔레트 (어두운 금빛 없음)', !BOOK_TEMPLATE.includes('#ece2cc') && !MAP_TEMPLATE.includes('#ece2cc') && BOOK_TEMPLATE.includes(SKIN.ink) && MAP_TEMPLATE.includes(SKIN.ink), '');
+  ok('조합서 템플릿·지도 패널도 같은 팔레트 (어두운 금빛 없음)', !BOOK_TEMPLATE.includes('#ece2cc') && !MAP_CSS.includes('#ece2cc') && BOOK_TEMPLATE.includes(SKIN.ink) && S.map.css.startsWith(PANEL_CSS), '');
   const rendered = SC.require('render').renderPanelTemplate(S, fresh(), BOOK_TEMPLATE);
   ok('스코핑 뒤에도 탭 규칙이 산다 (#sc-game .abk-r0:checked ~ .abk-p0)', rendered.includes('.abk-r0:checked ~ .abk-p0{') && rendered.includes('#sc-game .abk-page{'), '');
   ok('상태창 CSS는 .sim-status 밖을 안 건드린다 (검증 통과 = scopeCss 대상)', validateSchema(S).ok, '');
@@ -2709,30 +2732,24 @@ console.log('\n━━ 우상단 버튼 — 중복 없이 하나씩 ━━');
   console.log('    → ' + btns.map((b) => `${b[2]} ${b[1]}`).join(' · '));
 }
 
-console.log('\n━━ 지도 탭 — 지형표에서 구운 격 사다리 ━━');
+console.log('\n━━ 지도 패널 (v1.23.0) — 지형 = 구역, 가 본 채집지 = 핀 ━━');
 {
-  const partyMod = SC.require('party');
-  const tabs = partyMod.partyTabs(S);
-  const map = tabs.find((t) => t.id === 'map');
-  ok('공방 패널 둘째 탭이 지도다 (새 버튼 없음)', !!map && map.template && !map.fab, JSON.stringify(tabs.map((t) => t.id)));
+  const MM = SC.require('map');
+  const tabs = SC.require('party').partyTabs(S);
+  ok('공방 패널엔 지도 탭이 없다 (지도 패널 하나 — 같은 것이 두 군데 안 산다)', !tabs.some((t) => t.id === 'map') && !!S.map, JSON.stringify(tabs.map((t) => t.id)));
   const t = fresh();
   t.vars.location = '광산·동굴';
   t.vars.areas = ['왕도 근교 (왕도 주변 들판)', '버려진 갱도 (광산·동굴)', '잊혀진 평원 (왕도 주변 들판)', '지형 안 붙인 곳'];
-  const html = SC.require('render').renderPanelTemplate(S, t, map.template);
-  // CSS 블록({display: flex; …})은 자리표시자가 아니다 — <style>을 떼고 본다
-  const body = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-  const leftover = (body.match(/\{[a-z_]+(?::[^}]*)?\}/g) || []);
-  ok('미치환 자리표시자 없음', leftover.length === 0, leftover.join(' '));
-  ok('지금 위치·격이 머리에', html.includes('지금 광산·동굴 · 격 3'), '');
-  ok('지형 17종이 전부 그려진다', PLACES.every(([p]) => html.includes(p)), '');
-  // 가 본 곳이 제 칸에 — 광산 칸 안에 갱도 칩이, 들판 칸 안에 평원 칩이
-  const cellOf = (p) => { const i = html.indexOf(`<div class="amap-pn">${p}</div>`); return html.slice(i, html.indexOf('</div></div>', i) + 12); };
-  ok('"버려진 갱도 (광산·동굴)"이 광산·동굴 칸에', cellOf('광산·동굴').includes('버려진 갱도'), cellOf('광산·동굴').slice(0, 200));
-  ok('들판 칸엔 두 곳 (근교 + 평원)', cellOf('왕도 주변 들판').includes('왕도 근교') && cellOf('왕도 주변 들판').includes('잊혀진 평원'), '');
-  ok('갱도는 들판 칸에 안 든다', !cellOf('왕도 주변 들판').includes('갱도'), '');
-  ok('지형 안 붙인 항목은 어느 칸에도 안 든다 (상태창 여정 탭에는 그대로 있다)',
-    !html.includes('지형 안 붙인 곳') && t.vars.areas.includes('지형 안 붙인 곳'), '');
-  ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .amap'), '');
+  const v = MM.mapView(S, t, engine.makeLookup);
+  const html = MM.renderMapHtml(v, {});
+  ok('지금 위치 = 광산·동굴 구역', v.here && v.here.kind === 'zone' && v.here.name === '광산·동굴' && html.includes('현재 위치'), JSON.stringify(v.here));
+  const zk = (l) => v.zones.find((z) => z.label === l).key;
+  ok('"버려진 갱도 (광산·동굴)"이 광산·동굴 구역에', v.pins.some((q) => q.name === '버려진 갱도' && q.zone === zk('광산·동굴')), '');
+  ok('들판엔 두 곳 (근교 + 평원)', v.pins.filter((q) => q.zone === zk('왕도 주변 들판')).length === 2, '');
+  ok('★ 지형 안 붙인 항목은 버려지지 않고 "자리를 못 찾은 곳"으로 (옛 판은 조용히 빠졌다)', v.stray.length === 1 && html.includes('자리를 못 찾은 곳') && html.includes('지형 안 붙인 곳'), '');
+  const all = MM.renderMapHtml(MM.mapView(S, t, engine.makeLookup, { reveal: true }), {});
+  ok('안개를 걷으면 지형 12 + 왕도가 전부 그려진다', Object.keys(MAP_LAYOUT).every((l) => all.includes(`>${l}<`)), '');
+  ok('분류 단추 = 격 0~5', (html.match(/data-scm-cat="격/g) || []).length === 6, '');
 }
 
 console.log('\n━━ 상태창 찬 정도 · 상태 블록 누락분 ━━');
@@ -3114,7 +3131,30 @@ console.log('\n━━ 산지표 — 어디서 나는가: 상시 재고 / 채집 
     const g = S.checks.find((c) => c.id === 'gather').grades;
     return g[0].inject.includes('셋 이상은 "여기서 나는 것"') && g[1].inject.includes('둘 이상은 "여기서 나는 것"') && g[2].inject.includes('"여기서 나는 것" 중 **1종**');
   })(), '');
-  ok('지도 탭: 지형 칸마다 나는 것 한 줄 (광산·동굴 → 광석·희귀 광석…)', MAP_TEMPLATE.includes('<div class="amap-src">광석 · 희귀 광석 · 돌') && MAP_TEMPLATE.includes('.amap-src {'), '');
+  ok('지도: 지형 구역마다 나는 것 한 줄 (광산·동굴 → 광석·희귀 광석…)', S.map.zones.find((z) => z.label === '광산·동굴').desc.includes('나는 것: 광석 · 희귀 광석 · 돌'), '');
+  {
+    const MM = SC.require('map');
+    const locs = S.vars.find((v) => v.id === 'location').enum;
+    const named = new Set([...S.map.zones.map((z) => z.label), ...S.map.places.map((q) => q.name)]);
+    ok('지도: 위치 선택지 17곳이 전부 지도 위에 (구역 13 + 장소 4)', locs.length === 17 && locs.every((l) => named.has(l)) && S.map.zones.length === 13 && S.map.places.length === 4, locs.filter((l) => !named.has(l)).join(','));
+    ok('지도: 검증 경고 0', !validateSchema(S).warnings.some((w) => w.path.startsWith('$.map')), JSON.stringify(validateSchema(S).warnings.filter((w) => w.path.startsWith('$.map'))));
+    const t0 = fresh();
+    let v = MM.mapView(S, t0, engine.makeLookup);
+    ok('지도 처음: 마을·근교 3구역만 걷히고 나머지는 안개', v.zones.filter((z) => z.open).map((z) => z.label).sort().join(',') === ['왕도', '왕도 주변 들판', '프리겐·시골'].sort().join(','), v.zones.filter((z) => z.open).map((z) => z.label).join(','));
+    ok('지도 처음: 뒷골목은 숨음 (이름값 100 또는 실마리 전), 공방은 가 본 곳', v.places.find((q) => q.name === '왕도 뒷골목').state === 'hidden' && v.places.find((q) => q.name === '공방').state === 'seen', '');
+    ok('지도 처음: 근교 채집지가 들판에 꽂힘 (왕도 칸은 비켜 앉음)', v.pins.length === 1 && v.pins[0].name === '왕도 근교' && !(v.pins[0].x >= 39 && v.pins[0].x <= 61 && v.pins[0].y >= 39 && v.pins[0].y <= 58), JSON.stringify(v.pins[0]));
+    // 광산에 가서 갱도를 찾고 돌아온다 — 정산이 발자취를 적고, 구역이 걷힌 채 남는다
+    let t = fresh(); t.vars.location = '광산·동굴'; t.vars.areas = [...t.vars.areas, '버려진 갱도 (광산·동굴)'];
+    t = engine.outputPhase(S, t, {}, {}, { rng: seededRng('map', 1, 'o') }).state;
+    ok('지도: 광산에 들르면 발자취에 적힌다 (시스템)', t.vars.visited.includes('광산·동굴'), JSON.stringify(t.vars.visited));
+    t.vars.location = '공방';
+    t = engine.outputPhase(S, t, {}, {}, { rng: seededRng('map', 2, 'o') }).state;
+    v = MM.mapView(S, t, engine.makeLookup);
+    const mine = v.zones.find((z) => z.label === '광산·동굴');
+    ok('지도: 돌아와도 광산은 걷힌 채 + 갱도 핀', mine.open && v.pins.some((q) => q.name === '버려진 갱도' && q.zone === mine.key), '');
+    t.vars.renown = 120;
+    ok('지도: 이름값 100이 넘으면 뒷골목이 소문으로 보인다', MM.mapView(S, t, engine.makeLookup).places.find((q) => q.name === '왕도 뒷골목').state === 'known', '');
+  }
   const html = SC.require('render').renderPanelTemplate(S, fresh(), BOOK_TEMPLATE);
   ok('조합서 칩 툴팁에 분류 — 산지 (불의 돌: 광산·동굴 + 여름 특산, 뒷골목 아님)', html.includes('title="분류: 화약 · 광석 — 산지: 광산·동굴 · 광산·동굴(여름)">불의 돌'), (html.match(/title="[^"]*">불의 돌/) || [])[0]);
   ok('소재 탭 칩 툴팁은 산지 (맑은 물: 들판·강가·상점가)', html.includes('title="산지: 왕도 주변 들판 · 강가·폭포 · 상점가">맑은 물</i>'), (html.match(/title="산지: [^"]*">맑은 물/) || [])[0]);
@@ -3125,7 +3165,7 @@ console.log('\n━━ 살림 — 침실·부엌·응접실, 식사가 요리 티
   const partyMod = SC.require('party');
   const tabs = partyMod.partyTabs(S);
   const home = tabs.find((t) => t.id === 'home');
-  ok('공방 패널에 살림 탭 (설비·살림·지도·조합서 = 4, 살림 항목 4)', !!home && home.items.length === 4 && tabs.map((t) => t.id).join() === 'facility,home,map,book', tabs.map((t) => t.id).join());
+  ok('공방 패널에 살림 탭 (설비·살림·조합서 = 3 — 지도는 v1.23.0부터 지도 패널, 살림 항목 4)', !!home && home.items.length === 4 && tabs.map((t) => t.id).join() === 'facility,home,book', tabs.map((t) => t.id).join());
   ok('세금은 살림 설비도 센다', S.derived.find((d) => d.id === 'tax_due').expr.includes('bedroom + kitchen + parlor'), '');
 
   // 침실 — 체력 최대. 변수 max 150은 천장, 실제 상한은 stamina_max + onTurn 클램프

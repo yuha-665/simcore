@@ -80,6 +80,8 @@ function writerMap(schema) {
     if (qb.listVar) add(qb.listVar, '의뢰판');
     for (const f of [...(Array.isArray(qb.accept) ? qb.accept : []), ...(Array.isArray(qb.cancel) ? qb.cancel : [])]) add(f?.set, '의뢰판');
   }
+  // 지도 발자취(v1.23.0) — 정산이 위치 변수를 보고 들른 곳 이름을 적는다
+  if (schema.map && typeof schema.map === 'object' && schema.map.seenVar) add(schema.map.seenVar, '지도');
   // 무대 뒤 단계 효과·전투 결착 효과·상점 거래 (v1.14.11 — 빠져 있어 '고정 변수' 오탐)
   for (const f of (require('./front').frontsConfig(schema) || [])) for (const st of (f.stages || [])) for (const e of (st.effects || [])) for (const _w of effTargets(e)) add(_w, '무대 뒤');
   for (const c of (schema.checks || [])) for (const e of (c.fight?.win?.effects || [])) for (const _w of effTargets(e)) add(_w, '판정');

@@ -149,7 +149,7 @@ async function chatRun(schema, text, reply) {
     const ghost = [...MAP.map((f) => f.where), ...E.PATCH_OFF_SPOTS.map(([, , w]) => w)].filter((w) => !labels.has(bracket(w)));
     ck('★ 표의 자리가 실제 탭 이름이다 (없는 탭으로 안내하면 안 된다)', !ghost.length, ghost.join(', '));
 
-    const SAMPLE = { shop: { shop: {} }, shops: { shops: [{ id: 'a' }] }, board: { board: {} }, messenger: { messenger: {} }, questBoard: { questBoard: {} },
+    const SAMPLE = { shop: { shop: {} }, shops: { shops: [{ id: 'a' }] }, board: { board: {} }, messenger: { messenger: {} }, questBoard: { questBoard: {} }, map: { map: {} },
       party: { party: {} }, calendar: { calendar: {} }, scenario: { scenario: { acts: [{ id: 'a' }] } }, secrets: { secrets: [{ id: 's' }] }, fronts: { fronts: [{ id: 'f' }] },
       checkpoint: { checkpoint: {} }, liveChoices: { liveChoices: {} }, pools: { pools: [{ id: 'p' }] }, assets: { assets: { packs: [{ id: 'a' }] } }, suggest: { suggest: {} }, time: { time: {} } };
     const noSample = MAP.flatMap((f) => f.keys.filter((k) => !SAMPLE[k]));

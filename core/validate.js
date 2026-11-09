@@ -7,6 +7,7 @@ const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감�
 const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
 const gaugeMod = require('./gauge'); // 사건 게이지 (v1.14.0) — 예약 이름 re_gauge·re_cool·설정·개입 효과 검증
 const sampleMod = require('./sample'); // 추첨 (v1.18.0) — 후보 풀(pools)·추첨 효과 검증
+const mapMod = require('./map'); // 지도 (v1.23.0) — map 절 검증(validateMap)
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -84,6 +85,7 @@ function activeSections(schema) {
   if (obj(s.messenger)) out.push('메신저');
   if (obj(s.shop) || n(s.shops)) out.push('상점');
   if (obj(s.questBoard)) out.push('의뢰판');
+  if (obj(s.map)) out.push('지도');
   if (n(s.scenario?.acts)) out.push('시나리오');
   if (n(s.secrets)) out.push('비밀');
   if (obj(s.calendar)) out.push('달력');
@@ -1735,6 +1737,9 @@ function validateSchema(schema) {
       if (Q.when != null) checkExpr(Q.when, `${P}.when`, new Set([...allIds, ...exposedNames]), err, { allowRand: false });
     }
   }
+
+  // ── map (지도 v1.23.0 — 옵트인) — 검증은 map.validateMap (규격서가 이 함수 소스를 통째로 실어 크기 상한이 있다 — 추첨 풀과 같은 길) ──
+  mapMod.validateMap(schema, { vars, exprIds: new Set([...allIds, ...exposedNames]), allIds, err, warn, checkExpr });
 
   // ── liveChoices (보조가 쓰는 갈림길 v1.8.0 — 옵트인. 라벨은 보조가 즉석에서, 결과는 태그가 정한다 — docs/design-갈림길-확장.md) ──
   const liveIds = new Set();

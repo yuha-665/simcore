@@ -4,7 +4,7 @@
 
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
 · `checks` · `suggest` · `updater` · `promptState` · `statusUI` · `setup` · `time` · `calendar`
-· `party` · `assets` · `board`(v0.95) · `messenger`(v1.2) · `shop`·`shops`(v0.96·v1.4) · `questBoard`(v1.7.9) · `scenario` · `liveChoices`(v1.8.0) · **`secrets`**(v1.10.0) · `rerollStableRng` · **`pools`**(v1.18.0 추첨 후보 풀)
+· `party` · `assets` · `board`(v0.95) · `messenger`(v1.2) · `shop`·`shops`(v0.96·v1.4) · `questBoard`(v1.7.9) · **`map`**(v1.23.0) · `scenario` · `liveChoices`(v1.8.0) · **`secrets`**(v1.10.0) · `rerollStableRng` · **`pools`**(v1.18.0 추첨 후보 풀)
 
 - `rerollStableRng` — true/false (기본 true, 리롤해도 같은 눈). 다른 값은 검증 오류
 - **알 수 없는 키 경고 (v1.14.4)** — vars·derived·events·randomEvents·actions·checks·directives·allow(+ choices·grades) 항목에 `validate.js KNOWN_KEYS` 표에 없는 키가 있으면 경고(비차단). 밑줄로 시작하는 키(`_note`)는 메모로 통과. 같은 표가 AI 요청서·어시스턴트의 "필드 사전" 절이 된다 — **엔진에 필드를 추가하면 그 표에 한 줄 같이 적을 것**
@@ -759,6 +759,39 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 - 편집기 [의뢰판] 탭 (TAB_SLICES.quest — keys `['questBoard']`). 기능 프리셋 📜 "의뢰판" 카드가 vars → quest → rules 순으로 요청한다.
 - **봇 설계 규약**: 벽보·게시판에서 "의뢰" 칸을 떼고 의뢰는 여기로 (아틀리에: board categories에서 '의뢰' 제거, 벽보는 소문으로만).
   사람이 직접 찾아와 부탁하는 의뢰는 여전히 서사로 — 보조 guide에 "의뢰판 의뢰는 버튼이 넣는다, 직접 부탁만 quests에 올려라".
+
+## map — 지도 (v1.23.0, 옵트인)
+
+게임 패널 7호 (우상단 🗺️). 좌표 위에 장소·구역·이정표를 놓고, 위치 변수가 가리키는 곳에 "현재 위치", 안개를 켜면
+**가 본 만큼 채워지는 지도**. 유저(2026-11-09) 교토 전도 스샷이 발단 — 그전 지도는 편성표 템플릿 탭 + `{목록:tags:구역}`뿐이었다.
+**새 저장소 없음**: 위치 = 기존 변수, 발자취·찾아낸 곳 = 평범한 list 변수 (달력과 같은 원칙). 설계: `docs/design-지도.md`.
+
+| 필드 | |
+|---|---|
+| `places` | `[{ name, x, y, sub?, cat?, desc?, rumor?, known?, alias? }]` — 핀. 좌표는 지도 크기에 대한 % (0~100). 최대 80 |
+| `zones` | `[{ label, x, y, w, h, cat?, color?, desc?, known?, match? }]` — 직사각형 땅(권역·지형·방향). 안개는 구역 단위로 걷힌다. 최대 40. 안에 든 작은 구역 허용(성 안의 도시) |
+| `exits` | `[{ label, dir: n·ne·e·se·s·sw·w·nw, at?, known? }]` — 가장자리 이정표. ne/se→오른쪽 변, nw/sw→왼쪽 변. at 없으면 같은 변끼리 고르게 나눔. 최대 16 |
+| `categories` | `[{ label, color? }]` — 분류 단추(거르기)·핀 색. **이름이 열쇠** (place/zone의 `cat`). 최대 10, 색 없으면 팔레트 |
+| `locVar` | 현재 위치 변수(값 하나 — enum 추천). 값이 장소 name·alias → 구역 label·match 순으로 **똑같으면** "지금 여기". 없으면 경고 |
+| `seenVar` | 발자취 list 변수 — **정산(8.92)이 적는다**: 지금 여기가 장소·구역이면 그 이름을 넣음. 보조 allow에 안 넣어도 됨. 꽉 차면 안 넣고 안 민다. maxItems < 장소+구역 수면 경고 |
+| `listVar` | 찾아낸 곳 list 변수 — 항목 `"이름 (구역)"`이 그 구역 빈자리에 핀. 꼬리표가 없으면 글에 든 구역 이름(긴 것 우선). 못 찾으면 "자리를 못 찾은 곳"으로 알림 |
+| `fog` | true면 안개 — 못 가 본 구역은 가리고(？), 모르는 장소는 안 그림 |
+| `ratio` / `bg` / `note` / `label` / `icon` / `css` | 세로÷가로(0.4~2.5, 기본 1) / 배경 그림 = 카드 에셋 이름(패널만, 초상과 같은 readImage 길) / 아래 작은 글 / 버튼·제목 / CSS(#sc-game 범위) |
+
+- **known**: `true` = 처음부터 보임 · 식 = 참이면 보임(소문 `has(rumors,"기온")`, 진척 `explore_n >= 50`) · 없음 = 안개면 가 봐야 보임(안개 없으면 보임) · `false` = 가 봐야.
+  안개 없는 지도에서도 식이 거짓이면 숨는다(조건부로 생기는 곳). 이정표는 없으면 늘 보임.
+- 장소 상태: **seen**(발자취·지금 여기) → desc / **known**(보이지만 안 가 봄) → 빈 마름모 + "이름 ?" + desc 대신 `rumor`("아직 가 보지 않은 곳이다") / **hidden** → 안 그림.
+- 구역이 걷히는 조건(안개): known · 발자취 · 지금 여기(구역 또는 그 안의 장소·핀) · 가 본 장소가 안에 있음 · 찾아낸 곳 핀이 꽂힘. **아는(소문) 장소만으로는 안 걷힌다.**
+- 찾아낸 곳 자리 = 이름 해시로 섞은 칸 순서 — 같은 이름은 늘 같은 자리. 구역 이름표·안에 든 작은 구역·다른 핀의 **이름표**와 안 겹치게, 첫 바퀴는 이름표까지 구역 안.
+- 조건식이 발자취를 읽는다: `count(visited) >= 10`, `has(visited, "기온")` — "지도를 채운 만큼" 열리는 이벤트·막·지시문.
+- 이름 겹침(장소 name·alias, 구역 label·match 사이)은 **오류** — 위치 값이 어디를 가리키는지 모호해진다.
+- 안개 지도 + 위치 enum에서 **선택지에 없고 known도 없는 장소** = 영영 안개 → 경고.
+- 코어 API (`core/map.js`): `mapConfig` / `mapButtonSpec` / `mapView(schema,state,makeLookup,{reveal})` → `{zones,places,pins,exits,stray,here,counts,…}` /
+  `recordVisit(schema,state,makeLookup)`(엔진 8.92) / `validateMap`(validate.js가 부름 — 규격서 크기 때문에 모듈에) / `renderMapHtml(view,{cat,sel},{bgUrl,pick})` / `detailOf` / `splitTag` / `MAP_CSS`(기본 모양 — 패널·편집기 공용).
+  상호작용은 `data-scm`(고르기)·`data-scm-cat`(분류) 위임 클릭 — 패널은 우리 iframe DOM이라 data-*가 산다. **상태창(채팅)엔 안 그린다.**
+- 편집기 [지도] 탭 (세계 묶음, TAB_SLICES.map — keys `['map']`, 패치 병합 미지원 → `[지도] 탭`). 미리보기에서 **📍 찍기 → 누른 자리로**(구역은 두 번),
+  [＋ 장소 찍어 넣기], "안개 걷은 모습" 끄기 = 새 시작 직후 플레이어 시점. [지도 만들기]는 위치 선택지 이름으로 장소를 격자에 깐다.
+- 좁은 화면: `.scm-frame`이 컨테이너 — 460px↓ 글자 축소, 380px↓ 찾아낸 곳은 점만(누르거나 지금 여기면 이름).
 
 ## liveChoices — 보조가 쓰는 갈림길 (v1.8.0, 옵트인)
 

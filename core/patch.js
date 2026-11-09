@@ -36,7 +36,7 @@ const UNSUPPORTED_HINT = {
   statusUI: '[상태창] 탭', onTurn: '[규칙·이벤트] 탭 첫 절(매 턴 정산)', setup: '[새 시작] 탭', meta: '[상태창] 탭 제목 칸·📌 작업 지침',
   promptState: '[AI 설정] 탭', suggest: '[AI 설정] 탭', simcore: '(버전 표식 — 손대지 않음)', time: '[시간] 탭',
   checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋 관리자]', party: '[편성표] 탭',
-  calendar: '[달력] 탭', board: '[보드] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
+  calendar: '[달력] 탭', board: '[보드] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭', map: '[지도] 탭',
   liveChoices: '[규칙·이벤트] 탭 보조 갈림길 절', scenario: '[시나리오] 탭', secrets: '[비밀] 탭', rerollStableRng: '[규칙·이벤트] 탭',
   pools: '[변수] 탭 🎲 후보 풀 (v1.18.0)',
 };
@@ -590,7 +590,7 @@ const DIFF_AREAS = [
   ['setup', (s) => s?.setup, '새 시작(setup)'], ['updater', (s) => { const u = { ...(s?.updater || {}) }; delete u.allow; return u; }, '보조 AI 설정(updater, allow 제외)'],
   ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
-  ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
+  ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['map', (s) => s?.map, '지도'], ['assets', (s) => s?.assets, '에셋'],
   ['secrets', (s) => s?.secrets, '비밀'], ['shops', (s) => s?.shops, '상점(여러)'], ['liveChoices', (s) => s?.liveChoices, '보조 갈림길'],
   ['rerollStableRng', (s) => s?.rerollStableRng, '리롤 안정'], // (v1.14.9 — 전엔 비밀만 바뀐 판이 "같습니다"로 나왔다)
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],

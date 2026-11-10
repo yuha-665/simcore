@@ -273,6 +273,7 @@ MAGE.updater.allow.push({ id: 'mana', maxDelta: 20 });
   await sleep(1800);
   S = H.state();
   ck('다른 새 채팅 — 마지막으로 고른 판으로 시작', S.currentProfile === '마법사' && S.session.current.vars.mana === 30, String(S.currentProfile));
+  ck('★ 그 채팅의 미러도 로드에서 맞춘다 (첫 턴 로어 CBS가 판 이름을 읽게)', world.chats['c-sim:2'].scriptstate?.$sim_profile === '마법사', JSON.stringify(world.chats['c-sim:2'].scriptstate));
 
   // 프로필에 설치 — 덧칠만, 기본 판은 안 바뀐다. 브리지가 있으면 판마다 굽는다
   world.chars[1].triggerscript = [{ comment: 'simcore-bridge', type: 'output', effect: [{ type: 'triggerlua', code: '-- old' }] }];

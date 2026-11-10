@@ -32,6 +32,8 @@
 // - [브리지] 루아 브리지가 판마다 템플릿을 굽고 채팅 변수 sim_profile로 고른다. 판이 하나면 예전과 글자 하나 다르지 않은 코드(설치된 브리지가 노후로 안 뜬다).
 // - 그 밖: 과거 상태창 캐시는 그때 판으로 정합(지금 판 상한에 옛 값이 깎이던 것) · 세이브 가져오기는 세이브의 판으로 먼저 · [캐릭터에서 제거]는 프로필을 남기고 알림 ·
 //   편집기 생성 맥락·메신저 인물 찾기에서 프로필 항목을 뺀다.
+// - 로드가 판 이름을 미러와 맞춘다 — 새 채팅이 "새 채팅의 판"으로 서면 첫 턴 로어북 CBS가 빈 미러를 읽었다(전송 훅 미러는 프롬프트보다 늦다).
+//   깡통봇 시험 번들 `프로필시험/`(판 넷 + 판 안내 로어, `make-bundle.js`)을 굴리다 찾았다.
 // - [덧칠] 양쪽을 편집기 모양(profile.shapeFill = editor normalize)으로 맞춘 뒤 잰다 — 구현 중 실측: 기본 판을 그대로 새 프로필로 저장하니 편집기가 채운
 //   빈 절 일곱 개가 덧칠에 실려, 제작자가 나중에 넣은 지시문을 프로필의 빈 목록이 덮을 뻔했다. 편집기 비교 서명도 같은 모양으로(shapeSig).
 // - 테스트: `테스트/test-profile.js` 79 (덧칠·편집기 모양·항목·세션·검증·번들·가짜 리수) · `test-profileeditor.js` 10 (편집기가 고치는 판).
@@ -4826,6 +4828,9 @@
     if (freshSwitch) sess.current = sess.stampProfile(engine.initState(schema, { rng: sess._rng(-1, 'start') }));
     session = sess; // 여기서부터 바깥에 보인다 (v1.14.10)
     if (inherited) { try { await mirrorVars(chaIdx, chatIdx); } catch {} }   // 미러는 복사 시점의 원본 최신값 — 상속한 자리의 값으로 (v1.14.13)
+    // 🔀 로어북 CBS({{getvar::sim_profile}})는 리수가 프롬프트를 짤 때 읽는다 — 전송 훅의 미러보다 먼저다. 새 채팅이 '새 채팅의 판'으로 서면
+    //   첫 턴의 로어가 빈 미러를 읽어 판 안내가 한 턴 늦었다 (v1.24.0 시험 번들 실측). 판 이름이 미러와 다를 때만 여기서 맞춘다.
+    else if (currentProfile !== null && (chat?.scriptstate?.['$' + PROFILE_KEY] ?? '') !== currentProfile) { try { await mirrorVars(chaIdx, chatIdx); } catch {} }
     if (startPresetId && session.current.meta.turn === 0 && !session.current.meta.setupDone) { // 최초설정이 끝난 턴 0엔 다시 안 덮는다 (v1.14.7, 영역 3 #3)
       if ((schema.setup?.presets || []).some((p) => p.id === startPresetId)) {
         session.applyPreset(startPresetId);

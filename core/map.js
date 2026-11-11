@@ -474,19 +474,20 @@ function renderMapHtml(view, ui = {}, opts = {}) {
       + `<span class="scm-zl">${esc(z.open ? z.label : '？')}${z.here ? '<b class="scm-zhere">📍 현재 위치</b>' : ''}</span></button>`);
   }
   const side = (x) => (x > LABEL_LEFT_AT ? ' scm-left' : '');
+  // "현재 위치"는 이름표 안에 붙인다 (v1.24.1) — 점 밑에 따로 달면 바로 아래 장소의 이름표에 덮였다
+  // (아틀리에 실기: 공방 밑 별의 고치 카페). 구역의 📍 현재 위치와 같은 자리다
+  const NOW = '<b class="scm-now">현재 위치</b>';
   for (const p of view.places) {
     if (p.state === 'hidden') continue;
     // 안개가 없는 지도에선 '소문' 모양(빈 마름모)을 안 쓴다 — 다 아는 곳이다
     const cls = `scm-pin scm-st-${view.fog ? p.state : 'seen'}${p.here ? ' scm-here' : ''}${sel === p.key ? ' scm-sel' : ''}${side(p.x)}${dim(p.cat)}`;
     h.push(`<button type="button" class="${cls}" data-scm="${p.key}" style="left:${p.x}%;top:${p.y}%;${color(p.color)}" aria-label="${esc(p.name)}${p.here ? ' (현재 위치)' : ''}">`
-      + `<i class="scm-dot"></i><span class="scm-name">${esc(p.name)}${p.state === 'known' && view.fog ? ' ?' : ''}</span>`
-      + (p.here ? '<span class="scm-now">현재 위치</span>' : '') + '</button>');
+      + `<i class="scm-dot"></i><span class="scm-name">${esc(p.name)}${p.state === 'known' && view.fog ? ' ?' : ''}${p.here ? NOW : ''}</span></button>`);
   }
   for (const d of view.pins) {
     const cls = `scm-pin scm-dyn${d.here ? ' scm-here' : ''}${sel === d.key ? ' scm-sel' : ''}${side(d.x)}${dim(d.cat)}`;
     h.push(`<button type="button" class="${cls}" data-scm="${d.key}" style="left:${d.x}%;top:${d.y}%;${color(d.color)}" aria-label="${esc(d.name)}${d.here ? ' (현재 위치)' : ''}">`
-      + `<i class="scm-dot"></i><span class="scm-name">${esc(d.name)}</span>`
-      + (d.here ? '<span class="scm-now">현재 위치</span>' : '') + '</button>');
+      + `<i class="scm-dot"></i><span class="scm-name">${esc(d.name)}${d.here ? NOW : ''}</span></button>`);
   }
   for (const e of view.exits) {
     const pos = e.edge === 'top' || e.edge === 'bottom' ? `left:${e.at}%` : `top:${e.at}%`;
@@ -559,7 +560,10 @@ const MAP_CSS = `
 .scm-pin.scm-sel .scm-name{background:#2b1d10;color:#fff8e8;border-color:#2b1d10}
 .scm-pin.scm-here .scm-dot{background:#a3271b;border-color:#fff}
 .scm-pin.scm-here .scm-dot::after{content:'';position:absolute;inset:-7px;border:2px solid #a3271b;border-radius:3px;animation:scm-ping 1.6s ease-out infinite}
-.scm-now{position:absolute;left:-30px;top:10px;width:60px;text-align:center;font-size:10px;font-weight:800;color:#a3271b;text-shadow:0 0 3px #fff8e8,0 0 3px #fff8e8}
+.scm-pin.scm-here{z-index:4}
+.scm-pin.scm-here .scm-name{border-color:#a3271b}
+.scm-now{margin-left:5px;font-size:10px;font-weight:800;color:#a3271b}
+.scm-pin.scm-sel .scm-now{color:#ff9b8a}
 @keyframes scm-ping{from{opacity:.9;transform:scale(.7)}to{opacity:0;transform:scale(1.5)}}
 @media (prefers-reduced-motion:reduce){.scm-pin.scm-here .scm-dot::after{animation:none}}
 .scm-dim{opacity:.22}

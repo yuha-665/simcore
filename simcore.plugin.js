@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.24.0
-//@display-name SimCore (시뮬 엔진) v1.24.0 🔀 프로필 — 한 봇에 판 여러 벌
+//@version 1.24.1
+//@display-name SimCore (시뮬 엔진) v1.24.1 🔀 프로필 — 한 봇에 판 여러 벌
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,13 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.24.1 ───────────────────────────────────────────────
+// **🗺️ 지도의 "현재 위치"가 이웃 장소 이름표에 덮이던 것.** 집 실기(아틀리에, 유저 2026-11-11): 공방 점 밑의 빨간 "현재 위치"가
+// 바로 아래 별의 고치 카페 이름표에 가렸다 — 점 밑 가운데에 따로 달려 있었고, 나중에 그려진 핀이 위에 왔다(좁은 화면에선 통째로 밑에 깔렸다).
+// - [코어] map.js — "현재 위치"를 그 핀의 이름표 안에 붙인다(구역의 📍 현재 위치와 같은 자리). 현재 위치 핀은 z-index 4로 이웃 핀 위에, 이름표 테두리는 빨강.
+//   고른 핀(어두운 이름표)에선 글자를 밝게. test-map +2 (HTML 자리 · CSS), Edge 렌더로 560px·360px 겹침 0 확인.
+// v1.24.0(지도 v1.23.0 포함)은 배포 리포에 안 올라갔다 — v1.22.1 다음 배포가 이 판이다.
 //
 // ── v1.24.0 ───────────────────────────────────────────────
 // **🔀 프로필 — 한 봇에 판 여러 벌, 채팅마다 하나.** 커뮤니티 요청(2026-11-09, 유저 전달): "한 봇에서 가끔 다른 능력으로 하고 싶다 —
@@ -6812,19 +6819,20 @@ function renderMapHtml(view, ui = {}, opts = {}) {
       + `<span class="scm-zl">${esc(z.open ? z.label : '？')}${z.here ? '<b class="scm-zhere">📍 현재 위치</b>' : ''}</span></button>`);
   }
   const side = (x) => (x > LABEL_LEFT_AT ? ' scm-left' : '');
+  // "현재 위치"는 이름표 안에 붙인다 (v1.24.1) — 점 밑에 따로 달면 바로 아래 장소의 이름표에 덮였다
+  // (아틀리에 실기: 공방 밑 별의 고치 카페). 구역의 📍 현재 위치와 같은 자리다
+  const NOW = '<b class="scm-now">현재 위치</b>';
   for (const p of view.places) {
     if (p.state === 'hidden') continue;
     // 안개가 없는 지도에선 '소문' 모양(빈 마름모)을 안 쓴다 — 다 아는 곳이다
     const cls = `scm-pin scm-st-${view.fog ? p.state : 'seen'}${p.here ? ' scm-here' : ''}${sel === p.key ? ' scm-sel' : ''}${side(p.x)}${dim(p.cat)}`;
     h.push(`<button type="button" class="${cls}" data-scm="${p.key}" style="left:${p.x}%;top:${p.y}%;${color(p.color)}" aria-label="${esc(p.name)}${p.here ? ' (현재 위치)' : ''}">`
-      + `<i class="scm-dot"></i><span class="scm-name">${esc(p.name)}${p.state === 'known' && view.fog ? ' ?' : ''}</span>`
-      + (p.here ? '<span class="scm-now">현재 위치</span>' : '') + '</button>');
+      + `<i class="scm-dot"></i><span class="scm-name">${esc(p.name)}${p.state === 'known' && view.fog ? ' ?' : ''}${p.here ? NOW : ''}</span></button>`);
   }
   for (const d of view.pins) {
     const cls = `scm-pin scm-dyn${d.here ? ' scm-here' : ''}${sel === d.key ? ' scm-sel' : ''}${side(d.x)}${dim(d.cat)}`;
     h.push(`<button type="button" class="${cls}" data-scm="${d.key}" style="left:${d.x}%;top:${d.y}%;${color(d.color)}" aria-label="${esc(d.name)}${d.here ? ' (현재 위치)' : ''}">`
-      + `<i class="scm-dot"></i><span class="scm-name">${esc(d.name)}</span>`
-      + (d.here ? '<span class="scm-now">현재 위치</span>' : '') + '</button>');
+      + `<i class="scm-dot"></i><span class="scm-name">${esc(d.name)}${d.here ? NOW : ''}</span></button>`);
   }
   for (const e of view.exits) {
     const pos = e.edge === 'top' || e.edge === 'bottom' ? `left:${e.at}%` : `top:${e.at}%`;
@@ -6897,7 +6905,10 @@ const MAP_CSS = `
 .scm-pin.scm-sel .scm-name{background:#2b1d10;color:#fff8e8;border-color:#2b1d10}
 .scm-pin.scm-here .scm-dot{background:#a3271b;border-color:#fff}
 .scm-pin.scm-here .scm-dot::after{content:'';position:absolute;inset:-7px;border:2px solid #a3271b;border-radius:3px;animation:scm-ping 1.6s ease-out infinite}
-.scm-now{position:absolute;left:-30px;top:10px;width:60px;text-align:center;font-size:10px;font-weight:800;color:#a3271b;text-shadow:0 0 3px #fff8e8,0 0 3px #fff8e8}
+.scm-pin.scm-here{z-index:4}
+.scm-pin.scm-here .scm-name{border-color:#a3271b}
+.scm-now{margin-left:5px;font-size:10px;font-weight:800;color:#a3271b}
+.scm-pin.scm-sel .scm-now{color:#ff9b8a}
 @keyframes scm-ping{from{opacity:.9;transform:scale(.7)}to{opacity:0;transform:scale(1.5)}}
 @media (prefers-reduced-motion:reduce){.scm-pin.scm-here .scm-dot::after{animation:none}}
 .scm-dim{opacity:.22}

@@ -219,6 +219,10 @@ const BASE = {
     ck('숨은 곳은 안 그린다 (시마바라)', !html.includes('시마바라'), '');
     ck('아는 곳은 ? 표시', html.includes('기온 ?') && html.includes('scm-st-known'), '');
     ck('지금 여기 표시', html.includes('현재 위치') && html.includes('scm-here'), '');
+    // v1.24.1 아틀리에 실기 — 점 밑에 따로 단 "현재 위치"가 바로 아래 장소(별의 고치 카페)의 이름표에 덮였다
+    ck('★ 현재 위치는 이름표 안에 (점 밑 따로 달기 금지)', /<span class="scm-name">[^<]*<b class="scm-now">현재 위치<\/b><\/span><\/button>/.test(html)
+      && !/<\/span><span class="scm-now">/.test(html), '');
+    ck('★ 현재 위치 핀은 이웃 핀 위에 그린다', MAP.MAP_CSS.includes('.scm-pin.scm-here{z-index:4}') && !/\.scm-now\{position:absolute/.test(MAP.MAP_CSS), '');
     ck('안개 구역은 ？', html.includes('scm-fog') && html.includes('>？<'), '');
     ck('분류 단추 (전체 + 둘)', (html.match(/data-scm-cat=/g) || []).length === 3, '');
     ck('비율 → padding', html.includes('--scm-ratio:110%'), '');

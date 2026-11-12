@@ -1,0 +1,181 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.22.1 &nbsp;→&nbsp; v1.24.1</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·소지금 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  이번 글은 <b style="color:#dbe2ea;">한 봇에 판을 여러 벌 두는 프로필</b>과 <b style="color:#dbe2ea;">가 본 만큼 채워지는 지도</b> 이야기입니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 10px;font-size:18px;line-height:1.7;">
+한 봇에서 <b style="color:#e0a94a;">채팅마다 다른 판</b>(변수·상태창·규칙)을 골라 쓸 수 있습니다.
+</p>
+<p style="margin:0 0 10px;color:#a9b4c2;line-height:2;">
+🔀 <b style="color:#dbe2ea;">프로필</b> — 기본 판에서 바꾼 부분만 따로 저장해 두고 채팅마다 고릅니다. 커뮤니티 요청에서 나왔습니다<br>
+🗺️ <b style="color:#dbe2ea;">지도</b> — 장소·구역을 좌표에 놓은 그림 지도입니다. 안개를 켜면 가 본 곳만 걷힙니다
+</p>
+<p style="margin:0 0 24px;color:#8b98a9;font-size:13.5px;">
+이번에는 쓰시던 분이 모르는 채 틀리던 것이 없어서 ⚠ 상자가 없습니다. v1.22.1을 쓰고 계시면 플러그인 목록의 초록 버튼 하나면 됩니다.
+</p>
+
+<!-- ─────────── ① 프로필 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🔀 프로필 — 한 봇에 판 여러 벌</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.24.0</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  커뮤니티에서 받은 요청입니다. "같은 봇을 가끔 다른 능력으로 하고 싶다 — 채팅마다 상태창을 따로, 프리셋처럼."
+  지금까지는 SimCore 설정(스키마)이 캐릭터에 하나뿐이라, 고치면 그 봇의 모든 채팅에 번졌습니다.
+  새 시작 프리셋은 시작값만 바꿀 뿐 변수나 상태창 모양은 못 바꿨고요.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">고르는 곳 — [현황 → 새 시작]</div>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 프로필이 있는 봇이면 새 시작 카드에 <b style="color:#dbe2ea;">🔀 이 채팅의 판</b> 단추가 생깁니다. [기본]과 만들어 둔 판 이름이 나란히 뜹니다<br>
+  · <b style="color:#dbe2ea;">시작 전</b>이면 한 번 누르면 바로 바뀌고, 그 판의 시작값으로 출발합니다<br>
+  · <b style="color:#dbe2ea;">진행 중</b>이면 실수하지 않게 두 번 누릅니다. 이름이 같은 변수는 값이 이어지고, 새로 생긴 변수는 시작값에서 출발합니다<br>
+  · 지난 메시지의 상태창은 그때 판 모양 그대로 남습니다. 리롤은 지금 고른 판으로, 되감기는 저장해 둔 그때의 판으로 돌아갑니다<br>
+  · 새 채팅은 마지막으로 고른 판으로 시작합니다<br>
+  · 리수 토글이 아니라 채팅에 저장되는 값이라 채팅마다 따로 갑니다
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">만드는 곳 — [편집 작업공간 → 🔀 프로필]</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  ① 새 프로필 이름과 한 줄 설명을 적고 <b style="color:#dbe2ea;">[＋ 지금 작업본을 새 프로필로]</b>를 누릅니다. 편집기에 기본 판이 열려 있으면 기본 판을 그대로 복제한 판이 생깁니다<br>
+  ② 편집기에서 변수·상태창·규칙을 고치고 <b style="color:#dbe2ea;">[캐릭터에 적용]</b> — <b style="color:#e0a94a;">그 판에만</b> 들어갑니다. 편집기 머리에 "🔀 편집기가 고치는 판"이 떠 있으니 확인하세요<br>
+  ③ [현황 → 새 시작]에서 🔀 그 판을 고릅니다
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 다른 판을 고치려면 프로필 카드의 [편집기에 열기]를 누르세요. [이름·설명] · [지우기] · [↶ 마지막 프로필 변경 되돌리기]도 여기 있습니다<br>
+  · 이름을 바꿔도 옛 이름으로 돌던 채팅은 그대로 이어집니다<br>
+  · 한 봇에 12개까지, 이름은 20자까지입니다
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">무엇이 저장되나</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  프로필은 로어북에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">⚙simcore:이름</span> 항목으로 들어갑니다.
+  통째 사본이 아니라 <b style="color:#e0a94a;">기본 판에서 달라진 부분만</b> 저장합니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 그래서 가볍습니다. 스키마가 큰 봇도 프로필 하나는 바꾼 만큼만 늘어납니다<br>
+  · 봇 제작자가 업데이트를 내서 번들을 다시 넣어도 내 판은 남고, 새 기본 판 위에 다시 얹힙니다. 제작자가 고친 부분은 그대로 받고, 같은 곳을 내가 바꿨으면 내 것이 이깁니다<br>
+  · 업데이트 때문에 판이 안 맞게 되면(내 판이 쓰던 변수를 제작자가 지운 경우 등) 그 채팅은 기본 판으로 돌고 상태줄에 🔀 알림이 뜹니다. 판을 지우지는 않으니 고치면 돌아옵니다
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">빈 캐릭터에 판 셋을 얹어 본 모습</div>
+<pre style="background:#0d1117;border:1px solid #2a323d;border-radius:4px;padding:14px 16px;margin:0 0 14px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#a9b4c2;overflow-x:auto;white-space:pre;">기본     체력 100 · 금화 30 · 🏕 휴식
+마법사   체력 70 · 마나 50 · 🔮 명상        바꾼 항목 · 새 변수 · 새 버튼
+생존     금화 없음 · 배고픔 매 턴 +1 · 🍞 빵 먹기   지운 변수 · 매 턴 정산</pre>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">봇 제작자께</div>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 판마다 로어북을 켜고 끄려면 CBS로 판 이름을 읽으세요. 기본 판은 빈칸입니다<br>
+  &nbsp;&nbsp;<span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">{{#when::{{getvar::sim_profile}}::is::마법사}}…{{/when}}</span><br>
+  · 루아 브리지를 쓰는 봇은 판마다 보조 모델이 그 판의 변수를 받습니다. 프로필을 만들거나 고치면 브리지도 같이 갱신됩니다<br>
+  · <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">sim_profile</span>은 예약된 이름이라 변수 id로 못 씁니다
+  </p>
+  <p style="margin:0 0 6px;color:#dbe2ea;font-size:14px;">무엇을 언제 쓰면 되는지</p>
+<pre style="background:#0d1117;border:1px solid #2a323d;border-radius:4px;padding:14px 16px;margin:0 0 14px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#a9b4c2;overflow-x:auto;white-space:pre;">시작값만 다르다 (난이도·출신)           →  새 시작 프리셋
+한 판 안에서 상태가 갈린다 (변신·모드)   →  변수 + 조건
+변수·상태창·규칙 자체가 다르다           →  🔀 프로필</pre>
+
+  <p style="margin:0 0 12px;color:#8b98a9;font-size:13px;">
+  프로필이 있는 봇은 채팅을 옮길 때 상태창이 바뀌기까지 잠깐 걸릴 수 있습니다. 그 채팅의 판을 고르느라 저장소를 한 번 더 읽습니다.
+  </p>
+  <p style="margin:0 0 6px;color:#dbe2ea;">[스샷: 현황 → 새 시작의 🔀 이 채팅의 판 단추]</p>
+  <p style="margin:0;color:#dbe2ea;">[스샷: 편집 작업공간의 🔀 프로필 카드]</p>
+</div>
+
+<!-- ─────────── ② 지도 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🗺️ 지도 — 가 본 만큼 채워진다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.23.0 · v1.24.1</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  지금까지 SimCore의 지도는 편성표 탭의 칸에 글자를 꽂는 것뿐이었습니다. 이제 좌표 위에 그리는 그림 지도가 생겼습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 채팅 우상단의 <b style="color:#dbe2ea;">🗺️ 버튼</b>을 누르면 지도 패널이 열립니다. 장소는 핀, 구역은 땅, 가장자리에는 이정표가 놓입니다<br>
+  · 분류 단추로 핀을 거릅니다(분류마다 핀 색이 다릅니다). 핀이나 구역을 누르면 아래 카드에 그곳의 사정이 나옵니다<br>
+  · <b style="color:#dbe2ea;">현재 위치</b> — 위치 변수 값이 장소나 구역 이름과 같으면 거기에 빨갛게 표시됩니다
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">채워지는 지도</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  안개를 켜면 못 가 본 구역은 안개에 덮이고, 모르는 장소는 아예 그려지지 않습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">발자취는 시스템이 적습니다</b> — 위치가 바뀔 때마다 들른 곳을 목록 변수에 남깁니다. 보조 AI가 할 일이 아니라 빠뜨릴 일이 없고, 되감으면 발자취도 같이 돌아갑니다<br>
+  · 장소마다 처음부터 아는 곳 · 조건이 차면 소문으로 알게 되는 곳 · 가 봐야 아는 곳을 정합니다. 안 가 본 곳은 설명 대신 소문만 보여 줍니다<br>
+  · <b style="color:#dbe2ea;">찾아낸 곳</b> — <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">이름 (구역)</span> 꼴의 목록 항목이 그 구역 안에 핀으로 꽂힙니다. 예: "잊혀진 평원 (왕도 주변 들판)"<br>
+  · 발자취는 평범한 목록 변수라 조건식에도 쓸 수 있습니다. 예: <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">count(visited) &gt;= 10</span>
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">만드는 곳 — [세부 편집기 → 세계 → 지도]</div>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">[지도 만들기]</b>를 누르면 위치 변수의 선택지 이름으로 장소를 격자에 깔아 줍니다<br>
+  · 미리보기에서 <b style="color:#dbe2ea;">📍 찍기</b>를 누르고 지도를 누르면 그 자리로 옮겨집니다. 구역은 두 번(한 모서리 → 맞은편 모서리) 누릅니다<br>
+  · <b style="color:#dbe2ea;">AI로 지도 만들기</b>로 장소·구역·좌표를 한 번에 만들거나 고칠 수도 있습니다<br>
+  · 편집기 미리보기와 채팅의 지도 패널은 같은 그림입니다
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">아틀리에 SimCore판</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  공방 패널의 지도 탭이 이 지도 패널(란타르나 지도)로 바뀌었습니다.
+  지형 12곳과 왕도가 구역이고, 공방·별의 고치 카페·지방 도시가 장소입니다. 왕도 뒷골목은 평판 100이 되거나 단서를 얻으면 소문으로 나타납니다.
+  다녀온 채집지는 그 지형 안에 핀으로 꽂힙니다. 아래 받는 법 ④대로 스키마를 바꿔 주세요.
+  </p>
+  <p style="margin:0 0 12px;color:#8b98a9;font-size:13px;">
+  v1.24.1 — 장소가 가까이 붙어 있으면 "현재 위치" 표시가 바로 아래 장소의 이름표에 가리던 것을 공개 전에 고쳤습니다. 이제 그 장소의 이름표 안에 붙습니다.
+  </p>
+  <p style="margin:0;color:#dbe2ea;">[스샷: 아틀리에 란타르나 지도 패널]</p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인</b> — v1.22.1을 쓰고 계시면 리수 <b style="color:#dbe2ea;">설정 → 플러그인</b>의 <b style="color:#e0a94a;">초록 업데이트 버튼</b>을 누르세요.
+  그 전 판이면 <a href="https://github.com/yuha-665/simcore-release" style="color:#7fc7d9;">github.com/yuha-665/simcore-release</a>에서
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">simcore.plugin.js</span>를 한 번만 직접 받아(파일을 누르고 Download raw file) 설정 → 플러그인 → 가져오기 하시면 됩니다.
+  플러그인 목록의 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.24.1 🔀 프로필 — 한 봇에 판 여러 벌</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 설정 두 칸</b> — 이번 업데이트부터는 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">aux_model_mode</span>·<span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">module_assets</span> 칸이 비어 보여도 지난번에 적은 값을 이어 씁니다. 다시 적지 않으셔도 됩니다.<br>
+  <b style="color:#c98a7a;">③ 번들 교체는 필요 없습니다</b> — 얼터헌터 개조판은 플러그인만 바꾸면 끝입니다. 아틀리에 SimCore판도 지도를 안 쓰실 거면 플러그인만 바꾸시면 됩니다.<br>
+  <b style="color:#c98a7a;">④ 아틀리에 SimCore판에서 지도를 쓰려면</b> — 새 스키마 파일 [링크: 아틀리에 SimCore판 새 스키마 — 공방-아틀리에.json]을 받으세요.
+  번들이 아니라 스키마라서 넣는 곳이 다릅니다.<br>
+  &nbsp;&nbsp;ㄱ. 관리 패널 <b style="color:#dbe2ea;">🧾 JSON 관리자</b> → <b style="color:#dbe2ea;">[스키마 원본 직접 편집]</b>을 펼치고 파일 내용을 통째로 붙여 넣기<br>
+  &nbsp;&nbsp;ㄴ. <b style="color:#dbe2ea;">[불러오기 전 검사]</b> → 상자 맨 아래 <b style="color:#dbe2ea;">[전체 작업본 교체]</b><br>
+  &nbsp;&nbsp;ㄷ. <b style="color:#dbe2ea;">편집 작업공간 → [캐릭터에 적용]</b>. 결과 메시지에 "이전 스키마는 자동 백업됨"이 붙어 있으면 바뀐 것입니다<br>
+  &nbsp;&nbsp;· 💾 세이브의 번들 칸에 넣으면 "번들 파일이 아님"이 뜹니다. 자리를 잘못 찾은 것이니 위 순서대로 넣어 주세요<br>
+  &nbsp;&nbsp;· 스키마를 직접 고치신 부분이 있었다면 새 스키마로 덮입니다. 이전 스키마는 자동 백업되어 편집 작업공간의 [백업 복원]으로 되돌릴 수 있습니다<br>
+  &nbsp;&nbsp;· 진행 중인 채팅도 그대로 이어집니다. 이미 다녀온 채집지는 바로 핀으로 뜨고, 안개는 앞으로 가는 곳만큼 걷힙니다<br>
+  <b style="color:#c98a7a;">⑤ 진행 중 세이브는 그대로</b> — 프로필을 만들지 않은 봇은 전과 똑같이 돕니다.<br>
+  <b style="color:#c98a7a;">⑥ 루아 브리지를 쓰시는 분</b> — 이번엔 다시 설치할 것이 없습니다. 프로필을 만들면 그때 브리지가 같이 갱신됩니다.<br>
+  <b style="color:#c98a7a;">⑦ 윈도우 디펜더가 플러그인 파일을 트로이잔으로 잡는다면</b> — 오탐입니다. 파일은 평문 자바스크립트 하나이고 eval·난독화가 없습니다.
+  보안 센터에서 허용한 뒤 임포트하시고, 탐지명을 댓글로 남겨 주시면 오탐 신고에 씁니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  문제가 있으면 플러그인 목록의 이름과 스샷을 같이 댓글로 남겨 주세요.
+  🔀 프로필은 <b style="color:#a9b4c2;">커뮤니티 요청</b>에서 나왔습니다. 아이디어를 주신 분께 감사합니다.
+  </p>
+</div>
+
+</div>

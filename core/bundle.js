@@ -167,6 +167,250 @@ function fingerprintOf(data) {
   return out;
 }
 
+// ── 형식 ───────────────────────────────────────────────────
+
+const ID_OK = /^[A-Za-z0-9_-]{3,40}$/;
+/** 조각(형식 2) 검사 — 아니면 이유 문자열, 맞으면 null. 조각은 lorebook·regex·schema 중 하나만 있어도 된다 */
+function pieceShapeError(data) {
+  if (!isObj(data) || data.simcoreBundle !== 2) return '조각 번들 파일이 아님 (simcoreBundle: 2 필요)';
+  if (typeof data.id !== 'string' || !ID_OK.test(data.id)) return '조각에 id가 없음 — 이 플러그인으로 내보낸 조각 파일인지 확인해 주세요';
+  if (data.lorebook != null && !Array.isArray(data.lorebook)) return 'lorebook은 배열이어야 함';
+  if (data.regex != null && !Array.isArray(data.regex)) return 'regex는 배열이어야 함';
+  if (data.schema != null && !isObj(data.schema)) return 'schema는 객체여야 함';
+  if (!(data.lorebook || []).length && !(data.regex || []).length && isEmpty(pieceSchema(data) || {})) return '조각이 비어 있음';
+  return null;
+}
+/** 번들 칸에 스키마 JSON을 넣었을 때의 안내 (2026-11 실기 — "개조 번들 파일이 아님"만 떴다). 스키마로 안 보이면 null */
+function schemaFileHint(data) {
+  if (!isObj(data) || data.simcoreBundle != null) return null;
+  if (data.simcore == null && !Array.isArray(data.vars)) return null;
+  return '스키마 파일이에요 — 번들 칸이 아니라 편집 작업공간의 JSON 관리자에 붙여 넣고 [전체 작업본 교체] → [캐릭터에 적용]으로 넣어 주세요';
+}
+
+// ── 판정 · 계획 ────────────────────────────────────────────
+
+const LINE_LABELS = { add: '추가', update: '번들 수정', mineEdit: '내 수정 유지', removed: '제작자 삭제', iDeleted: '내가 지움', conflict: '충돌', locked: '🔒' };
+const LINE_ORDER = ['add', 'update', 'mineEdit', 'removed', 'iDeleted', 'conflict', 'locked'];
+// 한 이름 공간 — 검증이 서로 겹침을 금지한다 (patch.js SECTIONS의 ns와 같은 묶음)
+const NAMESPACES = [['vars', 'derived', 'checks'], ['rules.events', 'rules.randomEvents.table']];
+/** 로어북 항목 모양 — 어댑터 schemaLoreEntry와 같다 (키가 절대 안 걸리는 상시 꺼짐 항목) */
+const schemaLoreEntry = (content) => ({
+  comment: BASE_COMMENT, key: ' __simcore_never__', secondkey: '',
+  insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
+});
+
+function getAt(root, path) { let o = root; for (const k of path) { if (!isObj(o)) return undefined; o = o[k]; } return o; }
+function setAt(root, path, value) {
+  let o = root;
+  for (let n = 0; n < path.length - 1; n++) { if (!isObj(o[path[n]])) o[path[n]] = {}; o = o[path[n]]; }
+  o[path[path.length - 1]] = value;
+}
+/** 지우고, 그래서 비게 된 부모 객체도 걷는다 — 빈 `map: {}`가 남으면 "켜진 절"로 읽힌다 */
+function deleteAt(root, path) {
+  const chain = [root];
+  for (let n = 0; n < path.length - 1; n++) { const next = chain[n][path[n]]; if (!isObj(next)) return; chain.push(next); }
+  delete chain[chain.length - 1][path[path.length - 1]];
+  for (let n = chain.length - 1; n > 0; n--) { if (Object.keys(chain[n]).length) break; delete chain[n - 1][path[n - 1]]; }
+}
+
+/**
+ * 조각(형식 2)을 캐릭터에 넣는 계획 — 순수 함수, 아무것도 안 바꾼다.
+ * @param char    리수 캐릭터 (globalLore·customscript를 읽는다)
+ * @param data    조각 번들
+ * @param base    이 번들의 기준 지문 { rev, units: { 열쇠: 해시 } } — 처음 넣는 것이면 null
+ * @param choices { 열쇠: 'bundle'|'mine' } — 요약 줄에서 바꾼 것
+ * @param fresh   true면 지문을 무시하고 첫 설치 길로 ([처음부터 다시 넣기])
+ * @returns Plan { ok, error?, id, name, rev, note, installedRev, downgrade, lines, counts,
+ *                 result: { globalLore, customscript|null, schemaChanged }, schemaErrors, errorKeys, fingerprint }
+ *   lines[] = { key, unit, kind, label, def, choice, locked, why?, oust? } — kind는 LINE_LABELS의 키
+ */
+function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
+  const bad = pieceShapeError(data);
+  if (bad) return { ok: false, error: bad };
+  const Bmap = !fresh && base && isObj(base.units) ? base.units : null;
+  const hasB = (k) => !!Bmap && Object.prototype.hasOwnProperty.call(Bmap, k);
+  const bKeys = Bmap ? Object.keys(Bmap) : [];
+
+  // 내 것(C)
+  const cLoreList = Array.isArray(char && char.globalLore) ? char.globalLore : [];
+  const cRegexList = Array.isArray(char && char.customscript) ? char.customscript : [];
+  const baseEntry = cLoreList.find((l) => l && l.comment === BASE_COMMENT) || null;
+  const touchSchema = !!pieceSchema(data) || bKeys.some((k) => k.startsWith('schema:'));
+  const touchRegex = Array.isArray(data.regex) || bKeys.some((k) => k.startsWith('regex:'));
+  let cSchema = null;
+  if (touchSchema && baseEntry) {
+    try { cSchema = JSON.parse(baseEntry.content); } catch { cSchema = undefined; }
+    if (!isObj(cSchema)) return { ok: false, error: '이 캐릭터의 ⚙simcore가 깨져 있어요 — 편집 작업공간에서 스키마를 다시 [캐릭터에 적용]한 뒤 넣어 주세요 (로어북·정규식만 든 조각은 그대로 들어가요)' };
+  }
+  const cFilled = cSchema ? P.shapeFill(clone(cSchema)) : {};
+  const sPair = touchSchema ? pairUnits(cFilled, pieceSchema(data) || {}) : { c: new Map(), i: new Map() };
+  const toMap = (arr) => new Map(arr.map((u) => [u.key, u]));
+  const C = { lore: toMap(loreUnits(cLoreList)), regex: toMap(regexUnits(cRegexList)), schema: sPair.c };
+  const I = { lore: toMap(loreUnits(data.lorebook)), regex: toMap(regexUnits(data.regex)), schema: sPair.i };
+
+  // 🔒 — 받는 쪽 내 판의 keep. 변수가 보호되면 그 allow 줄도 같이 (patch.isKept와 같은 규칙)
+  const lockedUnit = (u) => {
+    if (!u || u.kind !== 'schema' || u.id == null) return false;
+    if (isObj(u.value) && u.value.keep === true) return true;
+    return u.path.join('.') === 'updater.allow' && (cFilled.vars || []).some((v) => v && v.id === u.id && v.keep === true);
+  };
+
+  const lines = [];
+  const lineOf = new Map();
+  const R = { lore: new Map(), regex: new Map(), schema: new Map() }; // 결과: 열쇠 → { unit, from: 'c'|'i' }
+  for (const kind of ['lore', 'regex', 'schema']) {
+    const keys = new Set([...C[kind].keys(), ...I[kind].keys()]);
+    for (const key of keys) {
+      const cu = C[kind].get(key), iu = I[kind].get(key);
+      let verdict = null; // { kind, def, why? }
+      if (!(cu && iu && sameUnit(cu.value, iu.value, kind))) {
+        const hc = cu ? unitHash(cu.value, kind) : null, hi = iu ? unitHash(iu.value, kind) : null;
+        if (!hasB(key)) {
+          if (!cu) verdict = { kind: 'add', def: 'bundle' };
+          else if (iu) verdict = { kind: 'conflict', def: 'bundle', why: '같은 이름이 이미 있어요' };
+          // C만 있고 지문에 없다 = 내 것. 줄 없이 남긴다
+        } else {
+          const b = Bmap[key];
+          if (cu && iu) {
+            if (hc === b) verdict = { kind: 'update', def: 'bundle' };
+            else if (hi === b) verdict = { kind: 'mineEdit', def: 'mine' };
+            else verdict = { kind: 'conflict', def: 'bundle', why: '제작자도 나도 고쳤어요' };
+          } else if (cu) {
+            verdict = hc === b ? { kind: 'removed', def: 'bundle' }
+              : { kind: 'conflict', def: 'mine', why: '제작자는 뺐는데 내가 고친 항목이에요' };
+          } else {
+            verdict = hi === b ? { kind: 'iDeleted', def: 'mine' }
+              : { kind: 'conflict', def: 'bundle', why: '내가 지웠는데 제작자가 고쳤어요' };
+          }
+        }
+      }
+      if (!verdict) { if (cu) R[kind].set(key, { unit: cu, from: 'c' }); continue; }
+      const locked = lockedUnit(cu);
+      const pick = choices[key] === 'bundle' || choices[key] === 'mine' ? choices[key] : verdict.def;
+      const ln = { key, unit: kind, kind: locked ? 'locked' : verdict.kind, label: (iu || cu).label, def: locked ? 'mine' : verdict.def,
+        choice: locked ? 'mine' : pick, locked };
+      if (verdict.why && !locked) ln.why = verdict.why;
+      lines.push(ln); lineOf.set(key, ln);
+      if (ln.choice === 'bundle') { if (iu) R[kind].set(key, { unit: iu, from: 'i' }); }
+      else if (cu) R[kind].set(key, { unit: cu, from: 'c' });
+    }
+  }
+
+  // 한 이름 공간의 겹침 — 조각의 변수 x와 내 파생 x는 경로가 달라 위 표로는 안 잡힌다. 줄 하나로 올린다
+  const ousted = [];
+  for (const group of NAMESPACES) {
+    const mineById = new Map();
+    for (const [key, u] of C.schema) if (u.id != null && group.includes(u.path.join('.'))) mineById.set(u.id, [...(mineById.get(u.id) || []), key]);
+    for (const [key, iu] of I.schema) {
+      const ln = lineOf.get(key);
+      if (!ln || iu.id == null || !group.includes(iu.path.join('.'))) continue;
+      const rivalKey = (mineById.get(iu.id) || []).find((k) => k !== key && R.schema.get(k) && R.schema.get(k).from === 'c');
+      if (!rivalKey) continue;
+      const rival = C.schema.get(rivalKey);
+      if (lockedUnit(rival)) {
+        ln.kind = 'locked'; ln.locked = true; ln.def = 'mine'; ln.choice = 'mine'; delete ln.why;
+        const cu = C.schema.get(key);
+        if (cu) R.schema.set(key, { unit: cu, from: 'c' }); else R.schema.delete(key);
+        continue;
+      }
+      ln.kind = 'conflict'; ln.oust = rivalKey; ln.label = `${iu.label} ↔ 내 ${rival.label}`;
+      ln.why = '같은 id를 내 다른 항목이 쓰고 있어요 — [번들 것]이면 내 쪽을 빼고 넣어요';
+      if (ln.choice === 'bundle') { R.schema.delete(rivalKey); ousted.push(rival); }
+    }
+  }
+
+  const counts = { add: 0, update: 0, mineEdit: 0, removed: 0, iDeleted: 0, conflict: 0, locked: 0 };
+  for (const ln of lines) counts[ln.kind]++;
+
+  // 결과 — 조각은 내 순서를 지키고 새 항목은 끝에 (조각의 로어·정규식이 카드 것보다 앞에 서지 않게)
+  const mergeList = (cList, kind, iList) => {
+    const byIndex = new Map([...C[kind].values()].map((u) => [u.index, u]));
+    const out = [];
+    cList.forEach((item, idx) => {
+      const u = byIndex.get(idx);
+      if (!u) { out.push(item); return; }                 // ⚙simcore 기본 판 · 객체가 아닌 것은 그대로
+      const r = R[kind].get(u.key);
+      if (!r) return;
+      if (r.from === 'c') { out.push(item); return; }
+      const next = clone(r.unit.value);
+      if (kind === 'lore' && item && item.id != null) next.id = item.id; // 채팅별 켜기 표식은 내 것을 잇는다
+      out.push(next);
+    });
+    for (const u of iList) { const r = R[kind].get(u.key); if (r && r.from === 'i' && !C[kind].has(u.key)) out.push(clone(u.value)); }
+    return out;
+  };
+  let globalLore = mergeList(cLoreList, 'lore', [...I.lore.values()]);
+  const customscript = touchRegex ? mergeList(cRegexList, 'regex', [...I.regex.values()]) : null;
+
+  // 스키마 — 채운 사본에 바뀐 단위만 얹는다. 하나도 안 바뀌면 ⚙simcore 글은 원문 그대로
+  const schemaLines = lines.filter((ln) => ln.unit === 'schema' && ln.choice === 'bundle');
+  const schemaChanged = schemaLines.length > 0;
+  let schemaErrors = [];
+  const errorKeys = [];
+  if (schemaChanged) {
+    const out = clone(cFilled);
+    const dropItem = (u) => { const list = getAt(out, u.path); if (Array.isArray(list)) setAt(out, u.path, list.filter((x) => !(x && x.id === u.id))); };
+    for (const u of ousted) dropItem(u);
+    for (const ln of schemaLines) {
+      if (I.schema.has(ln.key)) continue;
+      const cu = C.schema.get(ln.key);
+      if (!cu) continue;
+      if (cu.id != null) dropItem(cu); else deleteAt(out, cu.path);
+    }
+    for (const [key, iu] of I.schema) {       // 번들 순서대로 — 새 항목이 번들 순서로 끝에 붙는다
+      const ln = lineOf.get(key);
+      if (!ln || ln.choice !== 'bundle') continue;
+      const value = clone(iu.value);
+      if (iu.id == null) { setAt(out, iu.path, value); continue; }
+      let list = getAt(out, iu.path);
+      if (!Array.isArray(list)) { list = []; setAt(out, iu.path, list); }
+      const at = list.findIndex((x) => x && x.id === iu.id);
+      if (at >= 0) list[at] = value; else list.push(value);
+    }
+    P.shapeFill(out);
+    if (!cSchema && !out.meta.name) out.meta.name = String(data.name || '조각');
+    const v = validateSchema(out);
+    if (!v.ok) {
+      schemaErrors = v.errors.map((e) => `${e.path}: ${e.msg}`);
+      const text = schemaErrors.join('\n');
+      for (const ln of lines) {
+        if (ln.unit !== 'schema') continue;
+        const u = I.schema.get(ln.key) || C.schema.get(ln.key);
+        const hit = u.id != null ? new RegExp(`(^|[^A-Za-z0-9_])${String(u.id).replace(/[^A-Za-z0-9_]/g, '\\$&')}([^A-Za-z0-9_]|$)`).test(text) : text.includes('$.' + u.path.join('.'));
+        if (hit) errorKeys.push(ln.key);
+      }
+    } else {
+      const content = JSON.stringify(out);
+      globalLore = baseEntry ? globalLore.map((l) => (l === baseEntry ? { ...l, content } : l)) : [...globalLore, schemaLoreEntry(content)];
+    }
+  }
+
+  const rev = Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1;
+  const installedRev = base && Number.isFinite(Number(base.rev)) ? Number(base.rev) : null;
+  return {
+    ok: true, id: data.id, name: String(data.name || '조각'), rev, note: typeof data.note === 'string' ? data.note.slice(0, 200) : '',
+    installedRev, downgrade: installedRev != null && rev < installedRev,
+    lines, counts, result: { globalLore, customscript, schemaChanged }, schemaErrors, errorKeys,
+    fingerprint: fingerprintOf(data),
+  };
+}
+
+/** 요약 한 줄 — `'이름' r4 (설치된 판 r3) — 추가 4 · 번들 수정 6 · …` (0인 갈래는 뺀다) */
+function summaryText(plan) {
+  const parts = LINE_ORDER.filter((k) => plan.counts[k]).map((k) => `${LINE_LABELS[k]} ${plan.counts[k]}`);
+  return `'${plan.name}' r${plan.rev}${plan.installedRev != null ? ` (설치된 판 r${plan.installedRev})` : ''} — ${parts.length ? parts.join(' · ') : '바뀌는 것이 없어요'}`;
+}
+
+/** 계획을 캐릭터에 얹는다 — char를 고쳐 돌려줄 뿐 저장(setCharacter)은 호출자 몫. 병합 스키마가 검증을 못 넘으면 던진다(원자적) */
+function applyPlanToChar(char, plan) {
+  if (!plan || !plan.ok) throw new Error((plan && plan.error) || '조각 계획이 없음');
+  if (plan.schemaErrors.length) throw new Error('병합한 스키마가 검증을 못 넘음: ' + plan.schemaErrors[0]);
+  char.globalLore = clone(plan.result.globalLore);
+  if (plan.result.customscript) char.customscript = clone(plan.result.customscript);
+  return char;
+}
+
 module.exports = {
   hash53, unitHash, sameUnit, loreUnits, regexUnits, schemaUnits, pairUnits, fingerprintOf,
+  pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER,
 };

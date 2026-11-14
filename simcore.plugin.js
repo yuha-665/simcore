@@ -39,7 +39,14 @@
 //   그 캐릭터의 지문을 지운다 — 조각이 넣은 것이 다른 길로 사라졌는데 지문만 남으면 다시 넣을 때 전부 "내가 지움"으로 판정된다.
 // - 이번 판의 전체 번들은 지문 저장까지다 — 전체 번들도 같은 엔진으로 "내 것 남기고 합치기"는 다음 판(v1.26.0).
 // - 편집기: `varReferenceIndex`·`TAB_SLICES`를 모듈 밖으로 내보낸다(조각 만들기가 쓴다). profile.js `keyed`도.
-// - 테스트: `테스트/test-bundle-piece.js` 180 (단위·지문 / 판정 표 11줄·공존·🔒·검증 실패 무변화 / 조각 만들기 / 가짜 리수 넣기·되돌리기·내보내기 / 패널 배선).
+// - [방어] 번들 파일은 남이 준 것이다 — `__proto__`·`constructor`·`prototype` 키가 든 조각은 거절하고 경로는 자기 속성만 따라간다(구현 뒤 검토에서 실측:
+//   파일을 고르기만 해도 Object.prototype이 바뀌었다). 내 쪽이 객체·id 목록인 자리에 값·null이 오는 조각도 거절(`rules: null` 한 줄에 정산·이벤트가 다 비었다).
+//   같은 이름 로어·정규식은 나온 순서가 아니라 내용(지문 해시 → 번들과 같은 내용 → 순서)으로 짝짓는다. 전체 번들의 지문은 조각 판정에 안 쓴다(지문에 format).
+//   요약을 본 뒤 캐릭터나 로어북이 바뀌었으면 넣지 않고 새 요약을 다시 보여 준다 · 설치 기록을 못 읽으면 첫 설치로 떨어뜨리지 않고 멈춘다.
+//   제작자 쪽: 구성에 있던 항목을 못 찾으면 말없이 빼지 않고 알린다([못 찾은 항목 빼기]) · 고르기 화면은 그릴 때마다 캐릭터를 다시 읽는다 ·
+//   레시피에 고른 로어의 내용 해시를 적어, 같은 이름이 끼어 번호가 밀려도 엉뚱한(비공개) 항목이 실리지 않는다.
+// - 스키마 목록의 새 항목은 번들에서 바로 앞이던 항목 뒤에 선다(없으면 끝) — 막 a1·a3 사이에 a2를 넣은 판이 a1·a3·a2가 되지 않게. 로어·정규식은 끝에.
+// - 테스트: `테스트/test-bundle-piece.js` 223 (단위·지문 / 판정 표 11줄·공존·🔒·검증 실패 무변화 / 조각 만들기 / 가짜 리수 넣기·되돌리기·내보내기 / 패널 배선 / 검토 수정).
 //
 // ── v1.24.1 ───────────────────────────────────────────────
 // **🗺️ 지도의 "현재 위치"가 이웃 장소 이름표에 덮이던 것.** 집 실기(아틀리에, 유저 2026-11-11): 공방 점 밑의 빨간 "현재 위치"가
@@ -9670,6 +9677,15 @@ const BASE_COMMENT = P.BASE_COMMENT;
 const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
 const clone = (x) => (x === undefined ? undefined : JSON.parse(JSON.stringify(x)));
 const isEmpty = (x) => x === undefined || (Array.isArray(x) && !x.length) || (isObj(x) && !Object.keys(x).length);
+// 번들 파일은 남이 준 것이다 — JSON.parse는 `__proto__`를 자기 키로 만들고, 그걸 경로로 따라가 쓰면 Object.prototype이 바뀐다
+// (최종 검토에서 실측: 파일을 고르기만 해도 `({}).keep === true`). 읽기는 자기 속성만, 이 키들이 든 조각은 형식 검사에서 거절한다.
+const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const own = (o, k) => (isObj(o) && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
+function hasBadKey(x) {
+  if (Array.isArray(x)) return x.some(hasBadKey);
+  if (!isObj(x)) return false;
+  return Object.keys(x).some((k) => BAD_KEYS.has(k) || hasBadKey(x[k]));
+}
 
 // ── 해시 ───────────────────────────────────────────────────
 
@@ -9753,17 +9769,26 @@ function schemaLabel(path, id) {
 const schemaKey = (path, id) => 'schema:' + path.join('.') + (id != null ? `[${id}]` : '');
 const schemaUnit = (path, id, value) => ({ key: schemaKey(path, id), kind: 'schema', path, id: id ?? null, value, label: schemaLabel(path, id) });
 const idList = (x) => Array.isArray(x) && x.length > 0 && P.keyed(x);
+// 스키마에서 늘 id 목록인 자리 — 받는 봇의 그 목록이 비어 있어도 조각이 여기 다른 모양을 못 넣는다
+const ID_LIST_PATHS = new Set(['vars', 'derived', 'checks', 'actions', 'directives', 'rules.events', 'rules.randomEvents.table', 'updater.allow']);
 
 /**
  * 내 것(c)과 번들(i)을 같은 경로에서 같이 내려간다 — 둘이 같은 굵기의 단위로 쪼개지게.
  * 둘 다 객체(한쪽이 없음이어도)면 키마다, 둘 다 id 목록(한쪽이 없음이어도)이면 항목마다, 모양이 어긋나면 그 자리가 잎 하나.
  */
-function walkPair(c, i, path, C, I) {
+function walkPair(c, i, path, C, I, bad) {
   const ce = isEmpty(c), ie = isEmpty(i);
   if (ce && ie) return;
+  // 모양이 어긋난 조각 — 내 쪽이 객체·id 목록인 자리에 값·null·id 없는 배열이 오면 그 절이 통째로 갈린다(`rules: null` 한 줄에 정산·이벤트가 다 빈다).
+  // 객체 ↔ 배열 둘 다 되는 자리(liveChoices·shop.exchange)는 잎 하나로 받아 충돌 줄로 보인다.
+  if (bad && !ie) {
+    const p = path.join('.');
+    if (isObj(c) && !ce && !isObj(i) && !Array.isArray(i)) bad.push(p);
+    else if ((idList(c) || ID_LIST_PATHS.has(p)) && !idList(i)) bad.push(p);
+  }
   if ((ce || isObj(c)) && (ie || isObj(i))) {
     const keys = new Set([...(isObj(c) ? Object.keys(c) : []), ...(isObj(i) ? Object.keys(i) : [])]);
-    for (const k of keys) walkPair(isObj(c) ? c[k] : undefined, isObj(i) ? i[k] : undefined, [...path, k], C, I);
+    for (const k of keys) walkPair(own(c, k), own(i, k), [...path, k], C, I, bad);
     return;
   }
   if ((ce || idList(c)) && (ie || idList(i))) {
@@ -9774,9 +9799,9 @@ function walkPair(c, i, path, C, I) {
   if (!ce) { const u = schemaUnit(path, null, c); C.set(u.key, u); }
   if (!ie) { const u = schemaUnit(path, null, i); I.set(u.key, u); }
 }
-function pairUnits(c, i) {
+function pairUnits(c, i, bad) {
   const C = new Map(), I = new Map();
-  walkPair(isObj(c) ? c : undefined, isObj(i) ? i : undefined, [], C, I);
+  walkPair(isObj(c) ? c : undefined, isObj(i) ? i : undefined, [], C, I, bad);
   return { c: C, i: I };
 }
 /** 스키마를 혼자 걸은 단위 목록 */
@@ -9796,12 +9821,16 @@ function wholeSchema(data) {
   if (!entry || typeof entry.content !== 'string') return null;
   try { const s = JSON.parse(entry.content); return isObj(s) ? P.shapeFill(s) : null; } catch { return null; }
 }
+/** 조각의 로어북 — ⚙simcore·프로필 항목은 싣지도 받지도 않는다 (손으로 만든 조각이 받는 사람의 판을 기본값으로 덮지 않게) */
+function pieceLore(data) {
+  return (Array.isArray(data && data.lorebook) ? data.lorebook : []).filter((l) => isObj(l) && !P.isSchemaLore(l));
+}
 /** 번들이 준 단위들 — 혼자 걸은 것(지문의 재료) */
 function bundleUnits(data) {
   const piece = data && data.simcoreBundle === 2;
   const schema = piece ? pieceSchema(data) : wholeSchema(data);
   const regex = piece ? data.regex : [...(Array.isArray(data && data.regex) ? data.regex : []), ...(Array.isArray(data && data.regexAdd) ? data.regexAdd : [])];
-  return [...loreUnits(data && data.lorebook), ...regexUnits(regex), ...(schema ? schemaUnits(schema) : [])];
+  return [...loreUnits(piece ? pieceLore(data) : data && data.lorebook), ...regexUnits(regex), ...(schema ? schemaUnits(schema) : [])];
 }
 /** 기준 지문 — { 열쇠: 해시 }. 적용 뒤 저장하는 것은 병합 결과가 아니라 번들이 준 것(I)이다 */
 function fingerprintOf(data) {
@@ -9813,14 +9842,17 @@ function fingerprintOf(data) {
 // ── 형식 ───────────────────────────────────────────────────
 
 const ID_OK = /^[A-Za-z0-9_-]{3,40}$/;
+/** 번들 id로 쓸 수 있는 글자인가 — 저장소 열쇠가 된다 */
+const validBundleId = (id) => typeof id === 'string' && ID_OK.test(id) && !BAD_KEYS.has(id);
 /** 조각(형식 2) 검사 — 아니면 이유 문자열, 맞으면 null. 조각은 lorebook·regex·schema 중 하나만 있어도 된다 */
 function pieceShapeError(data) {
   if (!isObj(data) || data.simcoreBundle !== 2) return '조각 번들 파일이 아님 (simcoreBundle: 2 필요)';
-  if (typeof data.id !== 'string' || !ID_OK.test(data.id)) return '조각에 id가 없음 — 이 플러그인으로 내보낸 조각 파일인지 확인해 주세요';
+  if (!validBundleId(data.id)) return '조각에 id가 없음 — 이 플러그인으로 내보낸 조각 파일인지 확인해 주세요';
   if (data.lorebook != null && !Array.isArray(data.lorebook)) return 'lorebook은 배열이어야 함';
   if (data.regex != null && !Array.isArray(data.regex)) return 'regex는 배열이어야 함';
   if (data.schema != null && !isObj(data.schema)) return 'schema는 객체여야 함';
-  if (!(data.lorebook || []).length && !(data.regex || []).length && isEmpty(pieceSchema(data) || {})) return '조각이 비어 있음';
+  if (hasBadKey(data.schema)) return '조각의 schema에 못 쓰는 키가 있음 (__proto__·constructor·prototype) — 넣지 않았어요';
+  if (!pieceLore(data).length && !(data.regex || []).length && isEmpty(pieceSchema(data) || {})) return '조각이 비어 있음';
   return null;
 }
 /** 번들 칸에 스키마 JSON을 넣었을 때의 안내 (2026-11 실기 — "개조 번들 파일이 아님"만 떴다). 스키마로 안 보이면 null */
@@ -9842,19 +9874,62 @@ const schemaLoreEntry = (content) => ({
   insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
 });
 
-function getAt(root, path) { let o = root; for (const k of path) { if (!isObj(o)) return undefined; o = o[k]; } return o; }
+function getAt(root, path) { let o = root; for (const k of path) { o = own(o, k); if (o === undefined) return undefined; } return o; }
 function setAt(root, path, value) {
+  if (path.some((k) => BAD_KEYS.has(k))) throw new Error('못 쓰는 키: ' + path.join('.'));
   let o = root;
-  for (let n = 0; n < path.length - 1; n++) { if (!isObj(o[path[n]])) o[path[n]] = {}; o = o[path[n]]; }
+  for (let n = 0; n < path.length - 1; n++) { if (!isObj(own(o, path[n]))) o[path[n]] = {}; o = o[path[n]]; }
   o[path[path.length - 1]] = value;
 }
 /** 지우고, 그래서 비게 된 부모 객체도 걷는다 — 빈 `map: {}`가 남으면 "켜진 절"로 읽힌다 */
 function deleteAt(root, path) {
+  if (path.some((k) => BAD_KEYS.has(k))) return;
   const chain = [root];
-  for (let n = 0; n < path.length - 1; n++) { const next = chain[n][path[n]]; if (!isObj(next)) return; chain.push(next); }
+  for (let n = 0; n < path.length - 1; n++) { const next = own(chain[n], path[n]); if (!isObj(next)) return; chain.push(next); }
   delete chain[chain.length - 1][path[path.length - 1]];
   for (let n = chain.length - 1; n > 0; n--) { if (Object.keys(chain[n]).length) break; delete chain[n - 1][path[n - 1]]; }
 }
+
+/**
+ * 같은 이름이 여럿인 로어·정규식의 자리 맞춤 — 나온 순서(#n)만 믿으면 받는 사람이 앞 것을 지웠거나 같은 이름의 자기 항목을 앞에 뒀을 때
+ * 엉뚱한 항목끼리 짝지어져, 안 건드린 항목이 덮이고 지운 항목이 되살아난다 (최종 검토에서 실측).
+ * 내 항목마다 ① 지문의 해시와 같은 자리 ② 번들의 같은 내용 자리를 먼저 잡고, 남은 것만 순서대로 번들 자리에 앉힌다. 그러고도 남으면 내 것(번들 밖 번호).
+ */
+function alignUnits(cUnits, iUnits, hasB, bOf, kind) {
+  const nameOf = (key) => key.slice(0, key.lastIndexOf('#'));
+  const iBy = new Map(iUnits.map((u) => [u.key, u]));
+  const groups = new Map();
+  for (const u of cUnits) { const n = nameOf(u.key); if (!groups.has(n)) groups.set(n, []); groups.get(n).push(u); }
+  for (const [name, list] of groups) {
+    const at = (k) => name + '#' + k;
+    const slots = [];
+    for (let k = 0; hasB(at(k)) || iBy.has(at(k)); k++) slots.push(k);
+    if (!slots.length) continue;                       // 번들과 무관한 이름 — 번호 그대로
+    const free = new Set(slots);
+    const seat = new Array(list.length).fill(null);
+    const take = (n, k) => { seat[n] = k; free.delete(k); };
+    list.forEach((u, n) => {
+      const h = unitHash(u.value, kind);
+      const k = slots.find((x) => free.has(x) && hasB(at(x)) && bOf(at(x)) === h);
+      if (k !== undefined) take(n, k);
+    });
+    list.forEach((u, n) => {
+      if (seat[n] != null) return;
+      const k = slots.find((x) => free.has(x) && iBy.has(at(x)) && sameUnit(u.value, iBy.get(at(x)).value, kind));
+      if (k !== undefined) take(n, k);
+    });
+    let extra = slots.length;
+    list.forEach((u, n) => {
+      if (seat[n] != null) return;
+      const k = slots.find((x) => free.has(x));
+      if (k !== undefined) take(n, k); else seat[n] = extra++;
+    });
+    list.forEach((u, n) => { u.key = at(seat[n]); });
+  }
+  return cUnits;
+}
+/** 계획의 서명 — 화면에 보인 계획과 적용 직전에 다시 세운 계획이 같은지 댄다 */
+const planSig = (plan) => (plan && plan.ok ? plan.lines.map((l) => l.key + '|' + l.kind + '|' + l.choice).join('\n') + '\n' + plan.schemaErrors.length : '');
 
 /**
  * 조각(형식 2)을 캐릭터에 넣는 계획 — 순수 함수, 아무것도 안 바꾼다.
@@ -9870,7 +9945,9 @@ function deleteAt(root, path) {
 function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
   const bad = pieceShapeError(data);
   if (bad) return { ok: false, error: bad };
-  const Bmap = !fresh && base && isObj(base.units) ? base.units : null;
+  // 전체 번들(형식 1)의 지문은 조각 판정에 안 쓴다 — 같은 id의 조각 파일 하나가 봇 전체를 "제작자 삭제"로 만들 수 있었다 (최종 검토)
+  const pieceBase = base && base.format !== 1 ? base : null;
+  const Bmap = !fresh && pieceBase && isObj(pieceBase.units) ? pieceBase.units : null;
   const hasB = (k) => !!Bmap && Object.prototype.hasOwnProperty.call(Bmap, k);
   const bKeys = Bmap ? Object.keys(Bmap) : [];
 
@@ -9885,16 +9962,27 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
     try { cSchema = JSON.parse(baseEntry.content); } catch { cSchema = undefined; }
     if (!isObj(cSchema)) return { ok: false, error: '이 캐릭터의 ⚙simcore가 깨져 있어요 — 편집 작업공간에서 스키마를 다시 [캐릭터에 적용]한 뒤 넣어 주세요 (로어북·정규식만 든 조각은 그대로 들어가요)' };
   }
-  const cFilled = cSchema ? P.shapeFill(clone(cSchema)) : {};
-  const sPair = touchSchema ? pairUnits(cFilled, pieceSchema(data) || {}) : { c: new Map(), i: new Map() };
+  let cFilled = {};
+  try { if (cSchema) cFilled = P.shapeFill(clone(cSchema)); }
+  catch { return { ok: false, error: '이 캐릭터의 ⚙simcore 모양이 깨져 있어요 — 편집 작업공간에서 스키마를 다시 [캐릭터에 적용]한 뒤 넣어 주세요' }; }
+  const badShape = [];
+  const sPair = touchSchema ? pairUnits(cFilled, pieceSchema(data) || {}, badShape) : { c: new Map(), i: new Map() };
+  if (badShape.length) {
+    return { ok: false, error: `조각의 스키마 모양이 맞지 않아요 (${badShape.slice(0, 3).map((p) => p || '맨 위').join(', ')}) — 손으로 고친 파일이면 그 자리를 확인해 주세요. 아무것도 바꾸지 않았어요` };
+  }
   const toMap = (arr) => new Map(arr.map((u) => [u.key, u]));
-  const C = { lore: toMap(loreUnits(cLoreList)), regex: toMap(regexUnits(cRegexList)), schema: sPair.c };
-  const I = { lore: toMap(loreUnits(data.lorebook)), regex: toMap(regexUnits(data.regex)), schema: sPair.i };
+  const iLore = loreUnits(pieceLore(data)), iRegex = regexUnits(data.regex);
+  const bOf = (k) => Bmap[k];
+  const C = { lore: toMap(alignUnits(loreUnits(cLoreList), iLore, hasB, bOf, 'lore')),
+    regex: toMap(alignUnits(regexUnits(cRegexList), iRegex, hasB, bOf, 'regex')), schema: sPair.c };
+  const I = { lore: toMap(iLore), regex: toMap(iRegex), schema: sPair.i };
 
   // 🔒 — 받는 쪽 내 판의 keep. 변수가 보호되면 그 allow 줄도 같이 (patch.isKept와 같은 규칙)
-  const lockedUnit = (u) => {
+  // 허용 줄은 내 판에 아직 없어도 변수가 보호돼 있으면 조각이 새로 못 넣는다. 번들이 실어 온 keep은 안 본다 — 내 판의 표식만
+  const lockedUnit = (cu, iu) => {
+    const u = cu || iu;
     if (!u || u.kind !== 'schema' || u.id == null) return false;
-    if (isObj(u.value) && u.value.keep === true) return true;
+    if (cu && isObj(cu.value) && cu.value.keep === true) return true;
     return u.path.join('.') === 'updater.allow' && (cFilled.vars || []).some((v) => v && v.id === u.id && v.keep === true);
   };
 
@@ -9928,7 +10016,7 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
         }
       }
       if (!verdict) { if (cu) R[kind].set(key, { unit: cu, from: 'c' }); continue; }
-      const locked = lockedUnit(cu);
+      const locked = lockedUnit(cu, iu);
       const pick = choices[key] === 'bundle' || choices[key] === 'mine' ? choices[key] : verdict.def;
       const ln = { key, unit: kind, kind: locked ? 'locked' : verdict.kind, label: (iu || cu).label, def: locked ? 'mine' : verdict.def,
         choice: locked ? 'mine' : pick, locked };
@@ -10000,7 +10088,13 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
       if (!cu) continue;
       if (cu.id != null) dropItem(cu); else deleteAt(out, cu.path);
     }
-    for (const [key, iu] of I.schema) {       // 번들 순서대로 — 새 항목이 번들 순서로 끝에 붙는다
+    // 번들 순서대로. 새 항목은 번들에서 바로 앞이던 항목 뒤에 선다(그 항목이 없으면 끝) — 막 a1·a3 사이에 a2를 넣은 판이 a1·a3·a2가 되지 않게.
+    // 내 항목끼리의 순서는 그대로다.
+    const prevOf = new Map();
+    for (const [key, iu] of I.schema) {
+      const pkey = iu.path.join('.');
+      const prev = iu.id != null ? prevOf.get(pkey) : undefined;
+      if (iu.id != null) prevOf.set(pkey, iu.id);
       const ln = lineOf.get(key);
       if (!ln || ln.choice !== 'bundle') continue;
       const value = clone(iu.value);
@@ -10008,11 +10102,19 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
       let list = getAt(out, iu.path);
       if (!Array.isArray(list)) { list = []; setAt(out, iu.path, list); }
       const at = list.findIndex((x) => x && x.id === iu.id);
-      if (at >= 0) list[at] = value; else list.push(value);
+      if (at >= 0) { list[at] = value; continue; }
+      const after = prev === undefined ? -1 : list.findIndex((x) => x && x.id === prev);
+      if (after >= 0) list.splice(after + 1, 0, value); else list.push(value);
     }
-    P.shapeFill(out);
-    if (!cSchema && !out.meta.name) out.meta.name = String(data.name || '조각');
-    const v = validateSchema(out);
+    let v;
+    try {
+      P.shapeFill(out);
+      if (out.rules.randomEvents.chancePerTurn === undefined) out.rules.randomEvents.chancePerTurn = 0; // 표만 남고 확률 잎이 지워진 경우
+      if (!cSchema && !out.meta.name) out.meta.name = String(data.name || '조각');
+      v = validateSchema(out);
+    } catch (e) {
+      return { ok: false, error: `조각을 합친 스키마를 읽을 수 없어요 (${e.message}) — 조각 파일의 모양을 확인해 주세요. 아무것도 바꾸지 않았어요` };
+    }
     if (!v.ok) {
       schemaErrors = v.errors.map((e) => `${e.path}: ${e.msg}`);
       const text = schemaErrors.join('\n');
@@ -10022,6 +10124,14 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
         const hit = u.id != null ? new RegExp(`(^|[^A-Za-z0-9_])${String(u.id).replace(/[^A-Za-z0-9_]/g, '\\$&')}([^A-Za-z0-9_]|$)`).test(text) : text.includes('$.' + u.path.join('.'));
         if (hit) errorKeys.push(ln.key);
       }
+      for (const e of v.errors) {   // `$.directives[5].when`처럼 번호로만 오는 오류 — 병합 결과의 그 자리 id로 줄을 찾는다
+        const m = /^[$][.]([A-Za-z_.]+)[[]([0-9]+)[\]]/.exec(String(e.path || ''));
+        if (!m) continue;
+        const list = getAt(out, m[1].split('.'));
+        const it = Array.isArray(list) ? list[Number(m[2])] : null;
+        const key = it && typeof it.id === 'string' ? schemaKey(m[1].split('.'), it.id) : null;
+        if (key && lineOf.has(key) && !errorKeys.includes(key)) errorKeys.push(key);
+      }
     } else {
       const content = JSON.stringify(out);
       globalLore = baseEntry ? globalLore.map((l) => (l === baseEntry ? { ...l, content } : l)) : [...globalLore, schemaLoreEntry(content)];
@@ -10029,7 +10139,7 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
   }
 
   const rev = Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1;
-  const installedRev = base && Number.isFinite(Number(base.rev)) ? Number(base.rev) : null;
+  const installedRev = pieceBase && Number.isFinite(Number(pieceBase.rev)) ? Number(pieceBase.rev) : null;
   return {
     ok: true, id: data.id, name: String(data.name || '조각'), rev, note: typeof data.note === 'string' ? data.note.slice(0, 200) : '',
     installedRev, downgrade: installedRev != null && rev < installedRev,
@@ -10132,6 +10242,7 @@ function buildPiece(char, picks, info) {
   const pk = { tabs: (picks && picks.tabs) || [], items: (picks && picks.items) || {}, lore: (picks && picks.lore) || [], regex: (picks && picks.regex) || [] };
   const src = readBaseSchema(char);
   const errors = [];
+  const missing = []; // 구성에는 있는데 지금 봇에서 못 찾은 것 — 이름을 바꿨거나 지웠다. 말없이 빼면 받는 쪽에서 "제작자 삭제"로 지워진다
   const auto = { vars: [], derived: [], checks: [], actions: [], allow: [] };
   const sparse = {};
   const wantsSchema = pk.tabs.length > 0 || Object.values(pk.items).some((a) => Array.isArray(a) && a.length);
@@ -10139,8 +10250,8 @@ function buildPiece(char, picks, info) {
   if (wantsSchema && src) {
     const ed = editorMod();
     for (const tab of pk.tabs) {
-      const T = ed.TAB_SLICES[tab];
-      if (!T || T.merge) continue;
+      const T = Object.prototype.hasOwnProperty.call(ed.TAB_SLICES, tab) ? ed.TAB_SLICES[tab] : null;
+      if (!T || T.merge) { missing.push('탭 ' + tab); continue; }
       for (const k of T.keys) {
         if (isEmpty(src[k])) continue;
         if (!T.sub) { sparse[k] = clone(src[k]); continue; }
@@ -10163,7 +10274,10 @@ function buildPiece(char, picks, info) {
       if (auto[lk] && !explicit(lk, id)) auto[lk].push(id);
       return true;
     };
-    for (const L of PICK_LISTS) for (const id of (pk.items[L.key] || [])) add(L.key, id);
+    for (const L of PICK_LISTS) {
+      const have = new Set(srcList(L.path).map((x) => x.id));
+      for (const id of (Array.isArray(pk.items[L.key]) ? pk.items[L.key] : [])) { if (have.has(id)) add(L.key, id); else missing.push(L.label + ' ' + id); }
+    }
 
     // 딸린 것 — 고정점까지. 색인이 못 잡는 연결(액션 check → 판정, 편성표 탭 actions → 액션, 허용 줄 whenArmed → 액션)은 따로 따라간다
     const srcVarIds = srcList(['vars']).map((v) => v.id);
@@ -10211,6 +10325,7 @@ function buildPiece(char, picks, info) {
   // 로어북 — 폴더를 고르면 자식 전부, 자식을 고르면 그 폴더 항목도
   const units = pickableLore(char);
   const chosen = new Set(pk.lore);
+  { const have = new Set(units.map((u) => u.key)); for (const k of pk.lore) if (!have.has(k)) missing.push('로어북 ' + String(k).replace(/^lore:/, '')); }
   for (const u of units) {
     if (!chosen.has(u.key)) continue;
     if (isFolder(u.value)) { for (const c of units) if (!isFolder(c.value) && c.value.folder === u.value.key) chosen.add(c.key); }
@@ -10218,7 +10333,9 @@ function buildPiece(char, picks, info) {
   }
   const lorebook = units.filter((u) => chosen.has(u.key)).map((u) => { const l = clone(u.value); delete l.id; delete l.loreCache; return l; });
   const pickedRegex = new Set(pk.regex);
-  const regex = regexUnits(char && char.customscript).filter((u) => pickedRegex.has(u.key)).map((u) => clone(u.value));
+  const regexAll = regexUnits(char && char.customscript);
+  { const have = new Set(regexAll.map((u) => u.key)); for (const k of pk.regex) if (!have.has(k)) missing.push('정규식 ' + String(k).replace(/^regex:/, '')); }
+  const regex = regexAll.filter((u) => pickedRegex.has(u.key)).map((u) => clone(u.value));
 
   const name = String((info && typeof info.name === 'string' && info.name.trim()) || (src && src.meta && src.meta.name) || (char && char.name) || '조각');
   const data = { simcoreBundle: 2, id: info && info.id, rev: info && Number.isFinite(Number(info.rev)) ? Number(info.rev) : 1, name };
@@ -10228,18 +10345,75 @@ function buildPiece(char, picks, info) {
   if (regex.length) data.regex = regex;
   if (!isEmpty(sparse)) data.schema = stripKeep(sparse);
 
+  if (missing.length) errors.push(`지난 구성에 있던 항목을 지금 봇에서 못 찾았어요 (${missing.slice(0, 6).join(' · ')}${missing.length > 6 ? ` 외 ${missing.length - 6}` : ''}) — 이름을 바꿨거나 지운 것이면 [못 찾은 항목 빼기], 아니면 다시 골라 주세요`);
   if (!errors.length && !lorebook.length && !regex.length && isEmpty(sparse)) errors.push('고른 것이 없어요 — 실을 항목을 하나 이상 골라 주세요');
   if (!errors.length && data.schema) {
     const filled = P.shapeFill(clone(data.schema));
     filled.meta.name = name;
+    // 랜덤 이벤트 항목만 실은 조각 — 발동 확률은 받는 봇의 것이라 안 싣는다. 재는 사본에만 기본값을 둔다
+    if (filled.rules.randomEvents.chancePerTurn === undefined) filled.rules.randomEvents.chancePerTurn = 0;
     const v = validateSchema(filled);
     if (!v.ok) for (const e of v.errors) errors.push(`${e.path}: ${e.msg}`);
   }
-  return { data, auto, errors };
+  return { data, auto, errors, missing };
+}
+
+/** 지금 봇에서 못 찾는 고르기를 뺀 구성 — [못 찾은 항목 빼기] */
+function prunePicks(char, picks) {
+  const src = readBaseSchema(char);
+  const SL = editorMod().TAB_SLICES;
+  const lore = new Set(pickableLore(char).map((u) => u.key));
+  const regex = new Set(regexUnits(char && char.customscript).map((u) => u.key));
+  const items = {};
+  for (const L of PICK_LISTS) {
+    const have = new Set(((src && getAt(src, L.path)) || []).filter((x) => isObj(x)).map((x) => x.id));
+    const kept = (Array.isArray(picks && picks.items && picks.items[L.key]) ? picks.items[L.key] : []).filter((id) => have.has(id));
+    if (kept.length) items[L.key] = kept;
+  }
+  return { tabs: ((picks && picks.tabs) || []).filter((t) => Object.prototype.hasOwnProperty.call(SL, t) && !SL[t].merge), items,
+    lore: ((picks && picks.lore) || []).filter((k) => lore.has(k)), regex: ((picks && picks.regex) || []).filter((k) => regex.has(k)) };
+}
+
+// 같은 이름이 여럿인 로어·정규식 — 열쇠의 #n은 "그 목록 안에서 나온 순서"라 목록이 달라지면 다른 항목을 가리킨다.
+// 조각 파일 안 번호를 그대로 내 봇에 대면 비공개 항목이 실릴 수 있다(이 기능의 발단과 정면으로 부딪힌다) — 내용으로 찾는다.
+const unitName = (key) => key.slice(0, key.lastIndexOf('#'));
+function locateByContent(units, kind, name, value, used) {
+  const cands = units.filter((u) => unitName(u.key) === name && !used.has(u.key));
+  const hit = cands.find((u) => sameUnit(u.value, value, kind)) || (cands.length === 1 ? cands[0] : null);
+  if (hit) used.add(hit.key);
+  return hit ? hit.key : name + '#?';   // 못 찾으면 없는 열쇠 — buildPiece가 missing으로 알린다
+}
+/** 고른 로어·정규식의 내용 해시 — 레시피에 같이 적어 두면, 같은 이름이 끼어 번호가 밀려도 다음에 내용으로 따라간다 */
+function pickSigs(char, picks) {
+  const lore = new Map(pickableLore(char).map((u) => [u.key, u]));
+  const regex = new Map(regexUnits(char && char.customscript).map((u) => [u.key, u]));
+  const out = { lore: {}, regex: {} };
+  for (const k of ((picks && picks.lore) || [])) if (lore.has(k)) out.lore[k] = unitHash(lore.get(k).value, 'lore');
+  for (const k of ((picks && picks.regex) || [])) if (regex.has(k)) out.regex[k] = unitHash(regex.get(k).value, 'regex');
+  return out;
+}
+/** 저장된 구성을 지금 봇에 다시 맞춘다 — 그 열쇠의 내용이 달라졌는데 같은 이름의 다른 항목이 적어 둔 해시와 같으면 그쪽으로 옮긴다 */
+function relocatePicks(char, picks, sigs) {
+  const move = (keys, units, kind, sig) => {
+    const by = new Map(units.map((u) => [u.key, u]));
+    const taken = new Set();
+    return (keys || []).map((k) => {
+      const want = isObj(sig) && Object.prototype.hasOwnProperty.call(sig, k) ? sig[k] : null;
+      const cur = by.get(k);
+      if (!want || (cur && unitHash(cur.value, kind) === want)) { taken.add(k); return k; }
+      const hit = units.find((u) => unitName(u.key) === unitName(k) && !taken.has(u.key) && unitHash(u.value, kind) === want);
+      const key = hit ? hit.key : k;
+      taken.add(key);
+      return key;
+    });
+  };
+  return { tabs: [...((picks && picks.tabs) || [])], items: clone((picks && picks.items) || {}),
+    lore: move(picks && picks.lore, pickableLore(char), 'lore', sigs && sigs.lore),
+    regex: move(picks && picks.regex, regexUnits(char && char.customscript), 'regex', sigs && sigs.regex) };
 }
 
 /** 지난번에 낸 조각 파일에서 구성을 되살린다 — 기기를 옮겨 레시피가 없을 때 (파일이 진실, 저장소는 편의) */
-function picksFromPiece(data) {
+function picksFromPiece(data, char) {
   const picks = { tabs: [], items: {}, lore: [], regex: [] };
   const s = pieceSchema(data) || {};
   const SL = editorMod().TAB_SLICES;
@@ -10253,15 +10427,19 @@ function picksFromPiece(data) {
     const ids = (getAt(s, L.path) || []).filter((x) => isObj(x) && typeof x.id === 'string').map((x) => x.id);
     if (ids.length) picks.items[L.key] = ids;
   }
-  picks.lore = loreUnits(data && data.lorebook).map((u) => u.key);
-  picks.regex = regexUnits(data && data.regex).map((u) => u.key);
+  const pl = loreUnits(pieceLore(data)), pr = regexUnits(data && data.regex);
+  if (!char) { picks.lore = pl.map((u) => u.key); picks.regex = pr.map((u) => u.key); return picks; }
+  const cl = pickableLore(char), cr = regexUnits(char.customscript);
+  const usedL = new Set(), usedR = new Set();
+  picks.lore = pl.map((u) => locateByContent(cl, 'lore', unitName(u.key), u.value, usedL));
+  picks.regex = pr.map((u) => locateByContent(cr, 'regex', unitName(u.key), u.value, usedR));
   return picks;
 }
 
 module.exports = {
   hash53, unitHash, sameUnit, loreUnits, regexUnits, schemaUnits, pairUnits, fingerprintOf,
-  pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER,
-  newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, PICK_LISTS, TAB_COVERS,
+  pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER, planSig, validBundleId,
+  newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, prunePicks, pickSigs, relocatePicks, PICK_LISTS, TAB_COVERS,
 };
 
 });
@@ -42258,17 +42436,21 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const bundleBaseKeyBase = (char) => `${BUNDLE_BASE_PREFIX}${char.chaId ?? char.name}:`;
   /** 이 캐릭터에 저장된 기준 지문들 — { 번들 id: { id, name, rev, at, units: { 열쇠: 해시 } } } */
   async function bundleBases(char) {
-    const out = {};
+    const out = Object.create(null); // 번들 id가 열쇠다 — 남이 준 글자라 프로토타입 없는 객체에 담는다
     const pre = bundleBaseKeyBase(char);
     for (const k of (await Risuai.pluginStorage.keys()).filter((x) => x.startsWith(pre))) {
-      try { const b = JSON.parse(await Risuai.pluginStorage.getItem(k)); if (b && b.units) out[k.slice(pre.length)] = b; }
+      const id = k.slice(pre.length);
+      if (!bundleMod.validBundleId(id)) continue;
+      try { const b = JSON.parse(await Risuai.pluginStorage.getItem(k)); if (b && b.units) out[id] = b; }
       catch { /* 깨진 지문은 없는 것으로 — 첫 설치 길로 떨어진다 */ }
     }
     return out;
   }
+  const charIdOf = (char) => String(char.chaId ?? char.name);
   async function saveBundleBase(char, data, units) {
     await Risuai.pluginStorage.setItem(bundleBaseKeyBase(char) + data.id, JSON.stringify({
-      id: data.id, name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, at: Date.now(), units,
+      // format — 전체 번들(1)의 지문을 조각(2) 판정에 쓰지 않게 가른다 (같은 id의 조각 파일이 봇 전체를 "제작자 삭제"로 만들 수 있었다)
+      id: data.id, format: data.simcoreBundle === 2 ? 2 : 1, name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, at: Date.now(), units,
     }));
   }
   /** 이 캐릭터의 지문을 전부 지운다 — 통째 교체·[캐릭터에서 제거]처럼 조각이 넣은 것이 다른 길로 사라질 때.
@@ -42344,12 +42526,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       } catch { /* 동봉 스키마 손상 — 없음으로 취급 */ }
       applyBundleToChar(char, data);
       await Risuai.setCharacter(char);
-      const settled = await bundleAfterWrite(bundled);
-      // 🧩 통째 교체는 조각이 넣은 것까지 갈아 끼운다 — 그 지문을 지우고(사본은 위 백업에), id가 있는 번들이면 자기 지문을 남긴다
+      // 🧩 통째 교체는 조각이 넣은 것까지 갈아 끼운다 — 그 지문을 지우고(사본은 위 백업에), id가 있는 번들이면 자기 지문을 남긴다.
+      // 캐릭터에 쓴 바로 뒤에 한다: 아래 뒷정리가 던져도 "넣은 것은 사라졌는데 지문만 남은" 상태가 안 되게
       try {
         await clearBundleBases(char);
-        if (typeof data.id === 'string' && data.id) await saveBundleBase(char, data, bundleMod.fingerprintOf(data));
+        if (bundleMod.validBundleId(data.id)) await saveBundleBase(char, data, bundleMod.fingerprintOf(data));
       } catch (e) { console.log('[simcore] 번들 지문 정리 실패:', e.message); }
+      let settled = false;
+      try { settled = await bundleAfterWrite(bundled); }
+      catch (e) { console.log('[simcore] 번들 교체 뒤 뒷정리 실패:', e.message); }
       const profKept = (char.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null).length;
       const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
       return { ok: true, html: `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
@@ -42366,41 +42551,60 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     }
   }
   /** 조각을 넣을 계획 — 캐릭터와 그 번들의 지문을 읽어 세운다. 아무것도 안 바꾼다 */
+  const BUNDLE_BASE_READ_FAIL = '설치 기록(기준 지문)을 읽지 못해 멈췄어요 — 이대로 넣으면 내가 고친 것이 "처음 넣는 것"으로 판정돼 덮일 수 있어요. 잠시 뒤 다시 해 주세요';
   async function bundlePlanFor(data, opts = {}) {
     const char = await Risuai.getCharacter();
     if (!char) return { ok: false, error: '캐릭터가 선택되지 않음' };
-    let bases = {};
-    try { bases = await bundleBases(char); } catch { bases = {}; }
-    return bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+    let bases;
+    try { bases = await bundleBases(char); } catch (e) { return { ok: false, error: `${BUNDLE_BASE_READ_FAIL} (${e.message})` }; }
+    const plan = bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+    plan.chaId = charIdOf(char); // 요약을 본 캐릭터 — 적용 직전에 같은 캐릭터·같은 계획인지 댄다
+    return plan;
   }
   /** 조각 넣기 — 백업(+지문 사본) → 병합 → 병합 스키마 검증(실패면 무변화) → 저장 → 되읽기·편집기·브리지 → 지문 저장 */
   async function bundlePieceApply(data, opts = {}) {
     try {
       const char = await Risuai.getCharacter();
       if (!char) return { ok: false, html: '<span class="status-bad">캐릭터가 선택되지 않음</span>' };
-      let bases = {};
-      try { bases = await bundleBases(char); } catch { bases = {}; }
+      const chaId = charIdOf(char);
+      // 지문 읽기 실패를 "지문 없음"으로 삼키지 않는다 — 첫 설치 길로 떨어지면 "내 수정 유지"가 "충돌 · 번들 것"이 돼 내 수정이 덮인다
+      let bases;
+      try { bases = await bundleBases(char); }
+      catch (e) { return { ok: false, html: `<span class="status-bad">${escapeText(BUNDLE_BASE_READ_FAIL)} (${escapeText(e.message)})</span>` }; }
       const plan = bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+      plan.chaId = chaId;
       if (!plan.ok) return { ok: false, plan, html: `<span class="status-bad">${escapeText(plan.error)}</span>` };
+      // 넣는 것은 화면에 보인 계획이 아니라 지금 캐릭터로 다시 세운 계획이다 — 그 사이 캐릭터나 로어북이 바뀌어 계획이 달라졌으면 넣지 않고 돌려준다
+      if (opts.expect && (opts.expect.chaId !== chaId || opts.expect.sig !== bundleMod.planSig(plan))) {
+        return { ok: false, changed: true, plan, html: '<span class="status-warn">요약을 본 뒤 캐릭터나 로어북이 바뀌었어요 — 아무것도 넣지 않았어요. 새 요약을 확인해 주세요.</span>' };
+      }
       if (plan.schemaErrors.length) {
         return { ok: false, plan, html: `<span class="status-bad">병합한 스키마가 검증을 못 넘어 아무것도 바꾸지 않았어요 (${plan.schemaErrors.length}건):<br>`
           + `${plan.schemaErrors.slice(0, 5).map(escapeText).join('<br>')}</span>` };
       }
+      if (!plan.lines.length) { // 바뀌는 것이 없다 — 백업 칸(최근 3개)을 쓰지 않고 설치 기록만 이 판으로 맞춘다
+        let saved = true;
+        try { await saveBundleBase(char, data, plan.fingerprint); } catch (e) { saved = false; console.log('[simcore] 번들 지문 저장 실패:', e.message); }
+        return { ok: true, plan, html: `<span class="status-ok">✓ ${escapeText(bundleMod.summaryText(plan))}${saved ? ` · 설치 기록만 r${plan.rev}로 맞췄어요` : ''}</span>` };
+      }
       await bundleBackup(char, bases);
       bundleMod.applyPlanToChar(char, plan);
       await Risuai.setCharacter(char);
+      // 지문은 캐릭터에 쓴 바로 뒤에 — 아래 뒷정리가 던져도 넣은 것과 지문이 어긋나지 않게
+      let fpSaved = true;
+      try { await saveBundleBase(char, data, plan.fingerprint); }
+      catch (e) { fpSaved = false; console.log('[simcore] 번들 지문 저장 실패:', e.message); }
       let merged = null;
       if (plan.result.schemaChanged) {
         try { merged = JSON.parse(char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT).content); } catch { merged = null; }
       }
-      const settled = await bundleAfterWrite(merged);
-      let fpSaved = true;
-      try { await saveBundleBase(char, data, plan.fingerprint); }
-      catch (e) { fpSaved = false; console.log('[simcore] 번들 지문 저장 실패:', e.message); }
+      let settled = false;
+      try { settled = await bundleAfterWrite(merged); }
+      catch (e) { console.log('[simcore] 조각 넣기 뒤 뒷정리 실패:', e.message); }
       const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
       return { ok: true, plan, html: `<span class="status-ok">✓ 넣기 완료 — ${escapeText(bundleMod.summaryText(plan))}`
         + `${merged ? (settled ? ' · 시스템 인식됨' : ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요') : ''}`
-        + `${fpSaved ? '' : ' · ⚠ 기준 지문을 저장하지 못했어요 — 이 조각의 다음 판은 처음 넣는 것처럼 물어요'}`
+        + `${fpSaved ? '' : ' · ⚠ 설치 기록(기준 지문)을 저장하지 못했어요 — 이 조각의 다음 판은 처음 넣는 것처럼 물을 수 있어요'}`
         + `${profBroken.length ? ` · ⚠ 새 기본 판에 못 얹는 프로필 ${profBroken.length}개(${profBroken.slice(0, 3).map(escapeText).join(', ')}) — 그 판의 채팅은 기본 판으로 돌아요` : ''}`
         + ' · 넣기 전 상태는 [교체 되돌리기]로 돌아가요</span>' };
     } catch (e) {
@@ -42505,7 +42709,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const built = bundleMod.buildPiece(char, picks, { id, rev, name: info.name, note: info.note });
     if (built.errors.length) return built;
     const keep = { tabs: [...(picks.tabs || [])], items: JSON.parse(JSON.stringify(picks.items || {})), lore: [...(picks.lore || [])], regex: [...(picks.regex || [])] };
-    try { await saveBundleRecipe(char, { id, kind: 'piece', name: built.data.name, note: built.data.note || '', rev, picks: keep }); }
+    // sigs — 고른 로어·정규식의 내용 해시. 같은 이름 항목이 끼어 번호(#n)가 밀려도 다음에 내용으로 따라간다
+    try { await saveBundleRecipe(char, { id, kind: 'piece', name: built.data.name, note: built.data.note || '', rev, picks: keep, sigs: bundleMod.pickSigs(char, keep) }); }
     catch (e) { console.log('[simcore] 조각 구성 저장 실패:', e.message); }
     return built;
   }
@@ -42515,9 +42720,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     if (data && data.simcoreBundle === 2) {
       const bad = bundleMod.pieceShapeError(data);
       if (bad) return { error: bad };
+      const picks = bundleMod.picksFromPiece(data, char); // 같은 이름 로어는 조각 안 번호가 아니라 내용으로 내 봇에서 찾는다
       recipe = { id: data.id, kind: 'piece', name: String(data.name || '조각'), note: typeof data.note === 'string' ? data.note : '',
-        rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, picks: bundleMod.picksFromPiece(data) };
-    } else if (data && data.simcoreBundle === 1 && typeof data.id === 'string' && data.id) {
+        rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, picks, sigs: bundleMod.pickSigs(char, picks) };
+    } else if (data && data.simcoreBundle === 1 && bundleMod.validBundleId(data.id)) {
       recipe = { id: data.id, kind: 'whole', name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1 };
     } else return { error: 'id가 든 번들 파일이 아니에요 — v1.25.0부터 내보낸 번들·조각 파일을 골라 주세요' };
     await saveBundleRecipe(char, recipe);
@@ -42582,7 +42788,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       + `<div style="margin-top:4px;">${built.errors.length
         ? `<span class="status-bad">⚠ 이대로는 내보낼 수 없어요:<br>${built.errors.slice(0, 6).map(escapeText).join('<br>')}${built.errors.length > 6 ? `<br>외 ${built.errors.length - 6}건` : ''}</span>`
         : '<span class="status-ok">✓ 이 조각만으로 설치돼요 (검증 통과) — 값(진행 상태)은 안 실리고, 받는 쪽에서 시작값으로 서요</span>'}</div>`
-      + `<div style="margin-top:8px;display:flex;gap:8px;"><button id="sc-piece-export"${built.errors.length ? ' disabled' : ''}>내보내기 r${Number(st.rev) || 1}</button><button id="sc-piece-close">닫기</button></div>`
+      + `<div style="margin-top:8px;display:flex;gap:8px;"><button id="sc-piece-export"${built.errors.length ? ' disabled' : ''}>내보내기 r${Number(st.rev) || 1}</button>`
+      + `${(built.missing || []).length ? '<button id="sc-piece-prune">못 찾은 항목 빼기</button>' : ''}<button id="sc-piece-close">닫기</button></div>`
       + '</div>';
   }
   // 테스트 배수구 (__simcoreDrainTurn과 같은 결) — 순수 로직과 흐름만 노출, 화면은 실기 확인
@@ -48388,7 +48595,7 @@ count(목록)  has(목록, "항목")</pre>
         rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
       }
     }
-    function renderPiecePicker() {
+    async function renderPiecePicker() {
       const el = pickerEl();
       if (!el) return;
       if (!piecePick) { el.innerHTML = ''; return; }
@@ -48397,19 +48604,29 @@ count(목록)  has(목록, "항목")</pre>
       if (nameEl) piecePick.name = nameEl.value;
       if (noteEl) piecePick.note = noteEl.value;
       const open = [...el.querySelectorAll('details[open]')].map((d) => d.dataset.pfold);
-      const built = bundleMod.buildPiece(piecePick.char, piecePick.picks, { id: piecePick.id || 'b_preview', rev: piecePick.rev, name: piecePick.name, note: piecePick.note });
-      el.innerHTML = bundlePickerHtml(piecePick.pk, built, { picks: piecePick.picks, name: piecePick.name, note: piecePick.note, rev: piecePick.rev, open });
+      // 그릴 때마다 캐릭터를 다시 읽는다 — 이 화면은 패널을 닫았다 열어도 남아서, 연 순간의 사본으로 내보내면 그 뒤 고친 로어·스키마가 빠진다
+      const pick = piecePick;
+      const char = await Risuai.getCharacter();
+      if (piecePick !== pick) return;
+      if (!char || String(char.chaId ?? char.name) !== pick.chaId) {
+        piecePick = null;
+        el.innerHTML = '<span class="status-warn">캐릭터가 바뀌어 조각 고르기를 닫았어요 — [번들 내보내기]부터 다시 해 주세요.</span>';
+        return;
+      }
+      pick.char = char;
+      const built = bundleMod.buildPiece(char, pick.picks, { id: pick.id || 'b_preview', rev: pick.rev, name: pick.name, note: pick.note });
+      el.innerHTML = bundlePickerHtml(bundleMod.pickables(char), built, { picks: pick.picks, name: pick.name, note: pick.note, rev: pick.rev, open });
     }
-    function openPiecePicker(char, recipe) {
-      const p = (recipe && recipe.picks) || {};
-      piecePick = { char, pk: bundleMod.pickables(char), id: recipe ? recipe.id : null, rev: (recipe ? Number(recipe.rev) || 0 : 0) + 1,
-        name: (recipe && recipe.name) || '', note: (recipe && recipe.note) || '',
-        picks: { tabs: [...(p.tabs || [])], items: JSON.parse(JSON.stringify(p.items || {})), lore: [...(p.lore || [])], regex: [...(p.regex || [])] } };
+    async function openPiecePicker(char, recipe) {
+      // 저장된 구성은 지금 봇에 다시 맞춘다 — 같은 이름 로어가 끼어 번호가 밀렸으면 내용 해시로 따라간다
+      const p = recipe && recipe.picks ? bundleMod.relocatePicks(char, recipe.picks, recipe.sigs) : { tabs: [], items: {}, lore: [], regex: [] };
+      piecePick = { char, chaId: String(char.chaId ?? char.name), id: recipe ? recipe.id : null, rev: (recipe ? Number(recipe.rev) || 0 : 0) + 1,
+        name: (recipe && recipe.name) || '', note: (recipe && recipe.note) || '', picks: p };
       const el = pickerEl();
       if (el) el.innerHTML = '';
-      renderPiecePicker();
+      await renderPiecePicker();
     }
-    pickerEl().addEventListener('change', (ev) => {
+    pickerEl().addEventListener('change', async (ev) => {
       const t = ev.target;
       if (!piecePick || !t || t.type !== 'checkbox') return;
       const tog = (arr, v) => { const at = arr.indexOf(v); if (t.checked && at < 0) arr.push(v); if (!t.checked && at >= 0) arr.splice(at, 1); };
@@ -48418,24 +48635,28 @@ count(목록)  has(목록, "항목")</pre>
       else if (t.dataset.plore) tog(piecePick.picks.lore, t.dataset.plore);
       else if (t.dataset.pregex) tog(piecePick.picks.regex, t.dataset.pregex);
       else return;
-      renderPiecePicker();
+      await renderPiecePicker();
     });
     pickerEl().addEventListener('click', async (ev) => {
       const t = ev.target && ev.target.closest ? ev.target.closest('button') : null;
       if (!t || !piecePick) return;
-      if (t.id === 'sc-piece-close') { piecePick = null; renderPiecePicker(); return; }
+      if (t.id === 'sc-piece-close') { piecePick = null; await renderPiecePicker(); return; }
+      if (t.id === 'sc-piece-prune') { piecePick.picks = bundleMod.prunePicks(piecePick.char, piecePick.picks); await renderPiecePicker(); return; }
       if (t.id !== 'sc-piece-export') return;
       const rep = bundleRep();
       try {
-        renderPiecePicker(); // 이름·설명 칸의 글을 상태로
-        const r = await bundleExportPiece(piecePick.char, piecePick.picks, { id: piecePick.id, name: piecePick.name, note: piecePick.note });
-        if (r.errors.length) { rep.innerHTML = `<span class="status-bad">내보낼 수 없어요 — ${escapeText(r.errors[0])}</span>`; return; }
+        await renderPiecePicker(); // 이름·설명 칸의 글을 상태로 + 캐릭터를 다시 읽는다
+        const pick = piecePick;
+        if (!pick) return;
+        const r = await bundleExportPiece(pick.char, pick.picks, { id: pick.id, name: pick.name, note: pick.note });
+        if (piecePick !== pick) return; // 내보내는 사이 닫았다
+        if (r.errors.length) { rep.innerHTML = `<span class="status-bad">내보낼 수 없어요 — ${escapeText(r.errors[0])}</span>`; await renderPiecePicker(); return; }
         downloadJson(r.data, `simcore-piece-${fileSafe(r.data.name)}-r${r.data.rev}.json`);
         const sN = r.data.schema ? bundleMod.schemaUnits(r.data.schema).length : 0;
         rep.innerHTML = `<span class="status-ok">✓ 조각 내보내기 완료 — '${escapeText(r.data.name)}' r${r.data.rev} · 스키마 단위 ${sN}개`
           + ` · 로어북 ${(r.data.lorebook || []).length}개 · 정규식 ${(r.data.regex || []).length}개. 받는 분은 💾 세이브 탭의 [번들 넣기]로 넣어요 (v1.25.0 이상).</span>`;
-        piecePick.id = r.data.id; piecePick.rev = r.data.rev + 1;
-        renderPiecePicker();
+        pick.id = r.data.id; pick.rev = r.data.rev + 1;
+        await renderPiecePicker();
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">조각 내보내기 실패: ${escapeText(e.message)}</span>`;
       }
@@ -48452,7 +48673,7 @@ count(목록)  has(목록, "항목")</pre>
         if (r.error) { rep.innerHTML = `<span class="status-bad">${escapeText(r.error)}</span>`; return; }
         if (r.recipe.kind === 'piece') {
           rep.innerHTML = `<span class="status-ok">✓ '${escapeText(r.recipe.name)}' r${r.recipe.rev}의 구성을 되살렸어요 — 아래에서 확인하고 내보내면 r${r.recipe.rev + 1}이에요</span>`;
-          openPiecePicker(char, r.recipe);
+          await openPiecePicker(char, r.recipe);
         } else {
           rep.innerHTML = `<span class="status-ok">✓ 전체 번들 '${escapeText(r.recipe.name)}'의 id를 이었어요 — 다음 [전체 번들] 내보내기는 r${r.recipe.rev + 1}이에요</span>`;
         }
@@ -48500,6 +48721,7 @@ count(목록)  has(목록, "항목")</pre>
       if (bundlePending !== p) return;
       if (!plan.ok) { bundlePending = null; bundleRep().innerHTML = `<span class="status-bad">${escapeText(plan.error)}</span>`; return; }
       p.until = Date.now() + 60000;
+      p.chaId = plan.chaId; p.sig = bundleMod.planSig(plan);
       bundleRep().innerHTML = bundlePlanHtml(plan, { fresh: p.fresh, restOpen: p.restOpen });
     }
     async function showBundlePlan(data, kind) {
@@ -48524,6 +48746,7 @@ count(목록)  has(목록, "항목")</pre>
       let keepN = 0, pieceN = 0;
       try {
         const c0 = await Risuai.getCharacter();
+        if (c0) bundlePending.chaId = String(c0.chaId ?? c0.name);
         const inc = new Set(data.lorebook.map((l) => l && l.comment));
         keepN = (c0?.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null && !inc.has(l.comment)).length;
         pieceN = c0 ? Object.keys(await bundleBases(c0)).filter((id) => id !== data.id).length : 0;
@@ -48552,7 +48775,7 @@ count(목록)  has(목록, "항목")</pre>
           if (!char) { bundleRep().innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
           const recipe = t.dataset.bexpRecipe ? (await bundleRecipes(char)).find((r) => r.id === t.dataset.bexpRecipe && r.kind === 'piece') : null;
           bundleRep().innerHTML = '<span class="status-ok">아래에서 실을 것을 골라 주세요 — 고른 항목이 쓰는 변수는 자동으로 따라와요.</span>';
-          openPiecePicker(char, recipe || null);
+          await openPiecePicker(char, recipe || null);
           return;
         }
         if (!bundlePending || bundlePending.kind !== 'piece') return;
@@ -48573,9 +48796,26 @@ count(목록)  has(목록, "항목")</pre>
       const rep = bundleRep();
       const p = bundlePending;
       bundlePending = null;
-      const r = p.kind === 'piece'
-        ? await bundlePieceApply(p.data, { choices: p.choices, fresh: p.fresh })
-        : await bundleWholeApply(p.data);
+      const SWAPPED = '<span class="status-warn">요약을 본 뒤 캐릭터가 바뀌었어요 — 아무것도 넣지 않았어요. 이 캐릭터에 넣으려면 파일을 다시 골라 주세요.</span>';
+      if (p.kind !== 'piece') {
+        // 패널을 닫고 다른 봇으로 옮겨 다시 열어도 보고 칸과 대기 상태는 남는다 — 요약을 본 캐릭터가 아니면 넣지 않는다
+        const c = await Risuai.getCharacter();
+        if (p.chaId != null && (!c || String(c.chaId ?? c.name) !== p.chaId)) { rep.innerHTML = SWAPPED; return; }
+        const r = await bundleWholeApply(p.data);
+        rep.innerHTML = r.html;
+        if (r.ok) renderPanel();
+        return;
+      }
+      const r = await bundlePieceApply(p.data, { choices: p.choices, fresh: p.fresh, expect: { chaId: p.chaId, sig: p.sig } });
+      if (!r.ok && r.plan && r.plan.ok) {
+        if (r.plan.chaId !== p.chaId) { rep.innerHTML = SWAPPED; return; }
+        // 계획이 달라졌거나 검증에 막혔다 — 고른 줄을 지킨 채 요약을 다시 보여 주고 한 번 더 누르게 한다
+        bundlePending = p;
+        p.until = Date.now() + 60000;
+        p.sig = bundleMod.planSig(r.plan);
+        rep.innerHTML = (r.changed ? r.html + '<br>' : '') + bundlePlanHtml(r.plan, { fresh: p.fresh, restOpen: p.restOpen });
+        return;
+      }
       rep.innerHTML = r.html;
       if (r.ok) renderPanel();
     }

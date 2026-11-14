@@ -421,11 +421,121 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
     ck('★ 만든 지도 조각이 빈 봇에 설치된다', pIn.ok && !pIn.schemaErrors.length && pIn.lines.every((l) => l.kind === 'add'), pIn.error || (pIn.schemaErrors || []).join(' / '));
   }
 
+  // ── ⑦ 최종 검토에서 나온 것 (코어) ──
+  {
+    // 치명 — 남이 준 조각의 __proto__ 키가 Object.prototype을 고친다 (파일을 고르기만 해도)
+    const evil1 = JSON.parse('{"simcoreBundle":2,"id":"b_evil0001","schema":{"__proto__":{"keep":true}}}');
+    const evil2 = JSON.parse('{"simcoreBundle":2,"id":"b_evil0002","schema":{"map":{"__proto__":{"polluted":1}},"vars":[{"id":"zz","type":"int","init":0}]}}');
+    const evil3 = JSON.parse('{"simcoreBundle":2,"id":"b_evil0003","schema":{"vars":[{"id":"zz","type":"int","init":0,"constructor":{"prototype":{"polluted":1}}}]}}');
+    let pe1, pe2, pe3;
+    try { pe1 = B.planPiece({ char: hostChar(), data: evil1, base: null }); pe2 = B.planPiece({ char: hostChar(), data: evil2, base: null }); pe3 = B.planPiece({ char: hostChar(), data: evil3, base: null }); } catch (e) { pe1 = pe1 || { threw: e.message }; }
+    const clean = ({}).keep === undefined && ({}).polluted === undefined;
+    delete Object.prototype.keep; delete Object.prototype.polluted;
+    ck('★★ __proto__ 키가 든 조각 — Object.prototype을 안 건드린다', clean, '오염됨');
+    ck('★★ __proto__·constructor·prototype 키가 든 조각은 거절한다 (깊은 곳도)', pe1 && pe1.ok === false && pe2 && pe2.ok === false && pe3 && pe3.ok === false && /못 쓰는 키/.test(pe1.error || ''), JSON.stringify([pe1, pe2 && pe2.error, pe3 && pe3.error]));
+    ck('위험한 id는 거절', !!B.pieceShapeError({ simcoreBundle: 2, id: '__proto__', lorebook: [{ comment: 'x' }] }) && !!B.pieceShapeError({ simcoreBundle: 2, id: 'constructor', lorebook: [{ comment: 'x' }] })
+      && B.validBundleId('b_ok000001') && !B.validBundleId('a b') && !B.validBundleId('__proto__'), '');
+    const pLoreProto = B.planPiece({ char: hostChar(), data: { simcoreBundle: 2, id: 'b_lp000001', rev: 1, name: 'n', lorebook: [{ comment: '__proto__', content: 'x' }, { comment: 'constructor', content: 'y' }] }, base: null,
+      choices: JSON.parse('{"__proto__":"mine"}') });
+    ck('로어 이름이 __proto__여도 평범한 단위로 다룬다', pLoreProto.ok && pLoreProto.lines.length === 2 && pLoreProto.lines.every((l) => l.kind === 'add' && l.choice === 'bundle') && ({}).polluted === undefined, JSON.stringify(pLoreProto.lines));
+    const fpProto = B.fingerprintOf({ simcoreBundle: 2, id: 'b_lp000001', lorebook: [{ comment: '__proto__', content: 'x' }] });
+    ck('지문 — __proto__ 이름도 자기 열쇠로', Object.keys(fpProto).length === 1 && Object.getPrototypeOf(fpProto) === null || Object.prototype.hasOwnProperty.call(fpProto, 'lore:__proto__#0'), JSON.stringify(Object.keys(fpProto)));
+
+    // 중요 — 모양이 어긋난 조각이 절을 통째로 비운다
+    const shapeBad = (schema) => { try { return B.planPiece({ char: hostChar(), data: { simcoreBundle: 2, id: 'b_shape001', rev: 1, name: 'n', schema }, base: null }); } catch (e) { return { threw: e.message }; } };
+    ck('★ 모양 어긋남 — rules: null / statusUI: 5 / updater: 7 / rules: "x"는 거절 (던지지 않는다)', [{ rules: null, vars: [{ id: 'a', type: 'int', init: 0 }] }, { statusUI: 5 }, { updater: 7 }, { rules: 'x' }, { setup: 'x' }]
+      .every((s) => { const r = shapeBad(s); return r.ok === false && /모양/.test(r.error || ''); }), JSON.stringify([shapeBad({ rules: null, vars: [{ id: 'a', type: 'int', init: 0 }] }), shapeBad({ statusUI: 5 }), shapeBad({ rules: 'x' })]));
+    ck('★ 모양 어긋남 — id 목록 자리에 id 없는 항목·null·겹친 id', [[{ id: 'a', type: 'int', init: 0 }, null], [{ label: 'id 없음' }], [{ id: 'a', type: 'int', init: 0 }, { id: 'a', type: 'int', init: 1 }], 'x']
+      .every((vars) => { const r = shapeBad({ vars }); return r.ok === false && /모양/.test(r.error || ''); }), JSON.stringify(shapeBad({ vars: [{ id: 'a' }, null] })));
+    ck('모양 — 객체 ↔ 배열 둘 다 되는 자리(liveChoices)는 충돌 줄로 받는다', (() => { const h = cp(HOST); h.liveChoices = { when: 'hp > 0', tags: [] };
+      const r = B.planPiece({ char: hostChar(h), data: { simcoreBundle: 2, id: 'b_shape002', rev: 1, name: 'n', schema: { liveChoices: [{ when: 'hp > 1', tags: [] }] } }, base: null });
+      return r.ok === true && r.lines.length === 1 && r.lines[0].kind === 'conflict'; })(), '');
+
+    // 중요 — 같은 이름 로어의 #n 짝짓기
+    const twoNotes = (rev, a, b) => ({ simcoreBundle: 2, id: 'b_two00001', rev, name: '노트 둘', lorebook: [{ comment: '노트', content: a }, { comment: '노트', content: b }] });
+    { // 경우 A — 받는 사람이 앞 것을 지웠고 제작자는 앞 것만 고쳤다
+      const c = hostChar();
+      const base = install(c, twoNotes(1, 'A', 'B'), null);
+      c.globalLore = c.globalLore.filter((l) => !(l.comment === '노트' && l.content === 'A'));
+      const p = B.planPiece({ char: c, data: twoNotes(2, 'A2', 'B'), base });
+      const out = B.applyPlanToChar(cp(c), p);
+      ck('★ 같은 이름 둘 — 안 건드린 뒤 것이 앞 것의 새 판에 덮이지 않는다', out.globalLore.some((l) => l.comment === '노트' && l.content === 'B') && !p.lines.some((l) => l.key === 'lore:노트#1'),
+        JSON.stringify([p.lines.map((l) => `${l.kind}:${l.key}`), out.globalLore.filter((l) => l.comment === '노트').map((l) => l.content)]));
+      ck('같은 이름 둘 — 내가 지운 앞 것은 "내가 지웠는데 제작자가 고침" 줄', p.lines.length === 1 && p.lines[0].key === 'lore:노트#0' && p.lines[0].kind === 'conflict' && p.lines[0].def === 'bundle', JSON.stringify(p.lines));
+    }
+    { // 경우 B — 내가 쓴 같은 이름 항목이 조각 항목보다 앞에 있다
+      const c = hostChar();
+      const one = (rev, a) => ({ simcoreBundle: 2, id: 'b_one00001', rev, name: '노트 하나', lorebook: [{ comment: '노트', content: a }] });
+      const base = install(c, one(1, 'A'), null);
+      c.globalLore.splice(1, 0, { comment: '노트', content: '내가 쓴 노트' });   // 조각 항목보다 앞에
+      const p = B.planPiece({ char: c, data: one(2, 'A2'), base });
+      const out = B.applyPlanToChar(cp(c), p);
+      const notes = out.globalLore.filter((l) => l.comment === '노트').map((l) => l.content);
+      ck('★ 같은 이름 — 내가 쓴 항목은 그대로, 조각 것만 새 판으로', notes.join('|') === '내가 쓴 노트|A2' && p.lines.length === 1 && p.lines[0].kind === 'update', JSON.stringify([p.lines.map((l) => `${l.kind}:${l.key}`), notes]));
+    }
+    { // 정규식도 같은 규칙
+      const c = hostChar();
+      const rx = (rev, o) => ({ simcoreBundle: 2, id: 'b_rx000001', rev, name: '정규식', regex: [{ comment: '에셋 표시', type: 'editdisplay', in: 'p', out: o }] });
+      const base = install(c, rx(1, 'P1'), null);   // 카드에 같은 이름·종류가 이미 있다(in:'a') → 충돌, 기본 번들 것으로 덮였다
+      c.customscript.unshift({ comment: '에셋 표시', type: 'editdisplay', in: 'mine', out: 'mine' });
+      const p = B.planPiece({ char: c, data: rx(2, 'P2'), base });
+      const out = B.applyPlanToChar(cp(c), p);
+      ck('같은 이름 정규식 — 앞에 끼운 내 것은 그대로', out.customscript[0].in === 'mine' && out.customscript.some((r) => r.out === 'P2'), JSON.stringify(out.customscript));
+    }
+
+    // 중요 — 전체 번들(형식 1)의 지문을 조각이 쓰지 않는다
+    const wholeBase = { format: 1, rev: 7, units: { 'lore:세계관#0': B.unitHash({ comment: '세계관', content: '내 세계관' }, 'lore'), 'schema:meta.name': 'x', 'regex:에셋 표시|editdisplay#0': B.unitHash({ comment: '에셋 표시', type: 'editdisplay', in: 'a', out: 'b' }, 'regex') } };
+    const pWB = B.planPiece({ char: hostChar(), data: { simcoreBundle: 2, id: 'b_whole001', rev: 8, name: '가짜 조각', lorebook: [{ comment: '새 로어', content: 'n' }] }, base: wholeBase });
+    ck('★ 전체 번들의 지문은 조각 판정에 안 쓴다 (내 로어·정규식이 "제작자 삭제"로 안 뜬다)', pWB.ok && pWB.lines.length === 1 && pWB.lines[0].kind === 'add' && pWB.installedRev === null, JSON.stringify(pWB.lines));
+
+    // 사소 — 🔒 변수의 AI 허용 줄을 조각이 새로 넣지 않는다
+    const hostLk = cp(HOST); hostLk.vars.push({ id: 'location', label: '위치', type: 'enum', enum: ['길드', '던전', '바벨'], init: '길드', keep: true });
+    const pLk = B.planPiece({ char: hostChar(hostLk), data: piece(1), base: null });
+    ck('🔒 변수의 AI 허용 줄 — 내 판에 없어도 조각이 새로 넣지 않는다', line(pLk, 'schema:updater.allow[location]')?.kind === 'locked' && line(pLk, 'schema:updater.allow[location]').choice === 'mine', JSON.stringify(line(pLk, 'schema:updater.allow[location]')));
+
+    // 사소 — 조각 로어에 든 프로필 항목은 받지 않는다
+    const pPf = B.planPiece({ char: hostChar(), data: { simcoreBundle: 2, id: 'b_pf000001', rev: 1, name: 'n', lorebook: [{ comment: '⚙simcore:마법사', content: '{}' }, { comment: '⚙simcore', content: '{}' }, { comment: '평범', content: 'x' }] }, base: null });
+    ck('조각의 로어에 든 ⚙simcore·프로필 항목은 무시', pPf.ok && pPf.lines.length === 1 && pPf.lines[0].key === 'lore:평범#0' && Object.keys(pPf.fingerprint).join() === 'lore:평범#0', JSON.stringify(pPf.lines.map((l) => l.key)));
+
+    // 사소 — 검증 오류가 번호로만 와도 그 줄을 짚는다
+    const pIdx = B.planPiece({ char: hostChar(), data: { simcoreBundle: 2, id: 'b_idx00001', rev: 1, name: 'n', schema: { directives: [{ id: 'd_bad', when: 'hp >', text: 'x' }] } }, base: null });
+    ck('검증 오류의 [번호]를 그 항목의 줄로', pIdx.schemaErrors.length > 0 && pIdx.errorKeys.includes('schema:directives[d_bad]'), JSON.stringify([pIdx.schemaErrors, pIdx.errorKeys]));
+
+    // 순서 — 스키마 목록의 새 항목은 번들에서 바로 앞이던 항목 뒤에
+    const dirs = (rev, ids) => ({ simcoreBundle: 2, id: 'b_dir00001', rev, name: '지시문', schema: { directives: ids.map((id) => ({ id, when: 'hp > 0', text: id })) } });
+    const hostDir = cp(HOST); hostDir.directives = [{ id: 'mine1', when: 'hp > 0', text: 'm1' }];
+    const cDir = hostChar(hostDir);
+    const baseDir = install(cDir, dirs(1, ['a1', 'a3']), null);
+    editSchema(cDir, (s) => { s.directives.push({ id: 'mine2', when: 'hp > 0', text: 'm2' }); });
+    install(cDir, dirs(2, ['a1', 'a2', 'a3']), baseDir);
+    ck('★ 스키마 목록 — 새 항목은 번들에서 바로 앞이던 항목 뒤에 (내 순서는 그대로)', schemaOf(cDir).directives.map((d) => d.id).join(',') === 'mine1,a1,a2,a3,mine2', schemaOf(cDir).directives.map((d) => d.id).join(','));
+
+    // 제작자 쪽 — 사라진 고르기 · 같은 이름 로어 되살리기 · 랜덤 이벤트 항목만
+    const bMiss = B.buildPiece(authChar(), { tabs: ['map', 'nope_tab'], items: { vars: ['hp', 'gone_var'] }, lore: ['lore:세계관#0', 'lore:없어진 로어#0'], regex: ['regex:없음|x#0'] }, INFO);
+    ck('★ 못 찾은 고르기 — 말없이 빼지 않고 missing과 오류로', bMiss.missing.length === 4 && bMiss.errors.some((e) => /못 찾/.test(e)) && ['gone_var', '없어진 로어', '없음', 'nope_tab'].every((w) => bMiss.missing.some((m) => m.includes(w))), JSON.stringify(bMiss.missing));
+    ck('못 찾은 고르기 — 다 찾으면 missing은 빈다', B.buildPiece(authChar(), { tabs: ['map'], items: {}, lore: ['lore:세계관#0'], regex: [] }, INFO).missing.length === 0, '');
+    const dupChar = authChar();
+    dupChar.globalLore.push({ comment: '던전', key: '던전2', content: '비공개가 아닌 배포용 던전' });   // 폴더 안 '던전'(#0)과 같은 이름, 뒤에 하나 더
+    const bDup = B.buildPiece(dupChar, { tabs: [], items: {}, lore: ['lore:던전#1'], regex: [] }, INFO);
+    const backPicks = B.picksFromPiece(bDup.data, dupChar);
+    ck('★ 지난 파일로 되살리기 — 같은 이름 로어는 내용으로 찾는다 (조각 안 번호 #0이 아니라 내 봇의 #1)', bDup.data.lorebook.length === 1 && backPicks.lore.join() === 'lore:던전#1', JSON.stringify(backPicks.lore));
+    const sigs = B.pickSigs(dupChar, { lore: ['lore:던전#1'], regex: ['regex:지도 태그|editdisplay#0'] });
+    const shifted = cp(dupChar);
+    shifted.globalLore.splice(1, 0, { comment: '던전', key: '던전0', content: '새로 끼운 같은 이름' });   // 앞에 하나 더 — 번호가 밀린다
+    const moved = B.relocatePicks(shifted, { tabs: [], items: {}, lore: ['lore:던전#1'], regex: ['regex:지도 태그|editdisplay#0'] }, sigs);
+    ck('★ 저장된 구성 — 같은 이름이 앞에 끼어 번호가 밀려도 내용으로 따라간다', moved.lore.join() === 'lore:던전#2' && moved.regex.join() === 'regex:지도 태그|editdisplay#0', JSON.stringify(moved));
+    const authRe = cp(AUTH); authRe.rules.randomEvents = { chancePerTurn: 0.1, table: [{ id: 're_rain', notify: '비가 온다', weight: 1 }] };
+    const reChar = authChar(); reChar.globalLore[0].content = JSON.stringify(authRe);
+    ck('픽스처 — 랜덤 이벤트 든 스키마 검증 통과', validateSchema(cp(authRe)).ok, JSON.stringify(validateSchema(cp(authRe)).errors));
+    const bRe = B.buildPiece(reChar, { tabs: [], items: { randomEvents: ['re_rain'] }, lore: [], regex: [] }, INFO);
+    ck('랜덤 이벤트 항목만 골라도 내보낼 수 있다 (발동 확률은 받는 봇 것)', bRe.errors.length === 0 && !('chancePerTurn' in bRe.data.schema.rules.randomEvents), JSON.stringify(bRe.errors));
+  }
+
   // ── ④ 가짜 리수 — 넣기 · 되돌리기 · 지문 (빌드된 simcore.plugin.js를 굴린다) ──
   const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
   const world = { char: null };
   const store = new Map();
-  let failBaseWrites = false;
+  let failBaseWrites = false, failKeys = false;
   {
     world.char = { ...hostChar(), chaId: 'c-recv', triggerscript: [] };
     global.Risuai = {
@@ -443,7 +553,7 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
         getItem: async (k) => (store.has(k) ? store.get(k) : null),
         setItem: async (k, v) => { if (failBaseWrites && k.startsWith('sim:bundle-base:')) throw new Error('저장소 가득'); store.set(k, v); },
         removeItem: async (k) => { store.delete(k); },
-        keys: async () => [...store.keys()],
+        keys: async () => { if (failKeys) throw new Error('저장소 응답 없음'); return [...store.keys()]; },
       },
     };
     const el = () => new Proxy({ style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} },
@@ -665,6 +775,93 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
       ck('배선 — 전체 번들 요약: 통째 교체 안내 + 따로 넣은 조각 경고', rep().includes('로어북 전체와 정규식이 교체') && /따로 넣은 조각 \d+개/.test(rep()) && rep().includes('[번들 넣기]를 한 번 더'), rep().slice(0, 200));
       await els['sc-bundle-revert'].onclick();
       ck('배선 — [교체 되돌리기]', rep().includes('교체 전 상태로 복구'), rep().slice(0, 100));
+
+      // 최종 검토 — 검증에 막힌 계획에서 한 번 더 눌러도 고른 줄이 안 날아간다
+      const badP = { ...piece(1, (d) => { d.schema.map.locVar = 'nowhere'; }), id: 'b_badwire1' };
+      await els['sc-bundle-file'].onchange(fileEv(badP));
+      ck('배선 — 검증에 막힌 계획은 이유를 보인다', rep().includes('검증을 못 넘어요') && rep().includes('nowhere'), rep().slice(0, 160));
+      const snapW = JSON.stringify(world.char);
+      await els['sc-bundle-apply'].onclick();
+      ck('★ 배선 — 막힌 채 한 번 더 눌러도 무변화 · 요약과 고르기 단추가 남는다', JSON.stringify(world.char) === snapW && rep().includes('data-bkey=') && rep().includes('검증을 못 넘어'), rep().slice(0, 200));
+      // 최종 검토 — 요약을 본 뒤 캐릭터가 바뀌면 넣지 않는다
+      const okP = { simcoreBundle: 2, id: 'b_swap0001', rev: 1, name: '바꿔치기 시험', lorebook: [{ comment: '바꿔치기 로어', content: 'x' }] };
+      await els['sc-bundle-file'].onchange(fileEv(okP));
+      const keepId = world.char.chaId; world.char.chaId = 'c-other';
+      await els['sc-bundle-apply'].onclick();
+      ck('★ 배선 — 요약을 본 뒤 캐릭터가 바뀌면 넣지 않고 알린다 (조각)', rep().includes('캐릭터가 바뀌었어요') && !world.char.globalLore.some((l) => l.comment === '바꿔치기 로어'), rep().slice(0, 160));
+      world.char.chaId = keepId;
+      await els['sc-bundle-file'].onchange(fileEv(cp(oldBundle)));
+      world.char.chaId = 'c-other';
+      const snapO = JSON.stringify(world.char.globalLore);
+      await els['sc-bundle-apply'].onclick();
+      ck('★ 배선 — 요약을 본 뒤 캐릭터가 바뀌면 넣지 않고 알린다 (전체 번들)', rep().includes('캐릭터가 바뀌었어요') && JSON.stringify(world.char.globalLore) === snapO, rep().slice(0, 160));
+      world.char.chaId = keepId;
+      // 최종 검토 — 요약을 본 뒤 로어북이 바뀌면 새 계획을 다시 보여 준다
+      await els['sc-bundle-file'].onchange(fileEv(okP));
+      world.char.globalLore.push({ comment: '바꿔치기 로어', content: '그 사이 내가 만든 같은 이름' });
+      await els['sc-bundle-apply'].onclick();
+      ck('★ 배선 — 그 사이 내 봇이 바뀌면 바로 넣지 않고 새 요약(충돌 줄)을 보여 준다', rep().includes('바뀌었어요') && rep().includes('data-bkey="lore:바꿔치기 로어#0"')
+        && world.char.globalLore.find((l) => l.comment === '바꿔치기 로어').content === '그 사이 내가 만든 같은 이름', rep().slice(0, 200));
+      await fire('sc-bundle-report', 'click', btn({ bkey: 'lore:바꿔치기 로어#0', bpick: 'mine' }));
+      await els['sc-bundle-apply'].onclick();
+      ck('배선 — 새 요약에서 고르고 다시 누르면 들어간다 (내 것 유지)', rep().includes('넣기 완료') && world.char.globalLore.find((l) => l.comment === '바꿔치기 로어').content === '그 사이 내가 만든 같은 이름', rep().slice(0, 160));
+
+      // 최종 검토 — 고르기 화면은 그릴 때마다 캐릭터를 다시 읽는다 · 못 찾은 고르기
+      await fire('sc-bundle-report', 'click', btn({ bexp: 'piece' }));
+      world.char.globalLore.push({ comment: '방금 만든 로어', content: 'new' });
+      await fire('sc-bundle-picker', 'change', { type: 'checkbox', checked: true, dataset: { plore: 'lore:방금 만든 로어#0' } });
+      ck('★ 배선 — 고르기 화면이 뜬 뒤 만든 로어도 보이고 고를 수 있다', picker().includes('방금 만든 로어') && /data-plore="lore:방금 만든 로어#0" checked/.test(picker()) && picker().includes('이 조각만으로 설치돼요'), picker().slice(-400));
+      world.char.globalLore = world.char.globalLore.filter((l) => l.comment !== '방금 만든 로어');
+      await fire('sc-bundle-picker', 'change', { type: 'checkbox', checked: true, dataset: { plore: 'lore:바꿔치기 로어#0' } });
+      ck('★ 배선 — 고른 항목이 사라지면 말없이 빼지 않고 알린다 · 내보내기 잠금', picker().includes('못 찾았어요') && picker().includes('id="sc-piece-prune"') && /id="sc-piece-export"[^>]*disabled/.test(picker()), picker().slice(-500));
+      await fire('sc-bundle-picker', 'click', btn({}, 'sc-piece-prune'));
+      ck('배선 — [못 찾은 항목 빼기] → 다시 내보낼 수 있다', !picker().includes('못 찾았어요') && !/id="sc-piece-export"[^>]*disabled/.test(picker()), picker().slice(-300));
+      world.char.chaId = 'c-other';
+      await fire('sc-bundle-picker', 'change', { type: 'checkbox', checked: true, dataset: { ptab: 'map' } });
+      ck('배선 — 캐릭터가 바뀌면 고르기 화면을 닫는다', picker().includes('캐릭터가 바뀌어') && !picker().includes('sc-piece-export'), picker().slice(0, 120));
+      world.char.chaId = keepId;
+    }
+
+    // ── ⑦ 최종 검토에서 나온 것 (흐름) ──
+    {
+      const pz = (rev, content) => ({ simcoreBundle: 2, id: 'b_flow0001', rev, name: '흐름 시험', lorebook: [{ comment: '흐름 로어', content }] });
+      const r1f = await H.pieceApply(pz(1, 'v1'));
+      ck('지문에 형식을 적는다 (조각 = 2)', r1f.ok && JSON.parse(store.get('sim:bundle-base:c-recv:b_flow0001')).format === 2, r1f.html);
+      // 바뀌는 것이 없는 계획 — 백업 칸을 안 쓴다
+      const bkBefore = bkKeys().join(',');
+      const rSame = await H.pieceApply(pz(2, 'v1'));
+      ck('★ 바뀌는 것이 없으면 백업을 안 뜨고 설치 기록만 맞춘다', rSame.ok && bkKeys().join(',') === bkBefore && /바뀌는 것이 없어요/.test(rSame.html) && JSON.parse(store.get('sim:bundle-base:c-recv:b_flow0001')).rev === 2, rSame.html);
+      // 지문 읽기 실패 — 첫 설치로 떨어뜨리지 않고 멈춘다
+      world.char.globalLore.find((l) => l.comment === '흐름 로어').content = '내가 고친 것';
+      const snapF = JSON.stringify(world.char);
+      failKeys = true;
+      const rKeys = await H.pieceApply(pz(3, 'v1'));
+      const pKeys = await H.planFor(pz(3, 'v1'));
+      failKeys = false;
+      ck('★ 설치 기록을 못 읽으면 멈춘다 (내 수정을 "충돌 · 번들 것"으로 덮지 않는다)', rKeys.ok === false && /설치 기록/.test(rKeys.html) && JSON.stringify(world.char) === snapF && pKeys.ok === false, rKeys.html);
+      // 기대한 계획과 다르면 넣지 않는다
+      const planNow = await H.planFor(pz(3, 'v3'));
+      const rOther = await H.pieceApply(pz(3, 'v3'), { expect: { chaId: 'c-someone-else', sig: B.planSig(planNow) } });
+      const rStale = await H.pieceApply(pz(3, 'v3'), { expect: { chaId: 'c-recv', sig: 'stale' } });
+      ck('★ 기대한 캐릭터·계획과 다르면 넣지 않고 새 계획을 돌려준다', rOther.ok === false && rOther.changed === true && rStale.ok === false && rStale.changed === true && rStale.plan.ok && JSON.stringify(world.char) === snapF, JSON.stringify([rOther.html, rStale.html]));
+      const rGood = await H.pieceApply(pz(3, 'v3'), { expect: { chaId: planNow.chaId, sig: B.planSig(planNow) } });
+      ck('기대와 같으면 넣는다 (충돌 — 기본 번들 것)', rGood.ok && world.char.globalLore.find((l) => l.comment === '흐름 로어').content === 'v3' && planNow.chaId === 'c-recv', rGood.html);
+      // 전체 번들 — 이상한 id는 저장소 열쇠로 안 쓴다 · 지문 형식 1
+      await H.wholeApply({ ...cp(oldBundle), id: 'a b/..', rev: 2 });
+      ck('전체 번들의 id가 이상하면 지문을 안 남긴다', baseKeys().length === 0, baseKeys().join(','));
+      await H.wholeApply({ ...cp(oldBundle), id: 'b_whole002', rev: 2 });
+      ck('전체 번들의 지문 형식 = 1', JSON.parse(store.get('sim:bundle-base:c-recv:b_whole002')).format === 1, '');
+      const pFake = await H.planFor({ simcoreBundle: 2, id: 'b_whole002', rev: 3, name: '같은 id의 가짜 조각', lorebook: [{ comment: '가짜', content: 'x' }] });
+      ck('★ 전체 번들과 같은 id의 조각 — 봇 전체가 "제작자 삭제"로 안 뜬다', pFake.ok && pFake.lines.length === 1 && pFake.lines[0].kind === 'add', JSON.stringify(pFake.lines.map((l) => l.kind + ':' + l.key)));
+      // 레시피에 내용 해시
+      await H.pieceApply(piece(1));
+      const eS = await H.exportPiece({ tabs: [], items: {}, lore: ['lore:던전#0'], regex: [] }, { name: '해시 시험' });
+      const rcS = (await H.recipes()).find((r) => r.id === eS.data.id);
+      // 남이 준 글자는 화면에 그대로 안 나간다
+      const nasty = { simcoreBundle: 2, id: 'b_xss00001', rev: 1, name: '<img src=x onerror=1>', note: '"><script>alert(1)</script>', lorebook: [{ comment: '"><b onmouseover=1>', content: 'x' }] };
+      const nh = H.planHtml(await H.planFor(nasty), {});
+      ck('★ 요약 화면 — 번들이 준 이름·설명·로어 이름은 전부 이스케이프', !/<img|<script|<b onmouseover/.test(nh) && nh.includes('&lt;img') && nh.includes('&lt;script&gt;') && !/data-bkey="[^"]*"><b/.test(nh), nh.slice(0, 300));
+      ck('조각 레시피에 고른 로어의 내용 해시를 같이 적는다', eS.errors.length === 0 && rcS && rcS.sigs && typeof rcS.sigs.lore['lore:던전#0'] === 'string', JSON.stringify(rcS && rcS.sigs));
     }
 
     try { await global.__unload?.(); } catch { /* 무관 */ }

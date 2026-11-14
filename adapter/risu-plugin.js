@@ -39,7 +39,14 @@
 //   그 캐릭터의 지문을 지운다 — 조각이 넣은 것이 다른 길로 사라졌는데 지문만 남으면 다시 넣을 때 전부 "내가 지움"으로 판정된다.
 // - 이번 판의 전체 번들은 지문 저장까지다 — 전체 번들도 같은 엔진으로 "내 것 남기고 합치기"는 다음 판(v1.26.0).
 // - 편집기: `varReferenceIndex`·`TAB_SLICES`를 모듈 밖으로 내보낸다(조각 만들기가 쓴다). profile.js `keyed`도.
-// - 테스트: `테스트/test-bundle-piece.js` 180 (단위·지문 / 판정 표 11줄·공존·🔒·검증 실패 무변화 / 조각 만들기 / 가짜 리수 넣기·되돌리기·내보내기 / 패널 배선).
+// - [방어] 번들 파일은 남이 준 것이다 — `__proto__`·`constructor`·`prototype` 키가 든 조각은 거절하고 경로는 자기 속성만 따라간다(구현 뒤 검토에서 실측:
+//   파일을 고르기만 해도 Object.prototype이 바뀌었다). 내 쪽이 객체·id 목록인 자리에 값·null이 오는 조각도 거절(`rules: null` 한 줄에 정산·이벤트가 다 비었다).
+//   같은 이름 로어·정규식은 나온 순서가 아니라 내용(지문 해시 → 번들과 같은 내용 → 순서)으로 짝짓는다. 전체 번들의 지문은 조각 판정에 안 쓴다(지문에 format).
+//   요약을 본 뒤 캐릭터나 로어북이 바뀌었으면 넣지 않고 새 요약을 다시 보여 준다 · 설치 기록을 못 읽으면 첫 설치로 떨어뜨리지 않고 멈춘다.
+//   제작자 쪽: 구성에 있던 항목을 못 찾으면 말없이 빼지 않고 알린다([못 찾은 항목 빼기]) · 고르기 화면은 그릴 때마다 캐릭터를 다시 읽는다 ·
+//   레시피에 고른 로어의 내용 해시를 적어, 같은 이름이 끼어 번호가 밀려도 엉뚱한(비공개) 항목이 실리지 않는다.
+// - 스키마 목록의 새 항목은 번들에서 바로 앞이던 항목 뒤에 선다(없으면 끝) — 막 a1·a3 사이에 a2를 넣은 판이 a1·a3·a2가 되지 않게. 로어·정규식은 끝에.
+// - 테스트: `테스트/test-bundle-piece.js` 223 (단위·지문 / 판정 표 11줄·공존·🔒·검증 실패 무변화 / 조각 만들기 / 가짜 리수 넣기·되돌리기·내보내기 / 패널 배선 / 검토 수정).
 //
 // ── v1.24.1 ───────────────────────────────────────────────
 // **🗺️ 지도의 "현재 위치"가 이웃 장소 이름표에 덮이던 것.** 집 실기(아틀리에, 유저 2026-11-11): 공방 점 밑의 빨간 "현재 위치"가
@@ -3754,17 +3761,21 @@
   const bundleBaseKeyBase = (char) => `${BUNDLE_BASE_PREFIX}${char.chaId ?? char.name}:`;
   /** 이 캐릭터에 저장된 기준 지문들 — { 번들 id: { id, name, rev, at, units: { 열쇠: 해시 } } } */
   async function bundleBases(char) {
-    const out = {};
+    const out = Object.create(null); // 번들 id가 열쇠다 — 남이 준 글자라 프로토타입 없는 객체에 담는다
     const pre = bundleBaseKeyBase(char);
     for (const k of (await Risuai.pluginStorage.keys()).filter((x) => x.startsWith(pre))) {
-      try { const b = JSON.parse(await Risuai.pluginStorage.getItem(k)); if (b && b.units) out[k.slice(pre.length)] = b; }
+      const id = k.slice(pre.length);
+      if (!bundleMod.validBundleId(id)) continue;
+      try { const b = JSON.parse(await Risuai.pluginStorage.getItem(k)); if (b && b.units) out[id] = b; }
       catch { /* 깨진 지문은 없는 것으로 — 첫 설치 길로 떨어진다 */ }
     }
     return out;
   }
+  const charIdOf = (char) => String(char.chaId ?? char.name);
   async function saveBundleBase(char, data, units) {
     await Risuai.pluginStorage.setItem(bundleBaseKeyBase(char) + data.id, JSON.stringify({
-      id: data.id, name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, at: Date.now(), units,
+      // format — 전체 번들(1)의 지문을 조각(2) 판정에 쓰지 않게 가른다 (같은 id의 조각 파일이 봇 전체를 "제작자 삭제"로 만들 수 있었다)
+      id: data.id, format: data.simcoreBundle === 2 ? 2 : 1, name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, at: Date.now(), units,
     }));
   }
   /** 이 캐릭터의 지문을 전부 지운다 — 통째 교체·[캐릭터에서 제거]처럼 조각이 넣은 것이 다른 길로 사라질 때.
@@ -3840,12 +3851,15 @@
       } catch { /* 동봉 스키마 손상 — 없음으로 취급 */ }
       applyBundleToChar(char, data);
       await Risuai.setCharacter(char);
-      const settled = await bundleAfterWrite(bundled);
-      // 🧩 통째 교체는 조각이 넣은 것까지 갈아 끼운다 — 그 지문을 지우고(사본은 위 백업에), id가 있는 번들이면 자기 지문을 남긴다
+      // 🧩 통째 교체는 조각이 넣은 것까지 갈아 끼운다 — 그 지문을 지우고(사본은 위 백업에), id가 있는 번들이면 자기 지문을 남긴다.
+      // 캐릭터에 쓴 바로 뒤에 한다: 아래 뒷정리가 던져도 "넣은 것은 사라졌는데 지문만 남은" 상태가 안 되게
       try {
         await clearBundleBases(char);
-        if (typeof data.id === 'string' && data.id) await saveBundleBase(char, data, bundleMod.fingerprintOf(data));
+        if (bundleMod.validBundleId(data.id)) await saveBundleBase(char, data, bundleMod.fingerprintOf(data));
       } catch (e) { console.log('[simcore] 번들 지문 정리 실패:', e.message); }
+      let settled = false;
+      try { settled = await bundleAfterWrite(bundled); }
+      catch (e) { console.log('[simcore] 번들 교체 뒤 뒷정리 실패:', e.message); }
       const profKept = (char.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null).length;
       const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
       return { ok: true, html: `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
@@ -3862,41 +3876,60 @@
     }
   }
   /** 조각을 넣을 계획 — 캐릭터와 그 번들의 지문을 읽어 세운다. 아무것도 안 바꾼다 */
+  const BUNDLE_BASE_READ_FAIL = '설치 기록(기준 지문)을 읽지 못해 멈췄어요 — 이대로 넣으면 내가 고친 것이 "처음 넣는 것"으로 판정돼 덮일 수 있어요. 잠시 뒤 다시 해 주세요';
   async function bundlePlanFor(data, opts = {}) {
     const char = await Risuai.getCharacter();
     if (!char) return { ok: false, error: '캐릭터가 선택되지 않음' };
-    let bases = {};
-    try { bases = await bundleBases(char); } catch { bases = {}; }
-    return bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+    let bases;
+    try { bases = await bundleBases(char); } catch (e) { return { ok: false, error: `${BUNDLE_BASE_READ_FAIL} (${e.message})` }; }
+    const plan = bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+    plan.chaId = charIdOf(char); // 요약을 본 캐릭터 — 적용 직전에 같은 캐릭터·같은 계획인지 댄다
+    return plan;
   }
   /** 조각 넣기 — 백업(+지문 사본) → 병합 → 병합 스키마 검증(실패면 무변화) → 저장 → 되읽기·편집기·브리지 → 지문 저장 */
   async function bundlePieceApply(data, opts = {}) {
     try {
       const char = await Risuai.getCharacter();
       if (!char) return { ok: false, html: '<span class="status-bad">캐릭터가 선택되지 않음</span>' };
-      let bases = {};
-      try { bases = await bundleBases(char); } catch { bases = {}; }
+      const chaId = charIdOf(char);
+      // 지문 읽기 실패를 "지문 없음"으로 삼키지 않는다 — 첫 설치 길로 떨어지면 "내 수정 유지"가 "충돌 · 번들 것"이 돼 내 수정이 덮인다
+      let bases;
+      try { bases = await bundleBases(char); }
+      catch (e) { return { ok: false, html: `<span class="status-bad">${escapeText(BUNDLE_BASE_READ_FAIL)} (${escapeText(e.message)})</span>` }; }
       const plan = bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+      plan.chaId = chaId;
       if (!plan.ok) return { ok: false, plan, html: `<span class="status-bad">${escapeText(plan.error)}</span>` };
+      // 넣는 것은 화면에 보인 계획이 아니라 지금 캐릭터로 다시 세운 계획이다 — 그 사이 캐릭터나 로어북이 바뀌어 계획이 달라졌으면 넣지 않고 돌려준다
+      if (opts.expect && (opts.expect.chaId !== chaId || opts.expect.sig !== bundleMod.planSig(plan))) {
+        return { ok: false, changed: true, plan, html: '<span class="status-warn">요약을 본 뒤 캐릭터나 로어북이 바뀌었어요 — 아무것도 넣지 않았어요. 새 요약을 확인해 주세요.</span>' };
+      }
       if (plan.schemaErrors.length) {
         return { ok: false, plan, html: `<span class="status-bad">병합한 스키마가 검증을 못 넘어 아무것도 바꾸지 않았어요 (${plan.schemaErrors.length}건):<br>`
           + `${plan.schemaErrors.slice(0, 5).map(escapeText).join('<br>')}</span>` };
       }
+      if (!plan.lines.length) { // 바뀌는 것이 없다 — 백업 칸(최근 3개)을 쓰지 않고 설치 기록만 이 판으로 맞춘다
+        let saved = true;
+        try { await saveBundleBase(char, data, plan.fingerprint); } catch (e) { saved = false; console.log('[simcore] 번들 지문 저장 실패:', e.message); }
+        return { ok: true, plan, html: `<span class="status-ok">✓ ${escapeText(bundleMod.summaryText(plan))}${saved ? ` · 설치 기록만 r${plan.rev}로 맞췄어요` : ''}</span>` };
+      }
       await bundleBackup(char, bases);
       bundleMod.applyPlanToChar(char, plan);
       await Risuai.setCharacter(char);
+      // 지문은 캐릭터에 쓴 바로 뒤에 — 아래 뒷정리가 던져도 넣은 것과 지문이 어긋나지 않게
+      let fpSaved = true;
+      try { await saveBundleBase(char, data, plan.fingerprint); }
+      catch (e) { fpSaved = false; console.log('[simcore] 번들 지문 저장 실패:', e.message); }
       let merged = null;
       if (plan.result.schemaChanged) {
         try { merged = JSON.parse(char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT).content); } catch { merged = null; }
       }
-      const settled = await bundleAfterWrite(merged);
-      let fpSaved = true;
-      try { await saveBundleBase(char, data, plan.fingerprint); }
-      catch (e) { fpSaved = false; console.log('[simcore] 번들 지문 저장 실패:', e.message); }
+      let settled = false;
+      try { settled = await bundleAfterWrite(merged); }
+      catch (e) { console.log('[simcore] 조각 넣기 뒤 뒷정리 실패:', e.message); }
       const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
       return { ok: true, plan, html: `<span class="status-ok">✓ 넣기 완료 — ${escapeText(bundleMod.summaryText(plan))}`
         + `${merged ? (settled ? ' · 시스템 인식됨' : ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요') : ''}`
-        + `${fpSaved ? '' : ' · ⚠ 기준 지문을 저장하지 못했어요 — 이 조각의 다음 판은 처음 넣는 것처럼 물어요'}`
+        + `${fpSaved ? '' : ' · ⚠ 설치 기록(기준 지문)을 저장하지 못했어요 — 이 조각의 다음 판은 처음 넣는 것처럼 물을 수 있어요'}`
         + `${profBroken.length ? ` · ⚠ 새 기본 판에 못 얹는 프로필 ${profBroken.length}개(${profBroken.slice(0, 3).map(escapeText).join(', ')}) — 그 판의 채팅은 기본 판으로 돌아요` : ''}`
         + ' · 넣기 전 상태는 [교체 되돌리기]로 돌아가요</span>' };
     } catch (e) {
@@ -4001,7 +4034,8 @@
     const built = bundleMod.buildPiece(char, picks, { id, rev, name: info.name, note: info.note });
     if (built.errors.length) return built;
     const keep = { tabs: [...(picks.tabs || [])], items: JSON.parse(JSON.stringify(picks.items || {})), lore: [...(picks.lore || [])], regex: [...(picks.regex || [])] };
-    try { await saveBundleRecipe(char, { id, kind: 'piece', name: built.data.name, note: built.data.note || '', rev, picks: keep }); }
+    // sigs — 고른 로어·정규식의 내용 해시. 같은 이름 항목이 끼어 번호(#n)가 밀려도 다음에 내용으로 따라간다
+    try { await saveBundleRecipe(char, { id, kind: 'piece', name: built.data.name, note: built.data.note || '', rev, picks: keep, sigs: bundleMod.pickSigs(char, keep) }); }
     catch (e) { console.log('[simcore] 조각 구성 저장 실패:', e.message); }
     return built;
   }
@@ -4011,9 +4045,10 @@
     if (data && data.simcoreBundle === 2) {
       const bad = bundleMod.pieceShapeError(data);
       if (bad) return { error: bad };
+      const picks = bundleMod.picksFromPiece(data, char); // 같은 이름 로어는 조각 안 번호가 아니라 내용으로 내 봇에서 찾는다
       recipe = { id: data.id, kind: 'piece', name: String(data.name || '조각'), note: typeof data.note === 'string' ? data.note : '',
-        rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, picks: bundleMod.picksFromPiece(data) };
-    } else if (data && data.simcoreBundle === 1 && typeof data.id === 'string' && data.id) {
+        rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, picks, sigs: bundleMod.pickSigs(char, picks) };
+    } else if (data && data.simcoreBundle === 1 && bundleMod.validBundleId(data.id)) {
       recipe = { id: data.id, kind: 'whole', name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1 };
     } else return { error: 'id가 든 번들 파일이 아니에요 — v1.25.0부터 내보낸 번들·조각 파일을 골라 주세요' };
     await saveBundleRecipe(char, recipe);
@@ -4078,7 +4113,8 @@
       + `<div style="margin-top:4px;">${built.errors.length
         ? `<span class="status-bad">⚠ 이대로는 내보낼 수 없어요:<br>${built.errors.slice(0, 6).map(escapeText).join('<br>')}${built.errors.length > 6 ? `<br>외 ${built.errors.length - 6}건` : ''}</span>`
         : '<span class="status-ok">✓ 이 조각만으로 설치돼요 (검증 통과) — 값(진행 상태)은 안 실리고, 받는 쪽에서 시작값으로 서요</span>'}</div>`
-      + `<div style="margin-top:8px;display:flex;gap:8px;"><button id="sc-piece-export"${built.errors.length ? ' disabled' : ''}>내보내기 r${Number(st.rev) || 1}</button><button id="sc-piece-close">닫기</button></div>`
+      + `<div style="margin-top:8px;display:flex;gap:8px;"><button id="sc-piece-export"${built.errors.length ? ' disabled' : ''}>내보내기 r${Number(st.rev) || 1}</button>`
+      + `${(built.missing || []).length ? '<button id="sc-piece-prune">못 찾은 항목 빼기</button>' : ''}<button id="sc-piece-close">닫기</button></div>`
       + '</div>';
   }
   // 테스트 배수구 (__simcoreDrainTurn과 같은 결) — 순수 로직과 흐름만 노출, 화면은 실기 확인
@@ -9884,7 +9920,7 @@ count(목록)  has(목록, "항목")</pre>
         rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
       }
     }
-    function renderPiecePicker() {
+    async function renderPiecePicker() {
       const el = pickerEl();
       if (!el) return;
       if (!piecePick) { el.innerHTML = ''; return; }
@@ -9893,19 +9929,29 @@ count(목록)  has(목록, "항목")</pre>
       if (nameEl) piecePick.name = nameEl.value;
       if (noteEl) piecePick.note = noteEl.value;
       const open = [...el.querySelectorAll('details[open]')].map((d) => d.dataset.pfold);
-      const built = bundleMod.buildPiece(piecePick.char, piecePick.picks, { id: piecePick.id || 'b_preview', rev: piecePick.rev, name: piecePick.name, note: piecePick.note });
-      el.innerHTML = bundlePickerHtml(piecePick.pk, built, { picks: piecePick.picks, name: piecePick.name, note: piecePick.note, rev: piecePick.rev, open });
+      // 그릴 때마다 캐릭터를 다시 읽는다 — 이 화면은 패널을 닫았다 열어도 남아서, 연 순간의 사본으로 내보내면 그 뒤 고친 로어·스키마가 빠진다
+      const pick = piecePick;
+      const char = await Risuai.getCharacter();
+      if (piecePick !== pick) return;
+      if (!char || String(char.chaId ?? char.name) !== pick.chaId) {
+        piecePick = null;
+        el.innerHTML = '<span class="status-warn">캐릭터가 바뀌어 조각 고르기를 닫았어요 — [번들 내보내기]부터 다시 해 주세요.</span>';
+        return;
+      }
+      pick.char = char;
+      const built = bundleMod.buildPiece(char, pick.picks, { id: pick.id || 'b_preview', rev: pick.rev, name: pick.name, note: pick.note });
+      el.innerHTML = bundlePickerHtml(bundleMod.pickables(char), built, { picks: pick.picks, name: pick.name, note: pick.note, rev: pick.rev, open });
     }
-    function openPiecePicker(char, recipe) {
-      const p = (recipe && recipe.picks) || {};
-      piecePick = { char, pk: bundleMod.pickables(char), id: recipe ? recipe.id : null, rev: (recipe ? Number(recipe.rev) || 0 : 0) + 1,
-        name: (recipe && recipe.name) || '', note: (recipe && recipe.note) || '',
-        picks: { tabs: [...(p.tabs || [])], items: JSON.parse(JSON.stringify(p.items || {})), lore: [...(p.lore || [])], regex: [...(p.regex || [])] } };
+    async function openPiecePicker(char, recipe) {
+      // 저장된 구성은 지금 봇에 다시 맞춘다 — 같은 이름 로어가 끼어 번호가 밀렸으면 내용 해시로 따라간다
+      const p = recipe && recipe.picks ? bundleMod.relocatePicks(char, recipe.picks, recipe.sigs) : { tabs: [], items: {}, lore: [], regex: [] };
+      piecePick = { char, chaId: String(char.chaId ?? char.name), id: recipe ? recipe.id : null, rev: (recipe ? Number(recipe.rev) || 0 : 0) + 1,
+        name: (recipe && recipe.name) || '', note: (recipe && recipe.note) || '', picks: p };
       const el = pickerEl();
       if (el) el.innerHTML = '';
-      renderPiecePicker();
+      await renderPiecePicker();
     }
-    pickerEl().addEventListener('change', (ev) => {
+    pickerEl().addEventListener('change', async (ev) => {
       const t = ev.target;
       if (!piecePick || !t || t.type !== 'checkbox') return;
       const tog = (arr, v) => { const at = arr.indexOf(v); if (t.checked && at < 0) arr.push(v); if (!t.checked && at >= 0) arr.splice(at, 1); };
@@ -9914,24 +9960,28 @@ count(목록)  has(목록, "항목")</pre>
       else if (t.dataset.plore) tog(piecePick.picks.lore, t.dataset.plore);
       else if (t.dataset.pregex) tog(piecePick.picks.regex, t.dataset.pregex);
       else return;
-      renderPiecePicker();
+      await renderPiecePicker();
     });
     pickerEl().addEventListener('click', async (ev) => {
       const t = ev.target && ev.target.closest ? ev.target.closest('button') : null;
       if (!t || !piecePick) return;
-      if (t.id === 'sc-piece-close') { piecePick = null; renderPiecePicker(); return; }
+      if (t.id === 'sc-piece-close') { piecePick = null; await renderPiecePicker(); return; }
+      if (t.id === 'sc-piece-prune') { piecePick.picks = bundleMod.prunePicks(piecePick.char, piecePick.picks); await renderPiecePicker(); return; }
       if (t.id !== 'sc-piece-export') return;
       const rep = bundleRep();
       try {
-        renderPiecePicker(); // 이름·설명 칸의 글을 상태로
-        const r = await bundleExportPiece(piecePick.char, piecePick.picks, { id: piecePick.id, name: piecePick.name, note: piecePick.note });
-        if (r.errors.length) { rep.innerHTML = `<span class="status-bad">내보낼 수 없어요 — ${escapeText(r.errors[0])}</span>`; return; }
+        await renderPiecePicker(); // 이름·설명 칸의 글을 상태로 + 캐릭터를 다시 읽는다
+        const pick = piecePick;
+        if (!pick) return;
+        const r = await bundleExportPiece(pick.char, pick.picks, { id: pick.id, name: pick.name, note: pick.note });
+        if (piecePick !== pick) return; // 내보내는 사이 닫았다
+        if (r.errors.length) { rep.innerHTML = `<span class="status-bad">내보낼 수 없어요 — ${escapeText(r.errors[0])}</span>`; await renderPiecePicker(); return; }
         downloadJson(r.data, `simcore-piece-${fileSafe(r.data.name)}-r${r.data.rev}.json`);
         const sN = r.data.schema ? bundleMod.schemaUnits(r.data.schema).length : 0;
         rep.innerHTML = `<span class="status-ok">✓ 조각 내보내기 완료 — '${escapeText(r.data.name)}' r${r.data.rev} · 스키마 단위 ${sN}개`
           + ` · 로어북 ${(r.data.lorebook || []).length}개 · 정규식 ${(r.data.regex || []).length}개. 받는 분은 💾 세이브 탭의 [번들 넣기]로 넣어요 (v1.25.0 이상).</span>`;
-        piecePick.id = r.data.id; piecePick.rev = r.data.rev + 1;
-        renderPiecePicker();
+        pick.id = r.data.id; pick.rev = r.data.rev + 1;
+        await renderPiecePicker();
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">조각 내보내기 실패: ${escapeText(e.message)}</span>`;
       }
@@ -9948,7 +9998,7 @@ count(목록)  has(목록, "항목")</pre>
         if (r.error) { rep.innerHTML = `<span class="status-bad">${escapeText(r.error)}</span>`; return; }
         if (r.recipe.kind === 'piece') {
           rep.innerHTML = `<span class="status-ok">✓ '${escapeText(r.recipe.name)}' r${r.recipe.rev}의 구성을 되살렸어요 — 아래에서 확인하고 내보내면 r${r.recipe.rev + 1}이에요</span>`;
-          openPiecePicker(char, r.recipe);
+          await openPiecePicker(char, r.recipe);
         } else {
           rep.innerHTML = `<span class="status-ok">✓ 전체 번들 '${escapeText(r.recipe.name)}'의 id를 이었어요 — 다음 [전체 번들] 내보내기는 r${r.recipe.rev + 1}이에요</span>`;
         }
@@ -9996,6 +10046,7 @@ count(목록)  has(목록, "항목")</pre>
       if (bundlePending !== p) return;
       if (!plan.ok) { bundlePending = null; bundleRep().innerHTML = `<span class="status-bad">${escapeText(plan.error)}</span>`; return; }
       p.until = Date.now() + 60000;
+      p.chaId = plan.chaId; p.sig = bundleMod.planSig(plan);
       bundleRep().innerHTML = bundlePlanHtml(plan, { fresh: p.fresh, restOpen: p.restOpen });
     }
     async function showBundlePlan(data, kind) {
@@ -10020,6 +10071,7 @@ count(목록)  has(목록, "항목")</pre>
       let keepN = 0, pieceN = 0;
       try {
         const c0 = await Risuai.getCharacter();
+        if (c0) bundlePending.chaId = String(c0.chaId ?? c0.name);
         const inc = new Set(data.lorebook.map((l) => l && l.comment));
         keepN = (c0?.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null && !inc.has(l.comment)).length;
         pieceN = c0 ? Object.keys(await bundleBases(c0)).filter((id) => id !== data.id).length : 0;
@@ -10048,7 +10100,7 @@ count(목록)  has(목록, "항목")</pre>
           if (!char) { bundleRep().innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
           const recipe = t.dataset.bexpRecipe ? (await bundleRecipes(char)).find((r) => r.id === t.dataset.bexpRecipe && r.kind === 'piece') : null;
           bundleRep().innerHTML = '<span class="status-ok">아래에서 실을 것을 골라 주세요 — 고른 항목이 쓰는 변수는 자동으로 따라와요.</span>';
-          openPiecePicker(char, recipe || null);
+          await openPiecePicker(char, recipe || null);
           return;
         }
         if (!bundlePending || bundlePending.kind !== 'piece') return;
@@ -10069,9 +10121,26 @@ count(목록)  has(목록, "항목")</pre>
       const rep = bundleRep();
       const p = bundlePending;
       bundlePending = null;
-      const r = p.kind === 'piece'
-        ? await bundlePieceApply(p.data, { choices: p.choices, fresh: p.fresh })
-        : await bundleWholeApply(p.data);
+      const SWAPPED = '<span class="status-warn">요약을 본 뒤 캐릭터가 바뀌었어요 — 아무것도 넣지 않았어요. 이 캐릭터에 넣으려면 파일을 다시 골라 주세요.</span>';
+      if (p.kind !== 'piece') {
+        // 패널을 닫고 다른 봇으로 옮겨 다시 열어도 보고 칸과 대기 상태는 남는다 — 요약을 본 캐릭터가 아니면 넣지 않는다
+        const c = await Risuai.getCharacter();
+        if (p.chaId != null && (!c || String(c.chaId ?? c.name) !== p.chaId)) { rep.innerHTML = SWAPPED; return; }
+        const r = await bundleWholeApply(p.data);
+        rep.innerHTML = r.html;
+        if (r.ok) renderPanel();
+        return;
+      }
+      const r = await bundlePieceApply(p.data, { choices: p.choices, fresh: p.fresh, expect: { chaId: p.chaId, sig: p.sig } });
+      if (!r.ok && r.plan && r.plan.ok) {
+        if (r.plan.chaId !== p.chaId) { rep.innerHTML = SWAPPED; return; }
+        // 계획이 달라졌거나 검증에 막혔다 — 고른 줄을 지킨 채 요약을 다시 보여 주고 한 번 더 누르게 한다
+        bundlePending = p;
+        p.until = Date.now() + 60000;
+        p.sig = bundleMod.planSig(r.plan);
+        rep.innerHTML = (r.changed ? r.html + '<br>' : '') + bundlePlanHtml(r.plan, { fresh: p.fresh, restOpen: p.restOpen });
+        return;
+      }
       rep.innerHTML = r.html;
       if (r.ok) renderPanel();
     }

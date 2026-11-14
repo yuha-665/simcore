@@ -304,5 +304,5 @@ module.exports = {
   PROFILE_KEY, BASE_COMMENT, PROFILE_PREFIX, NAME_MAX, PROFILE_MAX, DESC_MAX,
   isSchemaLore, profileNameOf, profileComment, checkProfileName,
   diffSchema, applyOverlay, entryContent, parseEntry, readProfile, readProfiles, findProfile,
-  summarizeOverlay, stripOverlayNotes, stable, shapeFill, shapeSig,
+  summarizeOverlay, stripOverlayNotes, stable, shapeFill, shapeSig, keyed,
 };

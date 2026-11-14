@@ -536,11 +536,12 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
   const world = { char: null };
   const store = new Map();
   let failBaseWrites = false, failKeys = false;
+  const stale = { arm: 0, left: 0, char: null }; // 저장 직후 옛 캐릭터를 돌려주는 리수 (v0.85.1 되읽기 레이스)
   {
     world.char = { ...hostChar(), chaId: 'c-recv', triggerscript: [] };
     global.Risuai = {
-      getCharacter: async () => cp(world.char),
-      setCharacter: async (c) => { world.char = cp(c); },
+      getCharacter: async () => { if (stale.left > 0 && stale.char) { stale.left--; return cp(stale.char); } return cp(world.char); },
+      setCharacter: async (c) => { stale.char = cp(world.char); stale.left = stale.arm; world.char = cp(c); },
       getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
       getChatFromIndex: async () => ({ id: 'ch1', message: [] }), setChatToIndex: async () => {},
       registerButton: async () => {}, unregisterUIPart: async () => {}, registerSetting: async () => {},
@@ -862,6 +863,29 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
       const nh = H.planHtml(await H.planFor(nasty), {});
       ck('★ 요약 화면 — 번들이 준 이름·설명·로어 이름은 전부 이스케이프', !/<img|<script|<b onmouseover/.test(nh) && nh.includes('&lt;img') && nh.includes('&lt;script&gt;') && !/data-bkey="[^"]*"><b/.test(nh), nh.slice(0, 300));
       ck('조각 레시피에 고른 로어의 내용 해시를 같이 적는다', eS.errors.length === 0 && rcS && rcS.sigs && typeof rcS.sigs.lore['lore:던전#0'] === 'string', JSON.stringify(rcS && rcS.sigs));
+    }
+
+    // ── ⑧ 실기 제보 (2026-11-14) — 심코어 없던 봇에 조각을 넣고 되돌려도 시스템이 그대로 남아 보였다 ──
+    {
+      const PS = globalThis.__simcoreProfile;
+      world.char = { chaId: 'c-bare', name: '맨 봇', globalLore: [{ comment: '세계관', content: '원래 로어' }], customscript: [], triggerscript: [] };
+      const bare = cp(world.char);
+      const rB = await H.pieceApply(piece(1));
+      ck('심코어 없던 봇 — 조각이 들어가고 시스템이 선다', rB.ok && PS.state().panelStatus.state === 'ok' && !!(PS.state().schema && PS.state().schema.map), rB.html);
+      stale.arm = 1;
+      const rvB = await H.revert();
+      stale.arm = 0; stale.left = 0;
+      ck('★ 심코어 없던 봇 되돌리기 — 캐릭터는 넣기 전 그대로', rvB.ok && P.stable(world.char.globalLore) === P.stable(bare.globalLore) && P.stable(world.char.customscript) === P.stable(bare.customscript), rvB.html);
+      ck('★ 심코어 없던 봇 되돌리기 — 리수 되읽기가 늦어도 시스템이 내려간다', PS.state().panelStatus.state === 'no-schema' && PS.state().schema == null && PS.state().session == null, JSON.stringify(PS.state().panelStatus));
+      ck('되돌리기 — 시스템이 내려갔다고 알린다', /시스템도 내려갔어요/.test(rvB.html), rvB.html);
+      // 스키마가 있던 봇 — 되읽기가 늦어도 넣기 전 판으로 돈다
+      world.char = { ...hostChar(), chaId: 'c-recv2', triggerscript: [] };
+      await H.revert().catch(() => {});
+      const rH = await H.pieceApply(piece(1));
+      stale.arm = 1;
+      const rvH = await H.revert();
+      stale.arm = 0; stale.left = 0;
+      ck('★ 스키마 있던 봇 되돌리기 — 되읽기가 늦어도 넣기 전 판으로 돈다', rH.ok && rvH.ok && PS.state().panelStatus.state === 'ok' && !PS.state().schema.map && PS.state().schema.vars.some((v) => v.id === 'hp'), JSON.stringify(PS.state().panelStatus));
     }
 
     try { await global.__unload?.(); } catch { /* 무관 */ }

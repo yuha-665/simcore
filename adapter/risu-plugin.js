@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.25.0
-//@display-name SimCore (시뮬 엔진) v1.25.0 🧩 번들 조각 — 골라서 배포, 내 것 남기고 업데이트
+//@version 1.25.1
+//@display-name SimCore (시뮬 엔진) v1.25.1 🧩 번들 조각 — 골라서 배포, 내 것 남기고 업데이트 (되돌리기 수리)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,14 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.25.1 ───────────────────────────────────────────────
+// **[교체 되돌리기]를 눌러도 넣은 것이 그대로 남아 보이던 것.** 실기 제보(2026-11-14): 심코어를 안 쓰던 봇에 지도 조각을 넣고 되돌렸는데 지도가 그대로였다.
+// 캐릭터(로어북·정규식)는 되돌아갔다 — 플러그인이 되돌린 직후 캐릭터를 다시 읽을 때 리수가 옛 캐릭터를 돌려줘(setCharacter 되읽기 레이스, v0.85.1과 같은 사연)
+// 방금 뺀 스키마를 도로 들고 있었다. 넣기·설치 경로는 이 시차를 막았는데 되돌리기만 빠져 있었다(옛 전체 번들 되돌리기도 같은 구멍 — 전엔 되돌린 판에도
+// 스키마가 있어 눈에 덜 띄었다). 이제 되읽은 것이 되돌린 판(또는 스키마 없음)인지 확인하고 아니면 350ms씩 세 번까지 다시 읽는다.
+// - 보고 줄: 넣기 전에 시스템이 없던 봇이면 '시스템도 내려갔어요'를 붙인다 · 세 번 뒤에도 옛 판이면 '리수 반영이 늦어요 — 패널을 닫았다 다시 열어'.
+// - 테스트: test-bundle-piece ⑧ (가짜 리수가 저장 직후 옛 캐릭터를 한 번 돌려준다 — 심코어 없던 봇 · 스키마 있던 봇) 228.
 //
 // ── v1.25.0 ───────────────────────────────────────────────
 // **🧩 번들 조각 — 원하는 것만 골라 배포하고, 다음 판은 내 것을 남긴 채 얹는다.** 커뮤니티 제보(2026-11-14, 유저 전달): "번들을 배포할 때
@@ -3959,12 +3967,28 @@
       await Risuai.pluginStorage.removeItem(keys[keys.length - 1]); // 쓴 백업은 소모 (되돌리기 반복 = 한 단계씩)
       charKey = null;
       await loadForCurrentChar();
+      // 되읽기 레이스 방어 (v1.25.1, v0.85.1과 같은 사연) — setCharacter 직후의 getCharacter가 옛 캐릭터를 돌려주면 방금 되돌린 스키마가 도로 로드된다.
+      // 실기 제보: 심코어 없던 봇에 조각을 넣고 되돌렸는데 지도가 그대로 남아 보였다(캐릭터는 되돌아갔고 플러그인만 옛 판을 들고 있었다).
+      // 무엇으로 되돌렸는지는 아니까, 되읽은 것이 그것인지 확인하고 아니면 잠깐 뒤 다시 읽는다.
+      const entry = (bk.lorebook || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      let restored = null, want = entry ? null : 'none';
+      try { if (entry) { restored = JSON.parse(entry.content); want = sig(restored); } } catch { restored = null; want = null; }
+      const got = () => (panelStatus && panelStatus.state === 'no-schema' ? 'none' : sig((profileList.length ? baseSchema : schema) ?? {}));
+      if (want !== null) {
+        for (let i = 0; i < 3 && got() !== want; i++) {
+          console.log('[simcore] 되돌리기 되읽기 불일치 — 재시도', i + 1);
+          await new Promise((res) => setTimeout(res, 350));
+          charKey = null;
+          await loadForCurrentChar();
+        }
+      }
+      const late = want !== null && got() !== want;
       // 복구본에 ⚙simcore가 있으면 편집기 작업본도 맞춘다 (적용 경로와 같은 규약)
-      try {
-        const entry = (bk.lorebook || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
-        if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok && editor) loadIntoEditor(p, ''); }
-      } catch { /* 복구본 스키마 손상 — 편집기는 그대로 */ }
-      return { ok: true, html: `<span class="status-ok">✓ 교체 전 상태로 복구 — 로어북 ${(bk.lorebook || []).length}개 · 정규식 ${(bk.regex || []).length}개</span>` };
+      try { if (restored && validateSchema(restored).ok && editor) loadIntoEditor(restored, ''); }
+      catch { /* 복구본 스키마 손상 — 편집기는 그대로 */ }
+      return { ok: true, html: `<span class="status-ok">✓ 교체 전 상태로 복구 — 로어북 ${(bk.lorebook || []).length}개 · 정규식 ${(bk.regex || []).length}개`
+        + `${entry ? '' : ' · 넣기 전엔 시스템(⚙simcore)이 없던 봇이라 시스템도 내려갔어요'}`
+        + `${late ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요' : ''}</span>` };
     } catch (e) {
       return { ok: false, html: `<span class="status-bad">되돌리기 실패: ${escapeText(e.message)}</span>` };
     }

@@ -3471,6 +3471,7 @@
   const questMod = SimCore.require('quest');       // 의뢰판 (v1.7.9)
   const mapMod = SimCore.require('map');           // 지도 (v1.23.0)
   const profileMod = SimCore.require('profile');   // 🔀 프로필 (v1.24.0) — 한 봇에 판 여러 벌, 채팅마다 하나
+  const bundleMod = SimCore.require('bundle');     // 🧩 번들 조각 · 업데이트 병합 (v1.25.0)
   const choiceMod = SimCore.require('choice');     // 보조 갈림길 (v1.8.0) — 지연 경로 적용 (v1.14.6)
   const { makeUnstableRng } = SimCore.require('rng');
 
@@ -3715,9 +3716,224 @@
     }
     return char;
   }
-  // 테스트 배수구 (__simcoreDrainTurn과 같은 결) — 순수 로직만 노출, UI는 실기 확인
-  try { globalThis.__simcoreBundle = { bundleFromChar, bundleShapeError, applyBundleToChar }; }
-  catch { /* 전역이 막힌 환경 */ }
+  // ── 🧩 번들 조각 · 업데이트 병합 (v1.25.0) — 순수 로직은 core/bundle.js, 여기는 저장과 흐름 ──
+  // 번들마다 "이 번들이 준 단위들의 해시"(기준 지문)를 캐릭터별로 저장한다. 같은 번들의 다음 판이 오면 기준·내 것·번들을 대조해
+  // 내가 고친 것은 남기고 제작자가 고친 것만 얹는다. 조각(simcoreBundle: 2)은 자기 지문에 있던 단위만 지울 수 있어 여러 조각이 공존한다.
+  // 전체 번들(1)은 이번 판에선 지문만 저장한다 — 캐릭터에 쓰는 결과는 통째 교체 그대로 (같은 엔진으로 합치는 건 다음 판).
+  const BUNDLE_BK_PREFIX = 'sim:bundle-backup:';
+  const bundleBkKeyBase = (char) => `${BUNDLE_BK_PREFIX}${char.chaId ?? char.name}:`;
+  const BUNDLE_BASE_PREFIX = 'sim:bundle-base:';
+  const bundleBaseKeyBase = (char) => `${BUNDLE_BASE_PREFIX}${char.chaId ?? char.name}:`;
+  /** 이 캐릭터에 저장된 기준 지문들 — { 번들 id: { id, name, rev, at, units: { 열쇠: 해시 } } } */
+  async function bundleBases(char) {
+    const out = {};
+    const pre = bundleBaseKeyBase(char);
+    for (const k of (await Risuai.pluginStorage.keys()).filter((x) => x.startsWith(pre))) {
+      try { const b = JSON.parse(await Risuai.pluginStorage.getItem(k)); if (b && b.units) out[k.slice(pre.length)] = b; }
+      catch { /* 깨진 지문은 없는 것으로 — 첫 설치 길로 떨어진다 */ }
+    }
+    return out;
+  }
+  async function saveBundleBase(char, data, units) {
+    await Risuai.pluginStorage.setItem(bundleBaseKeyBase(char) + data.id, JSON.stringify({
+      id: data.id, name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, at: Date.now(), units,
+    }));
+  }
+  /** 이 캐릭터의 지문을 전부 지운다 — 통째 교체·[캐릭터에서 제거]처럼 조각이 넣은 것이 다른 길로 사라질 때.
+   *  지문만 남으면 같은 조각을 다시 넣을 때 전부 "내가 지움"으로 판정돼 아무것도 안 들어간다 */
+  async function clearBundleBases(char) {
+    const pre = bundleBaseKeyBase(char);
+    for (const k of (await Risuai.pluginStorage.keys()).filter((x) => x.startsWith(pre))) await Risuai.pluginStorage.removeItem(k);
+  }
+  /** 교체·병합 전 백업 (캐릭터당 최근 3개) — 스키마 백업과 같은 결의 안전망. 지문 사본도 같이 넣어 [교체 되돌리기]가 함께 돌린다 */
+  let bundleBkLast = 0;
+  async function bundleBackup(char, bases) {
+    try {
+      bundleBkLast = Math.max(Date.now(), bundleBkLast + 1); // 같은 밀리초에 두 번 떠도 앞 백업을 안 덮는다
+      await Risuai.pluginStorage.setItem(bundleBkKeyBase(char) + bundleBkLast, JSON.stringify({
+        lorebook: char.globalLore || [], regex: char.customscript || [], bases: bases || {},
+      }));
+      const keys = (await Risuai.pluginStorage.keys())
+        .filter((k) => k.startsWith(bundleBkKeyBase(char))).sort();
+      for (const k of keys.slice(0, -3)) await Risuai.pluginStorage.removeItem(k);
+    } catch (e) { console.log('[simcore] 번들 백업 실패:', e.message); }
+  }
+  /** 캐릭터에 쓴 뒤의 뒷정리 — 되읽기 대조 · 편집기 작업본 · 루아 브리지. 통째 교체와 조각 병합이 같이 쓴다. 반환: 시스템이 그 스키마로 도는가 */
+  async function bundleAfterWrite(bundled) {
+    charKey = null;
+    await loadForCurrentChar();
+    // 되읽기 레이스 방어 (v0.85.1과 동일 사연) — setCharacter 직후의 getCharacter가 옛
+    // 캐릭터를 돌려주면 "⚙simcore 없음"으로 오판된다. 실사고(v1.0.6): 갓 임포트한
+    // 원본 카드에 번들을 넣었는데 시스템이 안 뜨고, 편집기(빈 작업본)의 [캐릭터에 적용]은
+    // "변수가 하나도 정의되지 않음"으로 거부 — 유저가 세이브 가져오기로 우회해야 했다.
+    if (bundled) {
+      const want = sig(bundled);
+      const gotBase = () => sig((profileList.length ? baseSchema : schema) ?? {}); // 🔀 이 채팅이 프로필이면 schema는 덧칠 얹은 판 (v1.24.0)
+      for (let i = 0; i < 3 && gotBase() !== want; i++) {
+        await new Promise((res) => setTimeout(res, 350));
+        charKey = null;
+        await loadForCurrentChar();
+      }
+      // 편집기 작업본도 번들 스키마로 — 세이브 가져오기와 같은 규약. 안 하면 빈/옛
+      // 작업본이 더티 배너로 남아 [지금 적용]이 방금 넣은 스키마를 도로 지우려 든다.
+      if (editor) loadIntoEditor(bundled, '');
+    }
+    // 브리지 재굽기 (v1.14.6) — 번들이 스키마를 바꿨는데 브리지는 옛 템플릿이면 옛 선택지·옛 변수로 보조를 부른다
+    if (bundled) {
+      try {
+        const c2 = await Risuai.getCharacter();
+        const set = c2 ? bridgeSetForChar(c2) : null; // 🔀 프로필이 있으면 판마다 (v1.24.0)
+        if (c2 && set && hasLuaBridge(c2) && bridgeIsStale(c2, set)) { installLuaBridgeOn(c2, set); await Risuai.setCharacter(c2); console.log('[simcore] 번들 교체 뒤 루아 브리지 다시 구움'); }
+      } catch (e) { console.log('[simcore] 번들 교체 뒤 브리지 재굽기 실패:', e.message); }
+    }
+    return !!bundled && sig((profileList.length ? baseSchema : schema) ?? {}) === sig(bundled);
+  }
+  /** 번들 칸에 온 파일이 무엇인가 — { kind: 'piece'|'whole' } 또는 { error } */
+  function bundleKindOf(data) {
+    const hint = bundleMod.schemaFileHint(data);
+    if (hint) return { error: hint };
+    if (data && data.simcoreBundle === 2) { const bad = bundleMod.pieceShapeError(data); return bad ? { error: bad } : { kind: 'piece' }; }
+    const bad = bundleShapeError(data);
+    return bad ? { error: bad } : { kind: 'whole' };
+  }
+  /** 전체 번들(형식 1) 통째 교체 — v1.0.5부터의 흐름 그대로. 캐릭터에 쓰는 결과는 안 바뀌고, 지문만 정리한다 (v1.25.0) */
+  async function bundleWholeApply(data) {
+    try {
+      const char = await Risuai.getCharacter();
+      if (!char) return { ok: false, html: '<span class="status-bad">캐릭터가 선택되지 않음</span>' };
+      let bases = {};
+      try { bases = await bundleBases(char); } catch { bases = {}; }
+      await bundleBackup(char, bases);
+      // 번들 속 스키마를 미리 읽어 둔다 — 적용 검증(되읽기 대조)과 편집기 갱신에 쓴다
+      let bundled = null;
+      try {
+        const entry = data.lorebook.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+        if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok) bundled = p; }
+      } catch { /* 동봉 스키마 손상 — 없음으로 취급 */ }
+      applyBundleToChar(char, data);
+      await Risuai.setCharacter(char);
+      const settled = await bundleAfterWrite(bundled);
+      // 🧩 통째 교체는 조각이 넣은 것까지 갈아 끼운다 — 그 지문을 지우고(사본은 위 백업에), id가 있는 번들이면 자기 지문을 남긴다
+      try {
+        await clearBundleBases(char);
+        if (typeof data.id === 'string' && data.id) await saveBundleBase(char, data, bundleMod.fingerprintOf(data));
+      } catch (e) { console.log('[simcore] 번들 지문 정리 실패:', e.message); }
+      const profKept = (char.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null).length;
+      const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
+      return { ok: true, html: `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
+        + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개로 교체` : ''}`
+        + `${Array.isArray(data.regexAdd) && data.regexAdd.length ? ` · 정규식 ${data.regexAdd.length}개 덧붙임 (카드 정규식 ${(char.customscript || []).length - data.regexAdd.length}개 유지)` : ''}`
+        + `${settled ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요'
+          : bundled ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요'
+            : data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT)
+              ? ' · ⚠ 동봉 ⚙simcore가 검증을 못 넘어 시스템이 꺼졌습니다 — [교체 되돌리기]로 복구'
+              : ' · ⚠ 번들에 ⚙simcore가 없어 시스템 로어북이 제거되었습니다 — [교체 되돌리기]로 복구'}`
+        + `${profKept ? ` · 🔀 프로필 ${profKept}개` : ''}${profBroken.length ? ` · ⚠ 새 기본 판에 못 얹는 프로필 ${profBroken.length}개(${profBroken.slice(0, 3).map(escapeText).join(', ')}) — 그 판의 채팅은 기본 판으로 돌아요` : ''}</span>` };
+    } catch (e) {
+      return { ok: false, html: `<span class="status-bad">교체 실패: ${escapeText(e.message)}</span>` };
+    }
+  }
+  /** 조각을 넣을 계획 — 캐릭터와 그 번들의 지문을 읽어 세운다. 아무것도 안 바꾼다 */
+  async function bundlePlanFor(data, opts = {}) {
+    const char = await Risuai.getCharacter();
+    if (!char) return { ok: false, error: '캐릭터가 선택되지 않음' };
+    let bases = {};
+    try { bases = await bundleBases(char); } catch { bases = {}; }
+    return bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+  }
+  /** 조각 넣기 — 백업(+지문 사본) → 병합 → 병합 스키마 검증(실패면 무변화) → 저장 → 되읽기·편집기·브리지 → 지문 저장 */
+  async function bundlePieceApply(data, opts = {}) {
+    try {
+      const char = await Risuai.getCharacter();
+      if (!char) return { ok: false, html: '<span class="status-bad">캐릭터가 선택되지 않음</span>' };
+      let bases = {};
+      try { bases = await bundleBases(char); } catch { bases = {}; }
+      const plan = bundleMod.planPiece({ char, data, base: bases[data && data.id] || null, choices: opts.choices || {}, fresh: !!opts.fresh });
+      if (!plan.ok) return { ok: false, plan, html: `<span class="status-bad">${escapeText(plan.error)}</span>` };
+      if (plan.schemaErrors.length) {
+        return { ok: false, plan, html: `<span class="status-bad">병합한 스키마가 검증을 못 넘어 아무것도 바꾸지 않았어요 (${plan.schemaErrors.length}건):<br>`
+          + `${plan.schemaErrors.slice(0, 5).map(escapeText).join('<br>')}</span>` };
+      }
+      await bundleBackup(char, bases);
+      bundleMod.applyPlanToChar(char, plan);
+      await Risuai.setCharacter(char);
+      let merged = null;
+      if (plan.result.schemaChanged) {
+        try { merged = JSON.parse(char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT).content); } catch { merged = null; }
+      }
+      const settled = await bundleAfterWrite(merged);
+      let fpSaved = true;
+      try { await saveBundleBase(char, data, plan.fingerprint); }
+      catch (e) { fpSaved = false; console.log('[simcore] 번들 지문 저장 실패:', e.message); }
+      const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
+      return { ok: true, plan, html: `<span class="status-ok">✓ 넣기 완료 — ${escapeText(bundleMod.summaryText(plan))}`
+        + `${merged ? (settled ? ' · 시스템 인식됨' : ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요') : ''}`
+        + `${fpSaved ? '' : ' · ⚠ 기준 지문을 저장하지 못했어요 — 이 조각의 다음 판은 처음 넣는 것처럼 물어요'}`
+        + `${profBroken.length ? ` · ⚠ 새 기본 판에 못 얹는 프로필 ${profBroken.length}개(${profBroken.slice(0, 3).map(escapeText).join(', ')}) — 그 판의 채팅은 기본 판으로 돌아요` : ''}`
+        + ' · 넣기 전 상태는 [교체 되돌리기]로 돌아가요</span>' };
+    } catch (e) {
+      return { ok: false, html: `<span class="status-bad">넣기 실패: ${escapeText(e.message)}</span>` };
+    }
+  }
+  /** 교체·넣기 되돌리기 — 로어북·정규식과 함께 지문도 그때 것으로 */
+  async function bundleRevert() {
+    try {
+      const char = await Risuai.getCharacter();
+      if (!char) return { ok: false, html: '<span class="status-bad">캐릭터가 선택되지 않음</span>' };
+      const keys = (await Risuai.pluginStorage.keys())
+        .filter((k) => k.startsWith(bundleBkKeyBase(char))).sort();
+      if (!keys.length) return { ok: false, html: '<span class="status-warn">이 캐릭터의 번들 교체 백업이 없음</span>' };
+      const raw = await Risuai.pluginStorage.getItem(keys[keys.length - 1]);
+      const bk = JSON.parse(raw);
+      char.globalLore = bk.lorebook || [];
+      char.customscript = bk.regex || [];
+      await Risuai.setCharacter(char);
+      // 🧩 지문도 그때 것으로 (v1.25.0) — 옛 백업(지문 사본 없음)은 지문을 건드리지 않는다
+      if (bk.bases && typeof bk.bases === 'object') {
+        try {
+          await clearBundleBases(char);
+          for (const [id, b] of Object.entries(bk.bases)) await Risuai.pluginStorage.setItem(bundleBaseKeyBase(char) + id, JSON.stringify(b));
+        } catch (e) { console.log('[simcore] 번들 지문 되돌리기 실패:', e.message); }
+      }
+      await Risuai.pluginStorage.removeItem(keys[keys.length - 1]); // 쓴 백업은 소모 (되돌리기 반복 = 한 단계씩)
+      charKey = null;
+      await loadForCurrentChar();
+      // 복구본에 ⚙simcore가 있으면 편집기 작업본도 맞춘다 (적용 경로와 같은 규약)
+      try {
+        const entry = (bk.lorebook || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+        if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok && editor) loadIntoEditor(p, ''); }
+      } catch { /* 복구본 스키마 손상 — 편집기는 그대로 */ }
+      return { ok: true, html: `<span class="status-ok">✓ 교체 전 상태로 복구 — 로어북 ${(bk.lorebook || []).length}개 · 정규식 ${(bk.regex || []).length}개</span>` };
+    } catch (e) {
+      return { ok: false, html: `<span class="status-bad">되돌리기 실패: ${escapeText(e.message)}</span>` };
+    }
+  }
+  /** 조각 계획의 요약 화면 — 요약 한 줄 + 제작자 설명 + 줄마다 [번들 것]/[내 것]. 충돌·검증에 걸린 줄은 펼친 채, 나머지는 접어 둔다 */
+  function bundlePlanHtml(plan, opts = {}) {
+    const L = bundleMod.LINE_LABELS;
+    const btn = (ln, pick, text) => `<button data-bkey="${escapeText(ln.key)}" data-bpick="${pick}" style="padding:1px 8px;font-size:12px;${ln.choice === pick ? 'font-weight:700;outline:2px solid currentColor;' : 'opacity:.6;'}">${text}</button>`;
+    const row = (ln) => `<div style="margin:3px 0;"><b>${L[ln.kind]}</b> ${escapeText(ln.label)}`
+      + `${ln.why ? ` <span style="opacity:.7">— ${escapeText(ln.why)}</span>` : ''} `
+      + `${ln.locked ? '<span style="opacity:.7">— 보호 항목이라 내 것으로 둬요 (풀려면 편집기에서 🔒 해제)</span>' : btn(ln, 'bundle', '번들 것') + ' ' + btn(ln, 'mine', '내 것')}</div>`;
+    const hot = new Set(plan.errorKeys);
+    const open = plan.lines.filter((ln) => ln.kind === 'conflict' || hot.has(ln.key));
+    const rest = plan.lines.filter((ln) => !open.includes(ln));
+    return `<span class="status-warn">🧩 ${escapeText(bundleMod.summaryText(plan))}</span>`
+      + `${plan.note ? `<div style="margin:4px 0;opacity:.85">제작자 설명: ${escapeText(plan.note)}</div>` : ''}`
+      + `${plan.downgrade ? `<div class="status-warn">⚠ 설치된 판보다 낮은 판이에요 (r${plan.rev} &lt; r${plan.installedRev}) — 그래도 넣을 수는 있어요</div>` : ''}`
+      + `${plan.schemaErrors.length ? `<div class="status-bad">⚠ 이대로 합치면 스키마가 검증을 못 넘어요 — 아래 줄에서 [번들 것]/[내 것]을 바꿔 보세요:<br>${plan.schemaErrors.slice(0, 5).map(escapeText).join('<br>')}</div>` : ''}`
+      + open.map(row).join('')
+      + `${rest.length ? `<details${opts.restOpen ? ' open' : ''}><summary>나머지 ${rest.length}줄 — 펼쳐서 하나씩 바꿀 수 있어요</summary>${rest.map(row).join('')}</details>` : ''}`
+      + '<div style="margin-top:6px;">내가 따로 만든 것은 그대로 남아요. [번들 넣기]를 한 번 더 누르면 넣어요 (60초 안에 · 넣기 전 상태는 자동 백업).'
+      + `${opts.fresh ? ' 지금은 설치 기록을 무시하고 처음 넣는 것처럼 계획했어요. <button data-bfresh="0" style="padding:1px 8px;font-size:12px;">업데이트로 돌아가기</button>'
+        : plan.installedRev != null ? ' 넣었던 것이 사라져 다시 안 들어가면 <button data-bfresh="1" style="padding:1px 8px;font-size:12px;">처음부터 다시 넣기</button>' : ''}</div>`;
+  }
+  // 테스트 배수구 (__simcoreDrainTurn과 같은 결) — 순수 로직과 흐름만 노출, 화면은 실기 확인
+  try {
+    globalThis.__simcoreBundle = { bundleFromChar, bundleShapeError, applyBundleToChar,
+      planFor: bundlePlanFor, pieceApply: bundlePieceApply, wholeApply: bundleWholeApply, revert: bundleRevert,
+      bases: async () => bundleBases(await Risuai.getCharacter()), kindOf: bundleKindOf, planHtml: bundlePlanHtml };
+  } catch { /* 전역이 막힌 환경 */ }
 
   // 보조 모델에 붙이는 짧은 유저 턴. system 한 통만 보내면 안 되는 프로바이더가 있다.
   // 구글 계열(버텍스 Gemini)은 system을 contents가 아니라 systemInstruction으로 빼내므로
@@ -8953,7 +9169,7 @@
               인사말·이미지·트리거는 건드리지 않아요.</p>
             <div class="sc-card-body" style="display:flex;gap:8px;flex-wrap:wrap;">
               <button id="sc-bundle-export">번들 내보내기</button>
-              <button id="sc-bundle-apply">번들 가져와 교체</button>
+              <button id="sc-bundle-apply">번들 넣기</button>
               <button id="sc-bundle-revert">교체 되돌리기</button>
               <input type="file" id="sc-bundle-file" accept=".json" style="display:none">
             </div>
@@ -9256,6 +9472,8 @@ count(목록)  has(목록, "항목")</pre>
       }
       char.globalLore = char.globalLore.filter((l) => l.comment !== SCHEMA_LORE_COMMENT);
       char.triggerscript = (char.triggerscript || []).filter((t) => t.comment !== LUA_BRIDGE_COMMENT);
+      // 🧩 번들 지문도 지운다 (v1.25.0) — 조각이 넣은 스키마 단위가 같이 사라지는데 지문만 남으면, 그 조각을 다시 넣을 때 전부 "내가 지움"으로 판정된다
+      try { await clearBundleBases(char); } catch (e) { console.log('[simcore] 번들 지문 정리 실패:', e.message); }
       // 🔀 프로필(⚙simcore:이름)은 남긴다 (v1.24.0) — 키가 절대 안 걸리는 꺼진 항목이라 무해하고, 기본 판을 다시 설치하면 그대로 이어진다
       const keptProfiles = char.globalLore.filter((l) => profileMod.profileNameOf(l) != null).length;
       await Risuai.setCharacter(char);
@@ -9462,10 +9680,8 @@ count(목록)  has(목록, "항목")</pre>
       renderPanel();
     };
 
-    // ── 개조 번들 (v1.0.5) ──
+    // ── 개조 번들 (v1.0.5) · 🧩 조각 (v1.25.0) ──
     const bundleRep = () => document.getElementById('sc-bundle-report');
-    const BUNDLE_BK_PREFIX = 'sim:bundle-backup:';
-    const bundleBkKeyBase = (char) => `${BUNDLE_BK_PREFIX}${char.chaId ?? char.name}:`;
     document.getElementById('sc-bundle-export').onclick = async () => {
       const rep = bundleRep();
       try {
@@ -9492,7 +9708,9 @@ count(목록)  has(목록, "항목")</pre>
     };
     // 교체는 파괴적이라 패널 안 2단 확인 (규칙 #6 — 패널 위 host alert 금지). 파일을 먼저
     // 읽어 형식·개수를 보여준 상태에서 같은 버튼을 한 번 더 눌러야 실제로 갈아 끼운다.
-    let bundlePending = null; // { data, until }
+    // 🧩 조각(v1.25.0)은 교체가 아니라 병합 — 요약 줄마다 [번들 것]/[내 것]을 바꿀 수 있고, 바꿀 때마다 다시 계획한다.
+    let bundlePending = null; // { data, kind: 'piece'|'whole', until, choices, fresh, restOpen }
+    let bundleHeld = null;    // 더티 작업본 때문에 멈춘 파일 — [작업본 버리고 계속]이 이어 간다
     document.getElementById('sc-bundle-apply').onclick = () => {
       if (bundlePending && Date.now() < bundlePending.until) return runBundleApply();
       // 만료 후 클릭이 조용히 파일창만 다시 열면 "적용이 안 된다"로 읽힌다 (실사고 v1.0.7 —
@@ -9508,129 +9726,100 @@ count(목록)  has(목록, "항목")</pre>
       if (!file) return;
       try {
         const data = JSON.parse(await file.text());
-        const bad = bundleShapeError(data);
-        if (bad) { rep.innerHTML = `<span class="status-bad">${escapeText(bad)}</span>`; return; }
-        bundlePending = { data, until: Date.now() + 60000 };
-        const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
-        // 적용 전에 알린다 (v1.14.9) — 전엔 ⚙simcore 없는 번들이 현재 시스템까지 지우고 "시스템은 그대로"라고 했고, 검증 실패 스키마도 그대로 설치됐다
-        let schemaWarn = '';
-        if (hasSchema) {
-          try {
-            const p = JSON.parse(data.lorebook.find((l) => l.comment === SCHEMA_LORE_COMMENT).content);
-            const v = validateSchema(p);
-            if (!v.ok) schemaWarn = ` · <b>⚠ 동봉 ⚙simcore가 검증 실패(${v.errors.length}건)</b> — 적용하면 시스템이 꺼집니다`;
-          } catch { schemaWarn = ' · <b>⚠ 동봉 ⚙simcore JSON 손상</b> — 적용하면 시스템이 꺼집니다'; }
-        } else if (schema) schemaWarn = ' · <b>⚠ 번들에 ⚙simcore가 없어 현재 시스템 로어북이 제거</b>됩니다';
-        // 🔀 유저가 만든 프로필 중 번들에 없는 것은 남는다 (v1.24.0)
-        let keepN = 0;
-        try {
-          const c0 = await Risuai.getCharacter();
-          const inc = new Set(data.lorebook.map((l) => l && l.comment));
-          keepN = (c0?.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null && !inc.has(l.comment)).length;
-        } catch { keepN = 0; }
-        rep.innerHTML = `<span class="status-warn">'${escapeText(data.name)}' — 로어북 ${data.lorebook.length}개`
-          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}${schemaWarn}.<br>`
-          + '이 캐릭터의 <b>로어북 전체와 정규식이 교체</b>됩니다 (이전 상태는 자동 백업). '
-          + (keepN ? `🔀 이 캐릭터에서 만든 프로필 ${keepN}개는 남겨요. ` : '')
-          + '[번들 가져와 교체]를 한 번 더 누르면 적용해요 (60초 안에).</span>';
+        const k = bundleKindOf(data);
+        if (k.error) { rep.innerHTML = `<span class="status-bad">${escapeText(k.error)}</span>`; return; }
+        // 적용 안 한 편집기 작업본 (v1.25.0) — 병합의 "내 것"은 캐릭터에 설치된 판이지 작업본이 아니고, 넣은 뒤 작업본은 결과로 바뀐다.
+        // 전엔 말없이 작업본을 덮었다
+        if (editorDiffersFromInstalled()) {
+          bundleHeld = { data, kind: k.kind };
+          rep.innerHTML = '<span class="status-warn">편집기에 아직 캐릭터에 적용하지 않은 작업본이 있어요 — 번들을 넣으면 작업본이 넣은 결과로 바뀌어요. '
+            + '먼저 편집 작업공간에서 [캐릭터에 적용]을 하거나 <button data-bdiscard="1" style="padding:1px 8px;font-size:12px;">작업본 버리고 계속</button></span>';
+          return;
+        }
+        await showBundlePlan(data, k.kind);
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">번들 읽기 실패: ${escapeText(e.message)}</span>`;
       }
     };
+    async function renderPiecePlan() {
+      const p = bundlePending;
+      const plan = await bundlePlanFor(p.data, { choices: p.choices, fresh: p.fresh });
+      if (bundlePending !== p) return;
+      if (!plan.ok) { bundlePending = null; bundleRep().innerHTML = `<span class="status-bad">${escapeText(plan.error)}</span>`; return; }
+      p.until = Date.now() + 60000;
+      bundleRep().innerHTML = bundlePlanHtml(plan, { fresh: p.fresh, restOpen: p.restOpen });
+    }
+    async function showBundlePlan(data, kind) {
+      const rep = bundleRep();
+      if (kind === 'piece') {
+        bundlePending = { data, kind, until: Date.now() + 60000, choices: {}, fresh: false, restOpen: false };
+        await renderPiecePlan();
+        return;
+      }
+      bundlePending = { data, kind, until: Date.now() + 60000 };
+      const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
+      // 적용 전에 알린다 (v1.14.9) — 전엔 ⚙simcore 없는 번들이 현재 시스템까지 지우고 "시스템은 그대로"라고 했고, 검증 실패 스키마도 그대로 설치됐다
+      let schemaWarn = '';
+      if (hasSchema) {
+        try {
+          const p = JSON.parse(data.lorebook.find((l) => l.comment === SCHEMA_LORE_COMMENT).content);
+          const v = validateSchema(p);
+          if (!v.ok) schemaWarn = ` · <b>⚠ 동봉 ⚙simcore가 검증 실패(${v.errors.length}건)</b> — 적용하면 시스템이 꺼집니다`;
+        } catch { schemaWarn = ' · <b>⚠ 동봉 ⚙simcore JSON 손상</b> — 적용하면 시스템이 꺼집니다'; }
+      } else if (schema) schemaWarn = ' · <b>⚠ 번들에 ⚙simcore가 없어 현재 시스템 로어북이 제거</b>됩니다';
+      // 🔀 유저가 만든 프로필 중 번들에 없는 것은 남는다 (v1.24.0)
+      let keepN = 0, pieceN = 0;
+      try {
+        const c0 = await Risuai.getCharacter();
+        const inc = new Set(data.lorebook.map((l) => l && l.comment));
+        keepN = (c0?.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null && !inc.has(l.comment)).length;
+        pieceN = c0 ? Object.keys(await bundleBases(c0)).filter((id) => id !== data.id).length : 0;
+      } catch { keepN = 0; }
+      rep.innerHTML = `<span class="status-warn">'${escapeText(data.name)}' — 로어북 ${data.lorebook.length}개`
+        + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}${schemaWarn}.<br>`
+        + '이 캐릭터의 <b>로어북 전체와 정규식이 교체</b>됩니다 (이전 상태는 자동 백업). '
+        + (keepN ? `🔀 이 캐릭터에서 만든 프로필 ${keepN}개는 남겨요. ` : '')
+        + (pieceN ? `🧩 따로 넣은 조각 ${pieceN}개의 내용도 같이 갈려요 — 교체 뒤 그 조각을 다시 넣어 주세요. ` : '')
+        + '[번들 넣기]를 한 번 더 누르면 적용해요 (60초 안에).</span>';
+    }
+    // 요약 화면 안의 단추 — 줄 바꾸기 · 처음부터 다시 넣기 · 작업본 버리고 계속 (보고 칸은 통째로 다시 그려지므로 위임으로 받는다)
+    bundleRep().addEventListener('click', async (ev) => {
+      const t = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+      if (!t) return;
+      try {
+        if (t.dataset.bdiscard) {
+          const held = bundleHeld; bundleHeld = null;
+          if (held) await showBundlePlan(held.data, held.kind);
+          return;
+        }
+        if (!bundlePending || bundlePending.kind !== 'piece') return;
+        if (t.dataset.bkey) {
+          bundlePending.choices[t.dataset.bkey] = t.dataset.bpick === 'mine' ? 'mine' : 'bundle';
+          if (t.closest('details')) bundlePending.restOpen = true;
+          await renderPiecePlan();
+        } else if (t.dataset.bfresh != null) {
+          bundlePending.fresh = t.dataset.bfresh === '1';
+          bundlePending.choices = {};
+          await renderPiecePlan();
+        }
+      } catch (e) {
+        bundleRep().innerHTML = `<span class="status-bad">번들 계획 실패: ${escapeText(e.message)}</span>`;
+      }
+    });
     async function runBundleApply() {
       const rep = bundleRep();
-      const { data } = bundlePending;
+      const p = bundlePending;
       bundlePending = null;
-      try {
-        const char = await Risuai.getCharacter();
-        if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
-        // 교체 전 백업 (캐릭터당 최근 3개) — 스키마 백업과 같은 결의 안전망
-        try {
-          const bk = bundleBkKeyBase(char) + Date.now();
-          await Risuai.pluginStorage.setItem(bk, JSON.stringify({
-            lorebook: char.globalLore || [], regex: char.customscript || [],
-          }));
-          const keys = (await Risuai.pluginStorage.keys())
-            .filter((k) => k.startsWith(bundleBkKeyBase(char))).sort();
-          for (const k of keys.slice(0, -3)) await Risuai.pluginStorage.removeItem(k);
-        } catch (e) { console.log('[simcore] 번들 백업 실패:', e.message); }
-        // 번들 속 스키마를 미리 읽어 둔다 — 적용 검증(되읽기 대조)과 편집기 갱신에 쓴다
-        let bundled = null;
-        try {
-          const entry = data.lorebook.find((l) => l.comment === SCHEMA_LORE_COMMENT);
-          if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok) bundled = p; }
-        } catch { /* 동봉 스키마 손상 — 없음으로 취급 */ }
-        applyBundleToChar(char, data);
-        await Risuai.setCharacter(char);
-        charKey = null;
-        await loadForCurrentChar();
-        // 되읽기 레이스 방어 (v0.85.1과 동일 사연) — setCharacter 직후의 getCharacter가 옛
-        // 캐릭터를 돌려주면 "⚙simcore 없음"으로 오판된다. 실사고(v1.0.6): 갓 임포트한
-        // 원본 카드에 번들을 넣었는데 시스템이 안 뜨고, 편집기(빈 작업본)의 [캐릭터에 적용]은
-        // "변수가 하나도 정의되지 않음"으로 거부 — 유저가 세이브 가져오기로 우회해야 했다.
-        if (bundled) {
-          const want = sig(bundled);
-          const gotBase = () => sig((profileList.length ? baseSchema : schema) ?? {}); // 🔀 이 채팅이 프로필이면 schema는 덧칠 얹은 판 (v1.24.0)
-          for (let i = 0; i < 3 && gotBase() !== want; i++) {
-            await new Promise((res) => setTimeout(res, 350));
-            charKey = null;
-            await loadForCurrentChar();
-          }
-          // 편집기 작업본도 번들 스키마로 — 세이브 가져오기와 같은 규약. 안 하면 빈/옛
-          // 작업본이 더티 배너로 남아 [지금 적용]이 방금 넣은 스키마를 도로 지우려 든다.
-          if (editor) loadIntoEditor(bundled, '');
-        }
-        // 브리지 재굽기 (v1.14.6) — 번들이 스키마를 바꿨는데 브리지는 옛 템플릿이면 옛 선택지·옛 변수로 보조를 부른다
-        if (bundled) {
-          try {
-            const c2 = await Risuai.getCharacter();
-            const set = c2 ? bridgeSetForChar(c2) : null; // 🔀 프로필이 있으면 판마다 (v1.24.0)
-            if (c2 && set && hasLuaBridge(c2) && bridgeIsStale(c2, set)) { installLuaBridgeOn(c2, set); await Risuai.setCharacter(c2); console.log('[simcore] 번들 교체 뒤 루아 브리지 다시 구움'); }
-          } catch (e) { console.log('[simcore] 번들 교체 뒤 브리지 재굽기 실패:', e.message); }
-        }
-        const settled = bundled && sig((profileList.length ? baseSchema : schema) ?? {}) === sig(bundled);
-        const profKept = (char.globalLore || []).filter((l) => profileMod.profileNameOf(l) != null).length;
-        const profBroken = profileList.filter((x) => !x.ok).map((x) => x.name);
-        rep.innerHTML = `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
-          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개로 교체` : ''}`
-          + `${Array.isArray(data.regexAdd) && data.regexAdd.length ? ` · 정규식 ${data.regexAdd.length}개 덧붙임 (카드 정규식 ${(char.customscript || []).length - data.regexAdd.length}개 유지)` : ''}`
-          + `${settled ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요'
-            : bundled ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요'
-              : data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT)
-                ? ' · ⚠ 동봉 ⚙simcore가 검증을 못 넘어 시스템이 꺼졌습니다 — [교체 되돌리기]로 복구'
-                : ' · ⚠ 번들에 ⚙simcore가 없어 시스템 로어북이 제거되었습니다 — [교체 되돌리기]로 복구'}`
-          + `${profKept ? ` · 🔀 프로필 ${profKept}개` : ''}${profBroken.length ? ` · ⚠ 새 기본 판에 못 얹는 프로필 ${profBroken.length}개(${profBroken.slice(0, 3).map(escapeText).join(', ')}) — 그 판의 채팅은 기본 판으로 돌아요` : ''}</span>`;
-        renderPanel();
-      } catch (e) {
-        rep.innerHTML = `<span class="status-bad">교체 실패: ${escapeText(e.message)}</span>`;
-      }
+      const r = p.kind === 'piece'
+        ? await bundlePieceApply(p.data, { choices: p.choices, fresh: p.fresh })
+        : await bundleWholeApply(p.data);
+      rep.innerHTML = r.html;
+      if (r.ok) renderPanel();
     }
     document.getElementById('sc-bundle-revert').onclick = async () => {
-      const rep = bundleRep();
-      try {
-        const char = await Risuai.getCharacter();
-        if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
-        const keys = (await Risuai.pluginStorage.keys())
-          .filter((k) => k.startsWith(bundleBkKeyBase(char))).sort();
-        if (!keys.length) { rep.innerHTML = '<span class="status-warn">이 캐릭터의 번들 교체 백업이 없음</span>'; return; }
-        const raw = await Risuai.pluginStorage.getItem(keys[keys.length - 1]);
-        const bk = JSON.parse(raw);
-        char.globalLore = bk.lorebook || [];
-        char.customscript = bk.regex || [];
-        await Risuai.setCharacter(char);
-        await Risuai.pluginStorage.removeItem(keys[keys.length - 1]); // 쓴 백업은 소모 (되돌리기 반복 = 한 단계씩)
-        charKey = null;
-        await loadForCurrentChar();
-        // 복구본에 ⚙simcore가 있으면 편집기 작업본도 맞춘다 (적용 경로와 같은 규약)
-        try {
-          const entry = (bk.lorebook || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
-          if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok && editor) loadIntoEditor(p, ''); }
-        } catch { /* 복구본 스키마 손상 — 편집기는 그대로 */ }
-        rep.innerHTML = `<span class="status-ok">✓ 교체 전 상태로 복구 — 로어북 ${(bk.lorebook || []).length}개 · 정규식 ${(bk.regex || []).length}개</span>`;
-        renderPanel();
-      } catch (e) {
-        rep.innerHTML = `<span class="status-bad">되돌리기 실패: ${escapeText(e.message)}</span>`;
-      }
+      const r = await bundleRevert();
+      bundleRep().innerHTML = r.html;
+      if (r.ok) renderPanel();
     };
   }
 

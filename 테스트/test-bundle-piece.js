@@ -421,6 +421,123 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
     ck('★ 만든 지도 조각이 빈 봇에 설치된다', pIn.ok && !pIn.schemaErrors.length && pIn.lines.every((l) => l.kind === 'add'), pIn.error || (pIn.schemaErrors || []).join(' / '));
   }
 
+  // ── ④ 가짜 리수 — 넣기 · 되돌리기 · 지문 (빌드된 simcore.plugin.js를 굴린다) ──
+  const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
+  const world = { char: null };
+  const store = new Map();
+  let failBaseWrites = false;
+  {
+    world.char = { ...hostChar(), chaId: 'c-recv', triggerscript: [] };
+    global.Risuai = {
+      getCharacter: async () => cp(world.char),
+      setCharacter: async (c) => { world.char = cp(c); },
+      getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
+      getChatFromIndex: async () => ({ id: 'ch1', message: [] }), setChatToIndex: async () => {},
+      registerButton: async () => {}, unregisterUIPart: async () => {}, registerSetting: async () => {},
+      addRisuReplacer: async (k, fn) => { (global.__hooks ??= {})[k] = fn; },
+      addRisuScriptHandler: async (k, fn) => { (global.__hooks ??= {})[k] = fn; },
+      registerBodyIntercepter: async () => ({ id: 'x' }),
+      showContainer: async () => {}, alert: async () => {}, getArgument: async () => 'off',
+      onUnload: async (fn) => { global.__unload = fn; }, runLLMModel: async () => ({ success: false }),
+      pluginStorage: {
+        getItem: async (k) => (store.has(k) ? store.get(k) : null),
+        setItem: async (k, v) => { if (failBaseWrites && k.startsWith('sim:bundle-base:')) throw new Error('저장소 가득'); store.set(k, v); },
+        removeItem: async (k) => { store.delete(k); },
+        keys: async () => [...store.keys()],
+      },
+    };
+    const el = () => new Proxy({ style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} },
+      children: [], appendChild() {}, append() {}, remove() {}, setAttribute() {}, addEventListener() {},
+      querySelector: () => null, querySelectorAll: () => [] }, { get: (t, k) => (k in t ? t[k] : undefined), set: () => true });
+    global.document = { createElement: el, getElementById: () => null, body: el(), querySelector: () => null, querySelectorAll: () => [], head: el(), addEventListener() {} };
+    global.window = { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) };
+    (0, eval)(src);
+    await sleep(150);
+    const H = globalThis.__simcoreBundle;
+    ck('배수구 — 넣기 흐름 함수들', !!H && ['planFor', 'pieceApply', 'wholeApply', 'revert', 'bases', 'kindOf', 'planHtml'].every((k) => typeof H[k] === 'function'), H ? Object.keys(H).join(',') : '없음');
+    const baseKeys = () => [...store.keys()].filter((k) => k.startsWith('sim:bundle-base:c-recv:'));
+    const bkKeys = () => [...store.keys()].filter((k) => k.startsWith('sim:bundle-backup:c-recv:')).sort();
+    const wSchema = () => schemaOf(world.char);
+
+    // 형식 가리기
+    ck('번들 칸 — 조각 / 전체 / 스키마 파일 / 엉뚱한 파일', H.kindOf(piece(1)).kind === 'piece' && H.kindOf({ simcoreBundle: 1, lorebook: [{ comment: 'x' }] }).kind === 'whole'
+      && /JSON 관리자/.test(H.kindOf(cp(HOST)).error || '') && /개조 번들 파일이 아님/.test(H.kindOf({ a: 1 }).error || ''), JSON.stringify([H.kindOf(cp(HOST)), H.kindOf({ a: 1 })]));
+
+    // 조각 넣기
+    const plan1 = await H.planFor(piece(1));
+    ck('계획 — 캐릭터를 읽어 세운다 (전부 추가, 아직 아무것도 안 바뀜)', plan1.ok && plan1.lines.every((l) => l.kind === 'add') && !world.char.globalLore.some((l) => l.comment === '던전') && !baseKeys().length, '');
+    const html1 = H.planHtml(plan1, {});
+    ck('요약 화면 — 요약 줄(이름·rev·갈래 개수)', html1.includes('오라리오 지도') && html1.includes('r1') && html1.includes('추가 ' + plan1.lines.length), html1.slice(0, 200));
+    ck('요약 화면 — 설명과 단추', html1.includes('원작 링크') && html1.includes('data-bkey="schema:map.locVar"') && html1.includes('data-bpick="mine"') && html1.includes('번들 넣기'), html1.slice(0, 300));
+    const r1 = await H.pieceApply(piece(1));
+    ck('★ 조각 넣기 — 캐릭터에 병합', r1.ok && world.char.globalLore.some((l) => l.comment === '던전') && wSchema().map?.locVar === 'location' && world.char.customscript.length === 3, r1.html);
+    ck('★ 조각 넣기 — 기준 지문 저장 (rev·단위 해시)', (() => { const k = 'sim:bundle-base:c-recv:b_map00001'; if (!store.has(k)) return false; const b = JSON.parse(store.get(k));
+      return b.id === 'b_map00001' && b.rev === 1 && b.name === '오라리오 지도' && typeof b.units['schema:map.locVar'] === 'string' && typeof b.at === 'number'; })(), baseKeys().join(','));
+    ck('조각 넣기 — 적용 전 백업(지문 사본 포함)', bkKeys().length === 1 && (() => { const b = JSON.parse(store.get(bkKeys()[0])); return Array.isArray(b.lorebook) && b.bases && typeof b.bases === 'object' && !Object.keys(b.bases).length; })(), bkKeys().join(','));
+    ck('조각 넣기 — 시스템이 병합된 판으로 돈다 (지도 버튼 재료)', (await H.bases())['b_map00001']?.rev === 1 && /넣기 완료/.test(r1.html), r1.html);
+
+    // r2 — 내 수정은 남고 번들 수정만
+    world.char.globalLore.find((l) => l.comment === '던전').content = '내가 고친 던전';
+    const beforeR2 = cp(world.char);
+    const r2x = await H.pieceApply(piece(2, (d) => { d.schema.map.label = '오라리오 전도'; }));
+    ck('★ r2 — 번들 수정만 반영, 내 수정 유지, 지문 rev 2', r2x.ok && wSchema().map.label === '오라리오 전도' && world.char.globalLore.find((l) => l.comment === '던전').content === '내가 고친 던전'
+      && JSON.parse(store.get('sim:bundle-base:c-recv:b_map00001')).rev === 2, r2x.html);
+    ck('r2 — 요약에 설치된 판', /설치된 판 r1/.test(r2x.html) && /번들 수정 1/.test(r2x.html) && /내 수정 유지 1/.test(r2x.html), r2x.html);
+
+    // 되돌리기 — 로어북·정규식·지문
+    const rv = await H.revert();
+    ck('★ 되돌리기 — 로어북·정규식이 r2 전으로', rv.ok && P.stable(world.char.globalLore) === P.stable(beforeR2.globalLore) && P.stable(world.char.customscript) === P.stable(beforeR2.customscript), rv.html);
+    ck('★ 되돌리기 — 지문도 r1으로', JSON.parse(store.get('sim:bundle-base:c-recv:b_map00001')).rev === 1 && bkKeys().length === 1, baseKeys().join(','));
+
+    // 검증 실패 조각 — 무변화
+    const snapBad = JSON.stringify(world.char); const bkN = bkKeys().length;
+    const rBad = await H.pieceApply({ ...piece(1, (d) => { d.schema.map.locVar = 'nowhere'; }), id: 'b_bad00001' });
+    ck('★ 검증 실패 조각 — 캐릭터·백업·지문 무변화, 오류를 보여 준다', rBad.ok === false && JSON.stringify(world.char) === snapBad && bkKeys().length === bkN && !store.has('sim:bundle-base:c-recv:b_bad00001') && /nowhere/.test(rBad.html), rBad.html);
+
+    // 지문 저장 실패 — 적용은 되고 알린다
+    failBaseWrites = true;
+    const rFp = await H.pieceApply({ simcoreBundle: 2, id: 'b_fp000001', rev: 1, name: '로어만', lorebook: [{ comment: '추가 로어', content: 'x' }] });
+    failBaseWrites = false;
+    ck('검토 초점 4 — 지문 저장이 실패해도 적용은 되고 알린다', rFp.ok && world.char.globalLore.some((l) => l.comment === '추가 로어') && /처음 넣는 것처럼/.test(rFp.html) && !store.has('sim:bundle-base:c-recv:b_fp000001'), rFp.html);
+
+    // id 없는 옛 번들 — 결과는 applyBundleToChar와 글자까지 같고, 조각 지문은 지워진다(백업에 사본)
+    const oldBundle = { simcoreBundle: 1, name: '옛 번들', lorebook: [{ comment: '⚙simcore', key: ' __simcore_never__', content: JSON.stringify(HOST) }, { comment: '새 세계관', content: 'N' }],
+      regex: [{ comment: '교체 정규식', type: 'editdisplay', in: 'q', out: 'w' }] };
+    const expectOld = H.applyBundleToChar(cp(world.char), cp(oldBundle));
+    const rOld = await H.wholeApply(cp(oldBundle));
+    ck('★ 옛 번들(id 없음) — 캐릭터 결과가 지금 동작과 글자까지 같다', rOld.ok && JSON.stringify(world.char.globalLore) === JSON.stringify(expectOld.globalLore)
+      && JSON.stringify(world.char.customscript) === JSON.stringify(expectOld.customscript), rOld.html);
+    ck('★ 옛 번들 — 지문을 만들지 않고, 통째 교체라 조각 지문은 지운다', baseKeys().length === 0, baseKeys().join(','));
+    ck('옛 번들 — 백업에 지워진 지문의 사본', (() => { const b = JSON.parse(store.get(bkKeys()[bkKeys().length - 1])); return b.bases && b.bases['b_map00001'] && b.bases['b_map00001'].rev === 1; })(), '');
+    ck('옛 번들 — 보고 문구는 그대로', /교체 완료/.test(rOld.html) && /시스템 인식됨/.test(rOld.html), rOld.html);
+
+    // 통째 교체 뒤 같은 조각이 다시 들어간다
+    const pAgain = await H.planFor(piece(1));
+    ck('★ 통째 교체 뒤 조각 다시 넣기 — "내가 지움"이 아니라 추가', pAgain.lines.length > 0 && pAgain.lines.every((l) => l.kind === 'add'), pAgain.lines.map((l) => l.kind).join(','));
+    const rAgain = await H.pieceApply(piece(1));
+    ck('통째 교체 뒤 조각 다시 넣기 — 들어간다', rAgain.ok && wSchema().map?.locVar === 'location', rAgain.html);
+
+    // 되돌리기가 지워진 지문을 살린다 (통째 교체 되돌리기)
+    await H.wholeApply(cp(oldBundle));
+    ck('통째 교체 — 다시 지문이 비고', baseKeys().length === 0, '');
+    await H.revert();
+    ck('★ 통째 교체 되돌리기 — 조각 지문이 돌아온다', store.has('sim:bundle-base:c-recv:b_map00001') && wSchema().map?.locVar === 'location', baseKeys().join(','));
+
+    // id 있는 전체 번들 — 지문 저장 (1단계는 저장만, 결과는 통째 교체)
+    const rW = await H.wholeApply({ ...cp(oldBundle), id: 'b_whole001', rev: 5 });
+    ck('★ id 있는 전체 번들 — 통째 교체 + 자기 지문만 남는다', rW.ok && baseKeys().join(',') === 'sim:bundle-base:c-recv:b_whole001' && (() => { const b = JSON.parse(store.get(baseKeys()[0]));
+      return b.rev === 5 && typeof b.units['schema:vars[hp]'] === 'string' && typeof b.units['lore:새 세계관#0'] === 'string' && typeof b.units['regex:교체 정규식|editdisplay#0'] === 'string'; })(), baseKeys().join(','));
+    ck('백업은 최근 3개까지', bkKeys().length <= 3, String(bkKeys().length));
+
+    // 정적 핀 — 화면 쪽
+    ck('단추 이름 [번들 넣기] · 옛 이름 없음', src.includes('<button id="sc-bundle-apply">번들 넣기</button>') && !src.includes('>번들 가져와 교체<'), '');
+    ck('[처음부터 다시 넣기] · 더티 작업본 멈춤 단추', src.includes('처음부터 다시 넣기') && src.includes('작업본 버리고 계속') && src.includes('editorDiffersFromInstalled()'), '');
+    ck('[캐릭터에서 제거]가 번들 지문을 지운다', /sc-uninstall'\)\.onclick[\s\S]{0,1600}clearBundleBases\(char\)/.test(src), '');
+    ck('낮은 rev 경고 문구', src.includes('설치된 판보다 낮은 판이에요'), '');
+
+    try { await global.__unload?.(); } catch { /* 무관 */ }
+  }
+
   let p = 0, f = 0;
   for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
   console.log(`\n${p} passed, ${f} failed`);

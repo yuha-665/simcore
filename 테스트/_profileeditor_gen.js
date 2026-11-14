@@ -6,7 +6,7 @@ const createSchemaEditor = (base) => {
   return { getSchema: () => JSON.parse(JSON.stringify(editorContent)), setSchema: (x) => { editorContent = fill(x); } };
 };
 let schema = null, currentChaId = null;
-const profileMod = require("C:\\claude\\simcore\\core\\profile.js");
+const profileMod = require("E:\\0.Risu\\simcore\\core\\profile.js");
 let profileList = [], currentProfile = null, baseSchema = null;
 function installedSchemaFor(name) { if (!name) return baseSchema; const e = profileMod.findProfile(profileList, name); return e ? e.merged : null; }
   let editor = null;

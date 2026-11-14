@@ -10,8 +10,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.24.1', src.includes('//@version 1.24.1'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.24\.1/.test(src), '');
+  ck('버전 1.25.0', src.includes('//@version 1.25.0'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1[.]25[.]0/.test(src), '');
   // v1.21.5 — 업데이트 버튼. 리수(리스바드·포켓리스 plugins.svelte.ts importPlugin)가 거부하는 머리말을 그대로 옮겨 잰다:
   // 모든 줄의 `//@`를 머리말로 읽는다 · update-url은 https · 그때 버전 필수 · `//@version` 줄 끝이 앞 500바이트 안 · link는 https
   {

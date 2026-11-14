@@ -11,7 +11,7 @@ const createSchemaEditor = (base) => {
 };
 let schema = null, currentChaId = null;
 // 🔀 프로필 (v1.24.0) — 편집기 절이 읽는 이름들. 프로필 없는 봇 = 예전과 같은 동작
-const profileMod = require("C:\\claude\\simcore\\core\\profile.js");
+const profileMod = require("E:\\0.Risu\\simcore\\core\\profile.js");
 let profileList = [], currentProfile = null, baseSchema = null;
 function installedSchemaFor(name) { if (!name) return baseSchema; const e = profileMod.findProfile(profileList, name); return e ? e.merged : null; }
   let editor = null;

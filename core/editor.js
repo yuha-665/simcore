@@ -17569,4 +17569,6 @@ module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, pack
   // 🗂 정리해서 반영·채팅 저장 (v1.16.0) — 테스트가 순수 함수로 본다
   chatTranscript, extractRules, buildExtractRequest, splitProposal, pickPatch, entryDiffLines, sanitizeChats, sanitizeChatMsgs, chatName,
   // 기능 지도 (v1.21.0) — test-featuremap이 UNSUPPORTED_HINT·activeSections와 대조한다
-  FEATURE_MAP, PATCH_OFF_SPOTS };
+  FEATURE_MAP, PATCH_OFF_SPOTS,
+  // 🧩 번들 조각 (v1.25.0) — core/bundle.js가 딸린 것 묶기·탭 고르기에 쓴다
+  varReferenceIndex, TAB_SLICES };

@@ -410,7 +410,213 @@ function applyPlanToChar(char, plan) {
   return char;
 }
 
+// ── 조각 만들기 (제작자 쪽) ────────────────────────────────
+
+/** 번들 id — 내보낼 때 한 번 만드는 무작위 글자. 같은 id여야 받는 쪽이 다음 판을 업데이트로 본다 */
+function newBundleId(rand = Math.random) {
+  let s = '';
+  for (let n = 0; n < 8; n++) s += Math.min(35, Math.floor(rand() * 36)).toString(36);
+  return 'b_' + s;
+}
+
+/**
+ * 🔒 keep을 걷어 낸 사본 — 제작자가 자기 작업용으로 건 잠금이 받는 사람 쪽에 실려 가면 그 항목은 다음 판부터
+ * 제작자의 수정이 영영 안 들어온다. 📌 작업 지침과 같은 "제작자 메모" 취급. id 있는 항목의 keep:true만 본다.
+ */
+function stripKeep(x) {
+  if (Array.isArray(x)) return x.map(stripKeep);
+  if (!isObj(x)) return x;
+  const out = {};
+  const item = typeof x.id === 'string';
+  for (const k of Object.keys(x)) { if (item && k === 'keep' && x[k] === true) continue; out[k] = stripKeep(x[k]); }
+  return out;
+}
+
+// 항목 단위로 고르는 id 목록
+const PICK_LISTS = [
+  { key: 'vars', label: '변수', path: ['vars'] }, { key: 'derived', label: '파생', path: ['derived'] },
+  { key: 'checks', label: '판정', path: ['checks'] }, { key: 'actions', label: '액션', path: ['actions'] },
+  { key: 'directives', label: '지시문', path: ['directives'] }, { key: 'events', label: '이벤트', path: ['rules', 'events'] },
+  { key: 'randomEvents', label: '랜덤 이벤트', path: ['rules', 'randomEvents', 'table'] },
+];
+const LIST_OF = Object.fromEntries(PICK_LISTS.map((l) => [l.key, l]));
+// 탭을 통째로 고르면 그 탭이 덮는 id 목록 (딸려 온 것과 직접 고른 것을 가르는 데 쓴다)
+const TAB_COVERS = { vars: ['vars', 'derived'], actions: ['actions'], checks: ['checks'], rules: ['events', 'randomEvents', 'directives'] };
+const ALLOW_PATH = ['updater', 'allow'];
+/** 탭 가져오기 표 — editor.js가 엔진을 끌고 오므로 함수 안에서 늦게 부른다 */
+const editorMod = () => require('./editor');
+
+function readBaseSchema(char) {
+  const entry = (Array.isArray(char && char.globalLore) ? char.globalLore : []).find((l) => l && l.comment === BASE_COMMENT);
+  if (!entry || typeof entry.content !== 'string') return null;
+  try { const s = JSON.parse(entry.content); return isObj(s) ? P.shapeFill(s) : null; } catch { return null; }
+}
+/** 조각에 실을 수 있는 로어 단위 — 프로필(⚙simcore:이름)은 기본 판에 얹는 덧칠이라 조각에 안 싣는다 */
+function pickableLore(char) {
+  return loreUnits(char && char.globalLore).filter((u) => P.profileNameOf(u.value) == null);
+}
+const tabHas = (schema, T) => T.keys.some((k) => (T.sub ? !isEmpty(schema && schema[k] && schema[k][T.sub]) : !isEmpty(schema && schema[k])));
+
+/** 조각 고르기 화면의 재료 */
+function pickables(char) {
+  const schema = readBaseSchema(char);
+  const SL = editorMod().TAB_SLICES;
+  const tabs = Object.keys(SL).filter((k) => !SL[k].merge).map((k) => ({ key: k, label: SL[k].label, on: !!schema && tabHas(schema, SL[k]) }));
+  const lists = PICK_LISTS.map((L) => ({ key: L.key, label: L.label,
+    items: ((schema && getAt(schema, L.path)) || []).filter((x) => isObj(x) && typeof x.id === 'string' && x.id)
+      .map((x) => ({ id: x.id, label: x.id + (typeof x.label === 'string' && x.label ? ` · ${x.label}` : '') })) }));
+  const units = pickableLore(char);
+  const folderKeys = new Map(units.filter((u) => isFolder(u.value) && typeof u.value.key === 'string').map((u) => [u.value.key, u]));
+  const lore = [];
+  for (const u of units) {
+    if (isFolder(u.value)) {
+      lore.push({ key: u.key, label: u.label, isFolder: true,
+        children: units.filter((c) => !isFolder(c.value) && c.value.folder === u.value.key).map((c) => ({ key: c.key, label: c.label })) });
+    } else if (!folderKeys.has(u.value.folder)) lore.push({ key: u.key, label: u.label, isFolder: false });
+  }
+  const regex = regexUnits(char && char.customscript).map((u) => ({ key: u.key, label: `${u.label}${u.value.type ? ` (${u.value.type})` : ''}` }));
+  return { hasSchema: !!schema, tabs, lists, lore, regex };
+}
+
+/**
+ * 고른 것으로 조각을 만든다. 딸린 것(고른 항목이 참조하는 변수·파생·판정·액션, 그 변수의 AI 허용 줄)은 자동으로 묶고,
+ * 끝 관문으로 성긴 스키마를 **빈 칸 채운 사본으로** 검증한다 — 혼자 통과해야 빈 봇에도 설치된다.
+ * @param picks { tabs: [탭 키], items: { 목록 키: [id] }, lore: [단위 열쇠], regex: [단위 열쇠] }
+ * @param info  { id, rev, name, note }
+ * @returns { data, auto: { vars, derived, checks, actions, allow }, errors: [] } — errors가 비어야 내보낸다
+ */
+function buildPiece(char, picks, info) {
+  const pk = { tabs: (picks && picks.tabs) || [], items: (picks && picks.items) || {}, lore: (picks && picks.lore) || [], regex: (picks && picks.regex) || [] };
+  const src = readBaseSchema(char);
+  const errors = [];
+  const auto = { vars: [], derived: [], checks: [], actions: [], allow: [] };
+  const sparse = {};
+  const wantsSchema = pk.tabs.length > 0 || Object.values(pk.items).some((a) => Array.isArray(a) && a.length);
+  if (wantsSchema && !src) errors.push('이 캐릭터에 ⚙simcore가 없어 스키마 항목을 실을 수 없어요 — 먼저 [캐릭터에 적용]으로 설치해 주세요');
+  if (wantsSchema && src) {
+    const ed = editorMod();
+    for (const tab of pk.tabs) {
+      const T = ed.TAB_SLICES[tab];
+      if (!T || T.merge) continue;
+      for (const k of T.keys) {
+        if (isEmpty(src[k])) continue;
+        if (!T.sub) { sparse[k] = clone(src[k]); continue; }
+        for (const sk of [T.sub, ...(T.subOpt || [])]) {
+          if (src[k][sk] === undefined || (sk === T.sub && isEmpty(src[k][sk]))) continue;
+          (sparse[k] = sparse[k] || {})[sk] = clone(src[k][sk]);
+        }
+      }
+    }
+    const explicit = (lk, id) => pk.tabs.some((t) => (TAB_COVERS[t] || []).includes(lk)) || ((pk.items[lk] || []).includes(id));
+    const srcList = (path) => (getAt(src, path) || []).filter((x) => isObj(x) && typeof x.id === 'string');
+    const outList = (path) => { let l = getAt(sparse, path); if (!Array.isArray(l)) { l = []; setAt(sparse, path, l); } return l; };
+    const add = (lk, id) => {
+      const L = LIST_OF[lk];
+      const it = srcList(L.path).find((x) => x.id === id);
+      if (!it) return false;
+      const list = outList(L.path);
+      if (list.some((x) => x && x.id === id)) return false;
+      list.push(clone(it));
+      if (auto[lk] && !explicit(lk, id)) auto[lk].push(id);
+      return true;
+    };
+    for (const L of PICK_LISTS) for (const id of (pk.items[L.key] || [])) add(L.key, id);
+
+    // 딸린 것 — 고정점까지. 색인이 못 잡는 연결(액션 check → 판정, 편성표 탭 actions → 액션, 허용 줄 whenArmed → 액션)은 따로 따라간다
+    const srcVarIds = srcList(['vars']).map((v) => v.id);
+    const srcAllow = srcList(ALLOW_PATH);
+    for (let pass = 0; pass < 60; pass++) {
+      let grew = false;
+      const inc = (lk, id) => { if (typeof id === 'string' && add(lk, id)) grew = true; };
+      for (const a of (sparse.actions || [])) inc('checks', a && a.check);
+      for (const e of [...((sparse.rules && sparse.rules.events) || []), ...((sparse.rules && sparse.rules.randomEvents && sparse.rules.randomEvents.table) || [])]) inc('checks', e && e.check);
+      if (isObj(sparse.party)) {
+        const tabs = Array.isArray(sparse.party.tabs) && sparse.party.tabs.length ? sparse.party.tabs : [sparse.party];
+        for (const t of tabs) for (const id of (Array.isArray(t && t.actions) ? t.actions : [])) inc('actions', id);
+      }
+      for (const a of ((sparse.updater && sparse.updater.allow) || [])) for (const id of [].concat(a && a.whenArmed != null ? a.whenArmed : [])) inc('actions', id);
+      // 변수 역색인 — 원본 변수의 {id} 그루터기를 같이 넣어야 추첨(sample)을 변수로 본다. '기타'(분류 밖 원문 정규식)는 안 따라간다:
+      // 글 속 낱말이 우연히 변수 id와 같으면 엉뚱한 변수가 끌려온다. 못 잡은 참조는 아래 검증이 이름을 대며 막는다.
+      const probe = clone(sparse);
+      const have = new Set((probe.vars || []).map((v) => v && v.id));
+      probe.vars = [...(probe.vars || []), ...srcVarIds.filter((id) => !have.has(id)).map((id) => ({ id }))];
+      let index;
+      try { index = ed.varReferenceIndex(probe); } catch { index = new Map(); }
+      for (const [id, refs] of index) {
+        if (!refs.some((r) => r.where !== '기타')) continue;
+        inc('vars', id); inc('derived', id); inc('checks', id);
+      }
+      for (const v of (sparse.vars || [])) {
+        const a = srcAllow.find((x) => x.id === v.id);
+        if (!a) continue;
+        const list = outList(ALLOW_PATH);
+        if (list.some((x) => x && x.id === a.id)) continue;
+        list.push(clone(a)); auto.allow.push(a.id); grew = true;
+      }
+      if (!grew) break;
+    }
+    // 원본 순서로
+    for (const path of [...PICK_LISTS.map((L) => L.path), ALLOW_PATH]) {
+      const list = getAt(sparse, path);
+      if (!Array.isArray(list) || !list.length) continue;
+      const order = new Map(srcList(path).map((x, n) => [x.id, n]));
+      list.sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
+    }
+    delete sparse.meta; delete sparse.simcore;
+  }
+
+  // 로어북 — 폴더를 고르면 자식 전부, 자식을 고르면 그 폴더 항목도
+  const units = pickableLore(char);
+  const chosen = new Set(pk.lore);
+  for (const u of units) {
+    if (!chosen.has(u.key)) continue;
+    if (isFolder(u.value)) { for (const c of units) if (!isFolder(c.value) && c.value.folder === u.value.key) chosen.add(c.key); }
+    else if (u.value.folder != null) { const f = units.find((x) => isFolder(x.value) && x.value.key === u.value.folder); if (f) chosen.add(f.key); }
+  }
+  const lorebook = units.filter((u) => chosen.has(u.key)).map((u) => { const l = clone(u.value); delete l.id; delete l.loreCache; return l; });
+  const pickedRegex = new Set(pk.regex);
+  const regex = regexUnits(char && char.customscript).filter((u) => pickedRegex.has(u.key)).map((u) => clone(u.value));
+
+  const name = String((info && typeof info.name === 'string' && info.name.trim()) || (src && src.meta && src.meta.name) || (char && char.name) || '조각');
+  const data = { simcoreBundle: 2, id: info && info.id, rev: info && Number.isFinite(Number(info.rev)) ? Number(info.rev) : 1, name };
+  const note = info && typeof info.note === 'string' ? info.note.trim().slice(0, 200) : '';
+  if (note) data.note = note;
+  if (lorebook.length) data.lorebook = lorebook;
+  if (regex.length) data.regex = regex;
+  if (!isEmpty(sparse)) data.schema = stripKeep(sparse);
+
+  if (!errors.length && !lorebook.length && !regex.length && isEmpty(sparse)) errors.push('고른 것이 없어요 — 실을 항목을 하나 이상 골라 주세요');
+  if (!errors.length && data.schema) {
+    const filled = P.shapeFill(clone(data.schema));
+    filled.meta.name = name;
+    const v = validateSchema(filled);
+    if (!v.ok) for (const e of v.errors) errors.push(`${e.path}: ${e.msg}`);
+  }
+  return { data, auto, errors };
+}
+
+/** 지난번에 낸 조각 파일에서 구성을 되살린다 — 기기를 옮겨 레시피가 없을 때 (파일이 진실, 저장소는 편의) */
+function picksFromPiece(data) {
+  const picks = { tabs: [], items: {}, lore: [], regex: [] };
+  const s = pieceSchema(data) || {};
+  const SL = editorMod().TAB_SLICES;
+  for (const key of Object.keys(SL)) {
+    if (SL[key].merge || TAB_COVERS[key]) continue;   // id 목록 탭은 항목으로 되살린다
+    if (tabHas(s, SL[key])) picks.tabs.push(key);
+  }
+  const r = isObj(s.rules) ? s.rules : {};
+  if (!isEmpty(r.onTurn) || !isEmpty(s.liveChoices) || (isObj(r.randomEvents) && Object.keys(r.randomEvents).some((k) => k !== 'table'))) picks.tabs.push('rules');
+  for (const L of PICK_LISTS) {
+    const ids = (getAt(s, L.path) || []).filter((x) => isObj(x) && typeof x.id === 'string').map((x) => x.id);
+    if (ids.length) picks.items[L.key] = ids;
+  }
+  picks.lore = loreUnits(data && data.lorebook).map((u) => u.key);
+  picks.regex = regexUnits(data && data.regex).map((u) => u.key);
+  return picks;
+}
+
 module.exports = {
   hash53, unitHash, sameUnit, loreUnits, regexUnits, schemaUnits, pairUnits, fingerprintOf,
   pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER,
+  newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, PICK_LISTS,
 };

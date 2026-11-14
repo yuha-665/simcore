@@ -306,6 +306,121 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
     ck('스키마 파일 안내 — 번들 칸에 스키마 JSON', /JSON 관리자/.test(B.schemaFileHint(cp(HOST)) || '') && B.schemaFileHint(piece(1)) === null && B.schemaFileHint({ simcoreBundle: 1, lorebook: [] }) === null && B.schemaFileHint(null) === null, String(B.schemaFileHint(cp(HOST))));
   }
 
+  // ── ③ 조각 만들기 (제작자 쪽) ──
+  const AUTH = {
+    simcore: '0.1', meta: { name: '오라리오', notes: '제작자 메모 — 배포본에 싣지 않는다' },
+    time: { start: '2026-03-02 08:30', advance: 'explicit', format: { date: 'M월 D일', clock: 'HH:mm' } },
+    vars: [
+      { id: 'hp', label: '체력', type: 'int', init: 50, min: 0, max: 100, keep: true },
+      { id: 'gold', label: '금화', type: 'int', init: 10, min: 0, cmd: '돈' },
+      { id: 'location', label: '위치', type: 'enum', enum: ['길드', '던전', '바벨'], init: '길드' },
+      { id: 'visited', label: '발자취', type: 'list', init: [], maxItems: 20 },
+      { id: 'finds', label: '찾아낸 곳', type: 'list', init: [] },
+      { id: 'str', label: '근력', type: 'int', init: 10, min: 0 },
+      { id: 'luck', label: '행운', type: 'int', init: 1, min: 0 },
+    ],
+    derived: [{ id: 'power', label: '전투력', expr: 'str * 2 + bonus' }, { id: 'bonus', label: '보너스', expr: 'luck' }],
+    checks: [{ id: 'atk', label: '공격 판정', roll: 'rand(1, 20)', mod: 'power', vs: '12',
+      grades: [{ when: 'total >= vs', label: '성공', inject: '맞혔다.', effects: [{ set: 'gold', expr: 'gold + 1' }] }, { when: 'true', label: '실패', inject: '빗나갔다.' }] }],
+    actions: [{ id: 'strike', label: '⚔ 공격', mode: 'oneshot', check: 'atk', inject: '[행동] 공격한다.' }],
+    directives: [{ id: 'd_late', when: 'hour >= 22', text: '밤이 깊었다.' }, { id: 'd_poor', when: 'gold < 5', text: '돈이 없다.' }],
+    rules: { onTurn: [{ set: 'hp', expr: 'max(hp - 1, 0)' }], events: [{ id: 'e_dead', when: 'hp <= 0', notify: '쓰러졌다', once: true }] },
+    statusUI: { mode: 'auto', layout: 'tabs', customCSS: '.mine{color:red}', groups: [{ label: '상태', items: [{ var: 'hp' }, { var: 'gold' }] }] },
+    setup: { presets: [{ id: 'rich', label: '부자', set: { gold: 500 } }], ai: { enabled: false, vars: [] } },
+    updater: { allow: [{ id: 'hp', maxDelta: 10 }, { id: 'location' }, { id: 'gold', maxDelta: 5 }, { id: 'luck', maxDelta: 1 }] },
+    map: { label: '오라리오', locVar: 'location', seenVar: 'visited', listVar: 'finds',
+      places: [{ name: '길드', x: 40, y: 20 }, { name: '던전', x: 50, y: 50, known: 'luck > 0' }, { name: '바벨', x: 50, y: 40 }] },
+  };
+  const authChar = () => ({ chaId: 'c-auth', name: '제작자 봇',
+    globalLore: [
+      { comment: '⚙simcore', key: ' __simcore_never__', content: JSON.stringify(AUTH) },
+      { comment: '📁 오라리오 지리', mode: 'folder', key: 'folder:geo', content: '' },
+      { comment: '길드', folder: 'folder:geo', key: '길드', content: '모험가 길드', id: 'chat-local-1', loreCache: { x: 1 } },
+      { comment: '던전', folder: 'folder:geo', key: '던전', content: '지하 미궁' },
+      { comment: '📁 페르소나', mode: 'folder', key: 'folder:me', content: '' },
+      { comment: '내 능력', folder: 'folder:me', key: '능력', content: '비공개' },
+      { comment: '세계관', key: '세계', content: '신들의 도시' },
+      { comment: '⚙simcore:마법사', key: ' __simcore_never__', content: '{"simcoreProfile":1,"overlay":{}}' },
+    ],
+    customscript: [{ comment: '에셋 표시', type: 'editdisplay', in: 'a', out: 'b' }, { comment: '지도 태그', type: 'editdisplay', in: 'x', out: 'y' }] });
+  const INFO = { id: 'b_map00001', rev: 1, name: '오라리오 지도', note: '원작 링크' };
+  {
+    const av = validateSchema(cp(AUTH));
+    ck('픽스처 — 제작자 봇 스키마가 검증 통과', av.ok, JSON.stringify(av.errors));
+    ck('newBundleId — b_ + 8글자, 부를 때마다 다르다', /^b_[0-9a-z]{8}$/.test(B.newBundleId()) && B.newBundleId() !== B.newBundleId() && B.newBundleId(() => 0) === 'b_00000000', B.newBundleId());
+    ck('stripKeep — id 있는 항목의 keep만 걷는다 (원본은 그대로)', (() => { const src = { vars: [{ id: 'a', keep: true, x: 1 }], rule: { keepOverdue: true } }; const o = B.stripKeep(src);
+      return !('keep' in o.vars[0]) && o.vars[0].x === 1 && o.rule.keepOverdue === true && src.vars[0].keep === true; })(), '');
+
+    const pk = B.pickables(authChar());
+    ck('고를 것 — 탭 목록에 지도가 켜져 있고 명령 탭은 없다', pk.hasSchema && pk.tabs.some((t) => t.key === 'map' && t.on && t.label === '지도') && !pk.tabs.some((t) => t.key === 'commands')
+      && pk.tabs.some((t) => t.key === 'shop' && !t.on), JSON.stringify(pk.tabs.map((t) => [t.key, t.on])));
+    ck('고를 것 — id 목록 일곱 갈래와 항목 이름', pk.lists.map((l) => l.key).join(',') === 'vars,derived,checks,actions,directives,events,randomEvents'
+      && pk.lists[0].items.some((i) => i.id === 'hp' && /체력/.test(i.label)) && pk.lists[5].items[0].id === 'e_dead', pk.lists.map((l) => `${l.key}:${l.items.length}`).join(','));
+    ck('고를 것 — 로어는 폴더 아래 자식, 기본 판·프로필은 없다', (() => { const f = pk.lore.find((l) => l.isFolder && /오라리오 지리/.test(l.label));
+      return !!f && f.children.length === 2 && pk.lore.some((l) => l.label === '세계관') && !pk.lore.some((l) => /⚙simcore/.test(l.label) || /⚙simcore/.test(l.key))
+        && !pk.lore.some((l) => l.label === '길드'); })(), JSON.stringify(pk.lore.map((l) => [l.label, (l.children || []).length])));
+    ck('고를 것 — 정규식', pk.regex.length === 2 && pk.regex[1].key === 'regex:지도 태그|editdisplay#0', JSON.stringify(pk.regex));
+
+    // 지도 탭만 골라도 딸린 변수 셋 + allow가 따라온다 (known 식이 읽는 luck까지)
+    const geoKey = pk.lore.find((l) => l.isFolder && /오라리오 지리/.test(l.label)).key;
+    const picks = { tabs: ['map'], items: {}, lore: [geoKey], regex: ['regex:지도 태그|editdisplay#0'] };
+    const built = B.buildPiece(authChar(), picks, INFO);
+    const d = built.data;
+    ck('★ 지도 조각 — 혼자 검증 통과', built.errors.length === 0, built.errors.join(' / '));
+    ck('★ 딸린 것 — 위치·발자취·찾아낸 곳 + 공개 조건이 읽는 luck', ['location', 'visited', 'finds', 'luck'].every((id) => d.schema.vars.some((v) => v.id === id)) && d.schema.vars.length === 4, d.schema.vars.map((v) => v.id).join(','));
+    ck('★ 딸린 것 — 그 변수들의 AI 허용 줄만', d.schema.updater.allow.map((a) => a.id).sort().join(',') === 'location,luck', JSON.stringify(d.schema.updater.allow));
+    ck('딸린 것 목록(auto) — 화면의 회색 줄 재료', built.auto.vars.sort().join(',') === 'finds,location,luck,visited' && built.auto.allow.sort().join(',') === 'location,luck', JSON.stringify(built.auto));
+    ck('조각 형식 — 2 · id · rev · 이름 · 설명', d.simcoreBundle === 2 && d.id === 'b_map00001' && d.rev === 1 && d.name === '오라리오 지도' && d.note === '원작 링크' && B.pieceShapeError(d) === null, '');
+    ck('조각 — meta·simcore·상태 요약·상태창은 안 실린다', !('meta' in d.schema) && !('simcore' in d.schema) && !('promptState' in d.schema) && !('statusUI' in d.schema) && !('rules' in d.schema), Object.keys(d.schema).join(','));
+    ck('조각 — 변수는 원본 순서', d.schema.vars.map((v) => v.id).join(',') === 'location,visited,finds,luck', d.schema.vars.map((v) => v.id).join(','));
+    ck('로어 — 폴더를 고르면 자식 전부, 다른 폴더·세계관은 없다', d.lorebook.map((l) => l.comment).join(',') === '📁 오라리오 지리,길드,던전', d.lorebook.map((l) => l.comment).join(','));
+    ck('로어 — 채팅별 표식(id·loreCache)은 뺀다', !d.lorebook.some((l) => 'id' in l || 'loreCache' in l), '');
+    ck('정규식 — 고른 것만', d.regex.length === 1 && d.regex[0].comment === '지도 태그', '');
+
+    // 자식 하나만 골라도 폴더가 따라온다
+    const childKey = pk.lore.find((l) => l.isFolder && /오라리오 지리/.test(l.label)).children[1].key;
+    const bChild = B.buildPiece(authChar(), { tabs: [], items: {}, lore: [childKey], regex: [] }, INFO);
+    ck('로어 — 자식만 골라도 그 폴더 항목이 같이', bChild.data.lorebook.map((l) => l.comment).join(',') === '📁 오라리오 지리,던전' && !('schema' in bChild.data) && bChild.errors.length === 0, bChild.data.lorebook.map((l) => l.comment).join(','));
+
+    // 액션 → 판정 → 파생 → 변수 (고정점) · keep 걷기
+    const bAct = B.buildPiece(authChar(), { tabs: [], items: { actions: ['strike'], vars: ['hp'] }, lore: [], regex: [] }, INFO);
+    const sa = bAct.data.schema;
+    ck('★ 액션 check → 판정 → 파생 → 변수까지 고정점', sa.actions[0].id === 'strike' && sa.checks[0].id === 'atk' && sa.derived.map((x) => x.id).sort().join(',') === 'bonus,power'
+      && ['str', 'luck', 'gold', 'hp'].every((id) => sa.vars.some((v) => v.id === id)) && bAct.errors.length === 0, JSON.stringify([sa.vars.map((v) => v.id), sa.derived.map((x) => x.id), bAct.errors]));
+    ck('직접 고른 것은 auto에 없다 (hp는 고른 것, gold는 딸린 것)', !bAct.auto.vars.includes('hp') && bAct.auto.vars.includes('gold') && bAct.auto.checks.join() === 'atk', JSON.stringify(bAct.auto));
+    ck('★ 🔒 keep은 실리지 않는다', !sa.vars.some((v) => 'keep' in v), JSON.stringify(sa.vars.find((v) => v.id === 'hp')));
+    ck('변수의 cmd는 변수와 같이 간다', sa.vars.find((v) => v.id === 'gold').cmd === '돈', '');
+
+    // 탭의 부분 규칙
+    const bSt = B.buildPiece(authChar(), { tabs: ['status', 'presets'], items: {}, lore: [], regex: [] }, INFO);
+    ck('상태창 탭 — groups + layout만 (customCSS·mode는 안 실린다)', P.stable(Object.keys(bSt.data.schema.statusUI).sort()) === P.stable(['groups', 'layout']) && bSt.data.schema.statusUI.layout === 'tabs', JSON.stringify(bSt.data.schema.statusUI));
+    ck('시작 프리셋 탭 — setup.presets만 (setup.ai는 안 실린다)', P.stable(Object.keys(bSt.data.schema.setup)) === P.stable(['presets']) && bSt.data.schema.setup.presets[0].id === 'rich', JSON.stringify(bSt.data.schema.setup));
+    ck('상태창이 쓰는 변수도 딸려 온다', ['hp', 'gold'].every((id) => bSt.data.schema.vars.some((v) => v.id === id)) && bSt.errors.length === 0, bSt.errors.join(' / '));
+
+    // 혼자 검증 안 되는 조각 — 시간 절 없이 hour를 읽는 지시문
+    const bLate = B.buildPiece(authChar(), { tabs: [], items: { directives: ['d_late'] }, lore: [], regex: [] }, INFO);
+    ck('★ 혼자 검증 안 되는 조각은 오류를 돌려준다 (내보내기 거부 재료)', bLate.errors.length > 0 && /hour/.test(bLate.errors.join(' ')), bLate.errors.join(' / '));
+    const bLate2 = B.buildPiece(authChar(), { tabs: ['time'], items: { directives: ['d_late'] }, lore: [], regex: [] }, INFO);
+    ck('시간 탭을 같이 고르면 통과', bLate2.errors.length === 0 && !!bLate2.data.schema.time, bLate2.errors.join(' / '));
+
+    // 빈 조각 · note 자르기
+    const bEmpty = B.buildPiece(authChar(), { tabs: [], items: {}, lore: [], regex: [] }, INFO);
+    ck('아무것도 안 고르면 오류', bEmpty.errors.length > 0, JSON.stringify(bEmpty));
+    const bNote = B.buildPiece(authChar(), picks, { ...INFO, note: 'ㄱ'.repeat(300), name: '' });
+    ck('설명은 200자까지 · 이름이 비면 봇 이름', bNote.data.note.length === 200 && bNote.data.name === '오라리오', `${bNote.data.note.length} / ${bNote.data.name}`);
+
+    // 지난번에 낸 파일에서 구성 되살리기
+    const again = B.buildPiece(authChar(), B.picksFromPiece(d), INFO);
+    ck('★ 지난 파일로 구성 되살리기 — 같은 조각이 다시 나온다', P.stable(again.data) === P.stable(d), JSON.stringify(B.picksFromPiece(d)));
+    const pkAct = B.picksFromPiece(bAct.data);
+    ck('되살린 구성 — id 목록은 항목으로', pkAct.items.actions.join() === 'strike' && pkAct.items.checks.join() === 'atk' && pkAct.tabs.length === 0, JSON.stringify(pkAct));
+
+    // 만든 조각이 빈 봇에 실제로 들어간다 (①②③ 맞물림)
+    const blank = { chaId: 'c-blank', name: '빈 봇', globalLore: [], customscript: [] };
+    const pIn = B.planPiece({ char: blank, data: d, base: null });
+    ck('★ 만든 지도 조각이 빈 봇에 설치된다', pIn.ok && !pIn.schemaErrors.length && pIn.lines.every((l) => l.kind === 'add'), pIn.error || (pIn.schemaErrors || []).join(' / '));
+  }
+
   let p = 0, f = 0;
   for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
   console.log(`\n${p} passed, ${f} failed`);

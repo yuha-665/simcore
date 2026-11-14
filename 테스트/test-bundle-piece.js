@@ -535,6 +535,138 @@ const cp = (x) => JSON.parse(JSON.stringify(x));
     ck('[캐릭터에서 제거]가 번들 지문을 지운다', /sc-uninstall'\)\.onclick[\s\S]{0,1600}clearBundleBases\(char\)/.test(src), '');
     ck('낮은 rev 경고 문구', src.includes('설치된 판보다 낮은 판이에요'), '');
 
+    // ── ⑤ 내보내기 — 전체 번들 id·rev · 조각 레시피 ──
+    ck('배수구 — 내보내기 함수들', ['exportWhole', 'exportPiece', 'recipes', 'recipeFromFile', 'chooserHtml', 'pickerHtml'].every((k) => typeof H[k] === 'function'), Object.keys(H).join(','));
+    await H.pieceApply(piece(1));
+    { // 제작자 메모(🔒·📌)를 걸어 둔다 — 배포본엔 안 실려야 한다
+      const e = world.char.globalLore.find((l) => l.comment === '⚙simcore'); const s = JSON.parse(e.content);
+      s.vars.find((v) => v.id === 'hp').keep = true; s.meta.notes = '제작자 메모'; e.content = JSON.stringify(s);
+    }
+    const w1 = await H.exportWhole();
+    const w2 = await H.exportWhole();
+    ck('★ 전체 내보내기 — 형식 1 그대로 + id + rev', w1.data.simcoreBundle === 1 && /^b_[0-9a-z]{8}$/.test(w1.data.id) && w1.data.rev === 1 && Array.isArray(w1.data.lorebook) && Array.isArray(w1.data.regex)
+      && H.bundleShapeError(w1.data) === null, JSON.stringify(Object.keys(w1.data)));
+    ck('★ 전체 내보내기 — 다시 내면 같은 id에 rev +1', w2.data.id === w1.data.id && w2.data.rev === 2, `${w2.data.id} r${w2.data.rev}`);
+    const wS = JSON.parse(w1.data.lorebook.find((l) => l.comment === '⚙simcore').content);
+    ck('★ 전체 내보내기 — 🔒 keep·📌 지침은 안 실린다 (캐릭터의 것은 그대로)', !wS.vars.some((v) => 'keep' in v) && wS.meta.notes === undefined && wSchema().vars.find((v) => v.id === 'hp').keep === true, JSON.stringify(wS.vars.find((v) => v.id === 'hp')));
+    ck('전체 내보내기 — 레시피에 남는다', (await H.recipes()).some((r) => r.kind === 'whole' && r.id === w1.data.id && r.rev === 2), JSON.stringify(await H.recipes()));
+
+    const picksMap = { tabs: ['map'], items: {}, lore: ['lore:📁 지리#0'], regex: [] };
+    const e1 = await H.exportPiece(picksMap, { name: '지도 조각', note: '원작 링크' });
+    ck('★ 조각 내보내기 — 형식 2 · 새 id · r1 · 딸린 변수', e1.errors.length === 0 && e1.data.simcoreBundle === 2 && /^b_[0-9a-z]{8}$/.test(e1.data.id) && e1.data.rev === 1 && e1.data.name === '지도 조각'
+      && e1.data.schema.vars.some((v) => v.id === 'location') && e1.data.lorebook.length === 2, JSON.stringify(e1.errors));
+    const e2 = await H.exportPiece(picksMap, { id: e1.data.id, name: '지도 조각', note: '원작 링크' });
+    ck('★ 조각 다시 내보내기 — 같은 id에 rev +1 (받는 쪽이 업데이트로 본다)', e2.data.id === e1.data.id && e2.data.rev === 2, `${e2.data.id} r${e2.data.rev}`);
+    const rc = (await H.recipes()).find((r) => r.id === e1.data.id);
+    ck('조각 레시피 — 구성·이름·설명·rev', !!rc && rc.kind === 'piece' && rc.rev === 2 && rc.name === '지도 조각' && rc.note === '원작 링크' && rc.picks.tabs.join() === 'map' && rc.picks.lore.join() === 'lore:📁 지리#0', JSON.stringify(rc));
+    const eBad = await H.exportPiece({ tabs: [], items: {}, lore: [], regex: [] }, { id: e1.data.id, name: '지도 조각' });
+    ck('★ 혼자 검증 안 되는(빈) 조각 — 내보내기 거부, rev는 안 오른다', eBad.errors.length > 0 && (await H.recipes()).find((r) => r.id === e1.data.id).rev === 2, JSON.stringify(eBad.errors));
+
+    // 기기를 옮겨 레시피가 없다 — 지난 파일로 되살린다
+    store.delete('sim:bundle-recipe:c-recv');
+    const back = await H.recipeFromFile(cp(e2.data));
+    ck('★ 지난 파일로 구성 되살리기 — 같은 id·rev·구성', back.recipe && back.recipe.id === e1.data.id && back.recipe.rev === 2 && back.recipe.kind === 'piece' && back.recipe.picks.tabs.join() === 'map'
+      && (await H.recipes()).length === 1, JSON.stringify(back));
+    const e3 = await H.exportPiece(back.recipe.picks, { id: back.recipe.id, name: back.recipe.name, note: back.recipe.note });
+    ck('되살린 구성으로 내보내기 — r3', e3.errors.length === 0 && e3.data.rev === 3 && e3.data.id === e1.data.id, `${e3.data.rev}`);
+    ck('지난 파일 — 전체 번들도 id를 잇는다 · 엉뚱한 파일은 이유', (await H.recipeFromFile(cp(w2.data))).recipe?.id === w1.data.id && !!(await H.recipeFromFile({ simcoreBundle: 1, lorebook: [{ comment: 'x' }] })).error, '');
+
+    // 화면 재료
+    const recipesNow = await H.recipes();
+    const ch = H.chooserHtml(recipesNow);
+    ck('내보내기 고르기 — 전체 / 조각 고르기 / 지난 조각 / 파일로 되살리기', ch.includes('data-bexp="whole"') && ch.includes('data-bexp="piece"') && ch.includes('지도 조각') && ch.includes(`data-bexp-recipe="${e1.data.id}"`) && ch.includes('data-bexp="file"'), ch.slice(0, 300));
+    const pkNow = B.pickables(world.char);
+    const builtNow = B.buildPiece(world.char, picksMap, { id: e1.data.id, rev: 4, name: '지도 조각' });
+    const ph = H.pickerHtml(pkNow, builtNow, { picks: picksMap, name: '지도 조각', note: '', rev: 4, open: [] });
+    ck('조각 고르기 화면 — 탭·목록·로어 체크, 딸린 것은 회색(disabled), 검증 결과, 내보내기 단추', ph.includes('data-ptab="map"') && ph.includes('data-plist="vars"') && ph.includes('data-pid="location"')
+      && /data-pid="location"[^>]*disabled/.test(ph) && ph.includes('data-plore="lore:📁 지리#0"') && ph.includes('이 조각만으로 설치돼요') && ph.includes('내보내기 r4') && ph.includes('같이 따라가는 것'), ph.slice(0, 400));
+    const phBad = H.pickerHtml(pkNow, B.buildPiece(world.char, { tabs: [], items: {}, lore: [], regex: [] }, { id: 'b_x0000000', rev: 1, name: 'x' }), { picks: { tabs: [], items: {}, lore: [], regex: [] }, name: 'x', note: '', rev: 1, open: [] });
+    ck('조각 고르기 화면 — 검증에 막히면 이유를 보이고 내보내기 단추가 잠긴다', phBad.includes('고른 것이 없어요') && /id="sc-piece-export"[^>]*disabled/.test(phBad), phBad.slice(-300));
+
+    // 정적 핀 — 안내문
+    ck('번들 카드 안내문 — 조각·내 것 남기기 설명', src.includes('🧩 조각') && src.includes('원하는 것만 골라') && !src.includes('[가져와 교체] 한 번으로'), '');
+    ck('JSON 관리자에 번들을 넣으면 번들 칸을 가리킨다', src.includes('번들 파일이에요 — 여기(스키마 JSON)가 아니라'), '');
+
+    // ── ⑥ 패널 배선 — 번들 카드의 단추·위임을 가짜 DOM에서 눌러 본다 (배선 구간을 소스에서 떼어 돌린다, 규칙 #8) ──
+    {
+      const a = src.indexOf('    // ── 개조 번들 (v1.0.5) · 🧩 조각 (v1.25.0) ──');
+      const b = src.lastIndexOf('\n  }\n', src.indexOf('  // 블록 편집기 (봇 편집 탭 첫 진입 시 생성)'));
+      ck('배선 구간을 소스에서 찾음', a > 0 && b > a, `${a}..${b}`);
+      const els = {};
+      const mkEl = (id) => { const el = { id, innerHTML: '', dataset: {}, listeners: {}, value: '', clicks: 0,
+        addEventListener(t, fn) { (el.listeners[t] = el.listeners[t] || []).push(fn); },
+        querySelector: () => null, querySelectorAll: () => [], click() { el.clicks++; } }; return el; };
+      const downloads = [];
+      const doc = { getElementById: (id) => (els[id] = els[id] || mkEl(id)),
+        createElement: () => { const x = { click() { downloads.push(x.download); } }; return x; } };
+      const fire = async (id, type, target) => { for (const fn of (els[id].listeners[type] || [])) await fn({ target }); };
+      const btn = (dataset, id = '') => { const t = { id, dataset, closest: (sel) => (sel === 'button' ? t : null) }; return t; };
+      const fileEv = (obj) => ({ target: { files: [{ text: async () => JSON.stringify(obj) }], value: 'x' } });
+      let dirty = false, panelRenders = 0;
+      const names = ['document', 'Risuai', 'bundleMod', 'profileMod', 'validateSchema', 'SCHEMA_LORE_COMMENT', 'escapeText', 'schema', 'renderPanel', 'editorDiffersFromInstalled',
+        'bundleKindOf', 'bundlePlanFor', 'bundlePieceApply', 'bundleWholeApply', 'bundleRevert', 'bundlePlanHtml', 'bundleChooserHtml', 'bundlePickerHtml',
+        'bundleRecipes', 'bundleExportWhole', 'bundleExportPiece', 'bundleRecipeFromFile', 'bundleBases'];
+      const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      new Function(...names, src.slice(a, b))(doc, global.Risuai, B, P, validateSchema, '⚙simcore', esc, wSchema(), () => { panelRenders++; }, () => dirty,
+        H.kindOf, H.planFor, H.pieceApply, H.wholeApply, H.revert, H.planHtml, H.chooserHtml, H.pickerHtml,
+        () => H.recipes(), () => H.exportWhole(), (_c, picks, info) => H.exportPiece(picks, info), (_c, data) => H.recipeFromFile(data), () => H.bases());
+      const rep = () => els['sc-bundle-report'].innerHTML;
+      const picker = () => els['sc-bundle-picker'].innerHTML;
+
+      await els['sc-bundle-export'].onclick();
+      ck('배선 — [번들 내보내기] → 고르기가 뜬다 (바로 내려받지 않는다)', rep().includes('data-bexp="piece"') && rep().includes('data-bexp="whole"') && downloads.length === 0, rep().slice(0, 120));
+      await fire('sc-bundle-report', 'click', btn({ bexp: 'piece' }));
+      ck('배선 — [조각 고르기] → 고르기 화면', picker().includes('🧩 조각 고르기') && picker().includes('data-ptab="map"') && /id="sc-piece-export"[^>]*disabled/.test(picker()), picker().slice(0, 160));
+      await fire('sc-bundle-picker', 'change', { type: 'checkbox', checked: true, dataset: { ptab: 'map' } });
+      ck('배선 — 탭을 체크하면 다시 그리고 딸린 것·검증이 따라온다', /data-ptab="map" checked/.test(picker()) && picker().includes('이 조각만으로 설치돼요') && /data-pid="location"[^>]*disabled/.test(picker()), picker().slice(0, 200));
+      await fire('sc-bundle-picker', 'change', { type: 'checkbox', checked: true, dataset: { plist: 'vars', pid: 'gold' } });
+      await fire('sc-bundle-picker', 'change', { type: 'checkbox', checked: false, dataset: { plist: 'vars', pid: 'gold' } });
+      ck('배선 — 항목 체크를 켰다 끄면 원래대로', !/data-pid="gold" checked/.test(picker()), '');
+      await fire('sc-bundle-picker', 'click', btn({}, 'sc-piece-export'));
+      ck('배선 — [내보내기] → 파일 이름에 rev · 다음 단추는 r2', downloads.length === 1 && /^simcore-piece-.+-r1\.json$/.test(downloads[0]) && rep().includes('조각 내보내기 완료') && picker().includes('내보내기 r2'), `${downloads[0]} / ${rep().slice(0, 100)}`);
+      await fire('sc-bundle-picker', 'click', btn({}, 'sc-piece-close'));
+      ck('배선 — [닫기]', picker() === '', picker().slice(0, 50));
+      await fire('sc-bundle-report', 'click', btn({ bexp: 'whole' }));
+      ck('배선 — [전체 번들] → 내려받기와 보고', downloads.length === 2 && /^simcore-bundle-/.test(downloads[1]) && /내보내기 완료 \(r\d+\)/.test(rep()), rep().slice(0, 100));
+      await fire('sc-bundle-report', 'click', btn({ bexp: 'file' }));
+      ck('배선 — [지난 파일에서 구성 되살리기] → 파일 고르기', els['sc-bundle-recipe-file'].clicks === 1, '');
+      await els['sc-bundle-recipe-file'].onchange(fileEv(e3.data));
+      ck('배선 — 지난 조각 파일 → 구성이 열린다 (다음 rev)', rep().includes('구성을 되살렸어요') && picker().includes('내보내기 r4') && /data-ptab="map" checked/.test(picker()), rep().slice(0, 100));
+      await fire('sc-bundle-picker', 'click', btn({}, 'sc-piece-close'));
+
+      // 넣기 — 요약 → 줄 바꾸기 → 한 번 더
+      els['sc-bundle-apply'].onclick();
+      ck('배선 — [번들 넣기] 첫 클릭은 파일 고르기', els['sc-bundle-file'].clicks === 1, '');
+      const r9 = piece(9, (d) => { d.schema.map.label = '배선 시험'; });
+      await els['sc-bundle-file'].onchange(fileEv(r9));
+      ck('배선 — 조각 파일 → 요약 화면', rep().includes('오라리오 지도') && rep().includes('data-bkey="schema:map.label"') && rep().includes('처음부터 다시 넣기'), rep().slice(0, 160));
+      await fire('sc-bundle-report', 'click', btn({ bkey: 'schema:map.label', bpick: 'mine' }));
+      ck('배선 — 줄을 [내 것]으로 바꾸면 다시 계획한다', /data-bkey="schema:map.label" data-bpick="mine" style="[^"]*font-weight:700/.test(rep()), rep().slice(0, 200));
+      const labelBefore = wSchema().map.label;
+      await els['sc-bundle-apply'].onclick();
+      ck('배선 — 한 번 더 누르면 넣는다 (고른 대로: 지도 이름은 내 것)', rep().includes('넣기 완료') && wSchema().map.label === labelBefore && panelRenders >= 1
+        && JSON.parse(store.get('sim:bundle-base:c-recv:b_map00001')).rev === 9, rep().slice(0, 120));
+      await els['sc-bundle-file'].onchange(fileEv(r9));
+      await fire('sc-bundle-report', 'click', btn({ bfresh: '1' }));
+      ck('배선 — [처음부터 다시 넣기] → 지문 없이 다시 계획 · 돌아가기 단추', rep().includes('data-bfresh="0"') && rep().includes('처음 넣는 것처럼'), rep().slice(-260));
+
+      // 더티 작업본 멈춤
+      dirty = true;
+      await els['sc-bundle-file'].onchange(fileEv(r9));
+      ck('배선 — 적용 안 한 작업본이 있으면 멈추고 묻는다', rep().includes('작업본 버리고 계속') && !rep().includes('data-bkey'), rep().slice(0, 120));
+      await fire('sc-bundle-report', 'click', btn({ bdiscard: '1' }));
+      ck('배선 — [작업본 버리고 계속] → 요약으로 이어진다', rep().includes('data-bkey="schema:map.label"'), rep().slice(0, 120));
+      dirty = false;
+
+      // 형식이 다른 파일 · 전체 번들 안내 · 되돌리기
+      await els['sc-bundle-file'].onchange(fileEv(cp(HOST)));
+      ck('배선 — 스키마 JSON을 넣으면 JSON 관리자를 가리킨다', rep().includes('JSON 관리자'), rep().slice(0, 120));
+      await els['sc-bundle-file'].onchange(fileEv(cp(oldBundle)));
+      ck('배선 — 전체 번들 요약: 통째 교체 안내 + 따로 넣은 조각 경고', rep().includes('로어북 전체와 정규식이 교체') && /따로 넣은 조각 \d+개/.test(rep()) && rep().includes('[번들 넣기]를 한 번 더'), rep().slice(0, 200));
+      await els['sc-bundle-revert'].onclick();
+      ck('배선 — [교체 되돌리기]', rep().includes('교체 전 상태로 복구'), rep().slice(0, 100));
+    }
+
     try { await global.__unload?.(); } catch { /* 무관 */ }
   }
 

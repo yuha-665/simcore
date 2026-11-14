@@ -10233,7 +10233,7 @@ function picksFromPiece(data) {
 module.exports = {
   hash53, unitHash, sameUnit, loreUnits, regexUnits, schemaUnits, pairUnits, fingerprintOf,
   pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER,
-  newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, PICK_LISTS,
+  newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, PICK_LISTS, TAB_COVERS,
 };
 
 });
@@ -32334,6 +32334,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const src = fenced ? fenced[1] : raw;
         try {
           const candidate = JSON.parse(src);
+          // 🧩 번들 파일을 여기 넣으면 "vars는 배열이어야…" 같은 엉뚱한 오류만 뜬다 — 번들 칸을 가리킨다 (v1.25.0)
+          if (candidate && typeof candidate === 'object' && !Array.isArray(candidate) && candidate.simcoreBundle != null) {
+            sourceState.textContent = '번들 파일이에요 — 여기(스키마 JSON)가 아니라 설정의 💾 세이브 탭 → 🧳 개조 번들의 [번들 넣기]로 넣어 주세요.';
+            sourceState.className = 'sce-json-source-state sce-err';
+            return;
+          }
           jsonImportPreview = { candidate, validation: validateSchema(candidate) };
           renderImportPreview();
           setDraftState('검사가 끝났어요. 아래 내용을 확인해 주세요.');
@@ -42426,11 +42432,141 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       + `${opts.fresh ? ' 지금은 설치 기록을 무시하고 처음 넣는 것처럼 계획했어요. <button data-bfresh="0" style="padding:1px 8px;font-size:12px;">업데이트로 돌아가기</button>'
         : plan.installedRev != null ? ' 넣었던 것이 사라져 다시 안 들어가면 <button data-bfresh="1" style="padding:1px 8px;font-size:12px;">처음부터 다시 넣기</button>' : ''}</div>`;
   }
+  // ── 🧩 내보내기 구성(레시피) — 같은 번들을 다시 낼 때 id가 같아야 받는 쪽이 업데이트로 본다 ──
+  // 저장소는 편의고 파일이 진실이다: 기기를 옮겨 레시피가 없으면 지난번에 낸 번들 파일을 골라 id·구성을 되살린다.
+  const BUNDLE_RECIPE_PREFIX = 'sim:bundle-recipe:';
+  const bundleRecipeKey = (char) => `${BUNDLE_RECIPE_PREFIX}${char.chaId ?? char.name}`;
+  /** 이 캐릭터의 내보내기 구성 — [{ id, kind: 'piece'|'whole', name, note, rev, picks }] (조각마다 하나 + 전체 번들 하나) */
+  async function bundleRecipes(char) {
+    try {
+      const a = JSON.parse(await Risuai.pluginStorage.getItem(bundleRecipeKey(char)));
+      return Array.isArray(a) ? a.filter((r) => r && typeof r.id === 'string' && (r.kind === 'piece' || r.kind === 'whole')) : [];
+    } catch { return []; }
+  }
+  async function saveBundleRecipe(char, recipe) {
+    const list = (await bundleRecipes(char)).filter((r) => r.id !== recipe.id && !(recipe.kind === 'whole' && r.kind === 'whole'));
+    list.push(recipe);
+    await Risuai.pluginStorage.setItem(bundleRecipeKey(char), JSON.stringify(list));
+  }
+  /** 🔒 keep을 걷어 낸 로어 사본 — 스키마·프로필 항목만 (다른 로어는 원문 그대로). 제작자의 잠금이 실려 가면 받는 쪽에서 그 항목이 영영 안 바뀐다 */
+  function stripKeepFromLore(l) {
+    if (!l || !profileMod.isSchemaLore(l) || typeof l.content !== 'string') return l;
+    try {
+      const o = JSON.parse(l.content);
+      const next = JSON.stringify(bundleMod.stripKeep(o));
+      return next === JSON.stringify(o) ? l : { ...l, content: next };
+    } catch { return l; }
+  }
+  /** 전체 번들 내보내기 — 지금 모양(simcoreBundle: 1) + id·rev. 옛 플러그인도 통째 교체로 그대로 받는다 */
+  async function bundleExportWhole(char) {
+    const base = bundleFromChar(char, schema?.meta?.name);
+    if (!base.lorebook.length) return { data: base, error: '이 캐릭터의 로어북이 비어 있음 — 내보낼 게 없어요' };
+    const prev = (await bundleRecipes(char)).find((r) => r.kind === 'whole');
+    const id = prev ? prev.id : bundleMod.newBundleId();
+    const rev = (prev && Number.isFinite(Number(prev.rev)) ? Number(prev.rev) : 0) + 1;
+    const data = { simcoreBundle: 1, id, rev, name: base.name, lorebook: base.lorebook.map(stripKeepFromLore), regex: base.regex };
+    try { await saveBundleRecipe(char, { id, kind: 'whole', name: data.name, rev }); }
+    catch (e) { console.log('[simcore] 번들 구성 저장 실패:', e.message); }
+    return { data };
+  }
+  /** 조각 내보내기 — 혼자 검증을 못 넘으면 errors만 돌려주고 아무것도 저장하지 않는다(rev도 안 오른다) */
+  async function bundleExportPiece(char, picks, info = {}) {
+    const prev = info.id ? (await bundleRecipes(char)).find((r) => r.id === info.id && r.kind === 'piece') : null;
+    const id = info.id || bundleMod.newBundleId();
+    const rev = (prev && Number.isFinite(Number(prev.rev)) ? Number(prev.rev) : 0) + 1;
+    const built = bundleMod.buildPiece(char, picks, { id, rev, name: info.name, note: info.note });
+    if (built.errors.length) return built;
+    const keep = { tabs: [...(picks.tabs || [])], items: JSON.parse(JSON.stringify(picks.items || {})), lore: [...(picks.lore || [])], regex: [...(picks.regex || [])] };
+    try { await saveBundleRecipe(char, { id, kind: 'piece', name: built.data.name, note: built.data.note || '', rev, picks: keep }); }
+    catch (e) { console.log('[simcore] 조각 구성 저장 실패:', e.message); }
+    return built;
+  }
+  /** 지난번에 낸 번들 파일에서 구성을 되살린다 — { recipe } 또는 { error } */
+  async function bundleRecipeFromFile(char, data) {
+    let recipe = null;
+    if (data && data.simcoreBundle === 2) {
+      const bad = bundleMod.pieceShapeError(data);
+      if (bad) return { error: bad };
+      recipe = { id: data.id, kind: 'piece', name: String(data.name || '조각'), note: typeof data.note === 'string' ? data.note : '',
+        rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1, picks: bundleMod.picksFromPiece(data) };
+    } else if (data && data.simcoreBundle === 1 && typeof data.id === 'string' && data.id) {
+      recipe = { id: data.id, kind: 'whole', name: String(data.name || ''), rev: Number.isFinite(Number(data.rev)) ? Number(data.rev) : 1 };
+    } else return { error: 'id가 든 번들 파일이 아니에요 — v1.25.0부터 내보낸 번들·조각 파일을 골라 주세요' };
+    await saveBundleRecipe(char, recipe);
+    return { recipe };
+  }
+  const BUNDLE_BTN = 'padding:1px 8px;font-size:12px;';
+  /** [번들 내보내기]를 누르면 뜨는 고르기 — 전체 / 조각 고르기 / 지난 조각 / 지난 파일로 되살리기 */
+  function bundleChooserHtml(recipes) {
+    const whole = recipes.find((r) => r.kind === 'whole');
+    const pieces = recipes.filter((r) => r.kind === 'piece');
+    return '<div style="margin-bottom:4px;">무엇을 내보낼까요?</div>'
+      + `<button data-bexp="whole" style="${BUNDLE_BTN}">전체 번들 r${(whole ? Number(whole.rev) || 0 : 0) + 1}</button> `
+      + `<button data-bexp="piece" style="${BUNDLE_BTN}">🧩 조각 고르기</button>`
+      + '<div style="opacity:.75;margin-top:4px;">전체 = 로어북·정규식 통째(받는 쪽은 통째 교체) · 조각 = 고른 것만(받는 봇의 것은 그대로 두고 그 위에 얹어요)</div>'
+      + `${pieces.length ? '<div style="margin-top:6px;">지난 조각:</div>' + pieces.map((r) => `<div style="margin:2px 0;">'${escapeText(r.name)}' r${Number(r.rev) || 1} `
+        + `<button data-bexp-recipe="${escapeText(r.id)}" style="${BUNDLE_BTN}">구성 열기 → r${(Number(r.rev) || 1) + 1}</button></div>`).join('') : ''}`
+      + `<div style="margin-top:6px;"><button data-bexp="file" style="${BUNDLE_BTN}">지난 번들 파일에서 구성 되살리기</button> `
+      + '<span style="opacity:.75;">기기를 옮겼거나 기록이 없을 때 — 지난번에 낸 파일을 고르면 같은 id로 이어서 내요</span></div>';
+  }
+  /** 🧩 조각 고르기 화면 — 순수 문자열. st = { picks, name, note, rev, open: [펼친 접이식 열쇠] } */
+  function bundlePickerHtml(pk, built, st) {
+    const picks = st.picks;
+    const open = new Set(st.open || []);
+    const cb = (attrs, label, checked, disabled, tail = '') => `<label style="display:inline-flex;gap:4px;align-items:center;margin:2px 12px 2px 0;${disabled ? 'opacity:.55;' : ''}">`
+      + `<input type="checkbox" ${attrs}${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>${escapeText(label)}${tail}</label>`;
+    const fold = (key, summary, body) => `<details data-pfold="${escapeText(key)}"${open.has(key) ? ' open' : ''} style="margin:2px 0;"><summary>${summary}</summary><div style="padding:2px 0 4px 14px;">${body}</div></details>`;
+    const covered = (lk) => picks.tabs.some((t) => (bundleMod.TAB_COVERS[t] || []).includes(lk));
+    let schemaPart;
+    if (!pk.hasSchema) schemaPart = '<div style="opacity:.75;">이 캐릭터엔 ⚙simcore가 없어 로어북·정규식만 고를 수 있어요.</div>';
+    else {
+      const tabs = pk.tabs.filter((t) => t.on).map((t) => cb(`data-ptab="${escapeText(t.key)}"`, t.label, picks.tabs.includes(t.key), false)).join('');
+      const lists = pk.lists.filter((l) => l.items.length).map((l) => {
+        const mine = picks.items[l.key] || [];
+        const auto = new Set((built.auto[l.key] || []));
+        const cov = covered(l.key);
+        const n = l.items.filter((it) => cov || mine.includes(it.id) || auto.has(it.id)).length;
+        return fold('list:' + l.key, `${escapeText(l.label)} (${n}/${l.items.length})`, l.items.map((it) => {
+          const forced = cov || (auto.has(it.id) && !mine.includes(it.id));
+          return cb(`data-plist="${escapeText(l.key)}" data-pid="${escapeText(it.id)}"`, it.label, forced || mine.includes(it.id), forced, forced && !cov ? ' <span style="opacity:.8">(자동)</span>' : '');
+        }).join(''));
+      }).join('');
+      schemaPart = `<div style="margin:2px 0;">탭 통째: ${tabs || '<span style="opacity:.75">(켜진 탭 없음)</span>'}</div>${lists}`;
+    }
+    const lorePart = pk.lore.length ? pk.lore.map((l) => {
+      if (!l.isFolder) return `<div>${cb(`data-plore="${escapeText(l.key)}"`, l.label, picks.lore.includes(l.key), false)}</div>`;
+      const whole = picks.lore.includes(l.key);
+      return fold('lore:' + l.key, cb(`data-plore="${escapeText(l.key)}"`, l.label, whole, false, ` <span style="opacity:.8">(${l.children.length})</span>`),
+        l.children.map((c) => cb(`data-plore="${escapeText(c.key)}"`, c.label, whole || picks.lore.includes(c.key), whole)).join('') || '<span style="opacity:.75">(빈 폴더)</span>');
+    }).join('') : '<div style="opacity:.75;">(로어북 없음)</div>';
+    const regexPart = pk.regex.length ? pk.regex.map((r) => cb(`data-pregex="${escapeText(r.key)}"`, r.label, picks.regex.includes(r.key), false)).join('') : '<span style="opacity:.75;">(정규식 없음)</span>';
+    const autoBits = [['vars', '변수'], ['derived', '파생'], ['checks', '판정'], ['actions', '액션'], ['allow', 'AI 허용']]
+      .filter(([k]) => (built.auto[k] || []).length).map(([k, label]) => `${label} ${built.auto[k].map(escapeText).join(' · ')}`);
+    const head = 'font-weight:700;margin:8px 0 2px;';
+    return '<div style="border:1px solid currentColor;border-radius:8px;padding:10px;margin-top:8px;">'
+      + '<div style="font-weight:700;">🧩 조각 고르기</div>'
+      + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;"><label>이름 <input id="sc-piece-name" value="${escapeText(st.name || '')}" style="min-width:180px;"></label>`
+      + `<label>설명 <input id="sc-piece-note" maxlength="200" value="${escapeText(st.note || '')}" placeholder="원작 링크 · 허락 표시 (받는 분께 보여요)" style="min-width:260px;"></label></div>`
+      + `<div style="${head}">스키마</div>${schemaPart}`
+      + `<div style="${head}">로어북</div>${lorePart}`
+      + `<div style="${head}">정규식</div><div>${regexPart}</div>`
+      + `<div style="margin-top:8px;opacity:.85;">같이 따라가는 것 (자동): ${autoBits.length ? autoBits.join(' / ') : '없음'}</div>`
+      + `<div style="margin-top:4px;">${built.errors.length
+        ? `<span class="status-bad">⚠ 이대로는 내보낼 수 없어요:<br>${built.errors.slice(0, 6).map(escapeText).join('<br>')}${built.errors.length > 6 ? `<br>외 ${built.errors.length - 6}건` : ''}</span>`
+        : '<span class="status-ok">✓ 이 조각만으로 설치돼요 (검증 통과) — 값(진행 상태)은 안 실리고, 받는 쪽에서 시작값으로 서요</span>'}</div>`
+      + `<div style="margin-top:8px;display:flex;gap:8px;"><button id="sc-piece-export"${built.errors.length ? ' disabled' : ''}>내보내기 r${Number(st.rev) || 1}</button><button id="sc-piece-close">닫기</button></div>`
+      + '</div>';
+  }
   // 테스트 배수구 (__simcoreDrainTurn과 같은 결) — 순수 로직과 흐름만 노출, 화면은 실기 확인
   try {
     globalThis.__simcoreBundle = { bundleFromChar, bundleShapeError, applyBundleToChar,
       planFor: bundlePlanFor, pieceApply: bundlePieceApply, wholeApply: bundleWholeApply, revert: bundleRevert,
-      bases: async () => bundleBases(await Risuai.getCharacter()), kindOf: bundleKindOf, planHtml: bundlePlanHtml };
+      bases: async () => bundleBases(await Risuai.getCharacter()), kindOf: bundleKindOf, planHtml: bundlePlanHtml,
+      exportWhole: async () => bundleExportWhole(await Risuai.getCharacter()),
+      exportPiece: async (picks, info) => bundleExportPiece(await Risuai.getCharacter(), picks, info),
+      recipes: async () => bundleRecipes(await Risuai.getCharacter()),
+      recipeFromFile: async (data) => bundleRecipeFromFile(await Risuai.getCharacter(), data),
+      chooserHtml: bundleChooserHtml, pickerHtml: bundlePickerHtml };
   } catch { /* 전역이 막힌 환경 */ }
 
   // 보조 모델에 붙이는 짧은 유저 턴. system 한 통만 보내면 안 되는 프로바이더가 있다.
@@ -47662,16 +47798,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           <section class="sc-card sc-option-card">
             <h3 class="sc-card-title">🧳 개조 번들 (배포 도구)</h3>
             <p class="sc-card-desc">이 캐릭터의 로어북 전체와 정규식을 한 파일로 묶어요. 개조판을 나눌 때 카드 대신
-              이 파일을 배포하면, 받는 분은 원본 카드 위에 [가져와 교체] 한 번으로 끝나요 — 시스템(⚙simcore)도
-              로어북에 실려 함께 갑니다. 교체 전 상태는 자동 백업되고 [되돌리기]로 복구할 수 있어요.
-              인사말·이미지·트리거는 건드리지 않아요.</p>
+              이 파일을 배포하면, 받는 분은 원본 카드 위에 [번들 넣기] 한 번으로 끝나요 — 시스템(⚙simcore)도
+              로어북에 실려 함께 갑니다. <b>🧩 조각</b>은 원하는 것만 골라(지도 하나, 로어 폴더 하나 …) 내는 번들이에요:
+              받는 봇의 것은 그대로 두고 그 위에 얹고, 같은 조각의 다음 판을 넣으면 받는 분이 고친 것은 남긴 채 바뀐 것만 들어가요.
+              넣기 전 상태는 자동 백업되고 [교체 되돌리기]로 복구할 수 있어요. 인사말·이미지·트리거는 건드리지 않아요.</p>
             <div class="sc-card-body" style="display:flex;gap:8px;flex-wrap:wrap;">
               <button id="sc-bundle-export">번들 내보내기</button>
               <button id="sc-bundle-apply">번들 넣기</button>
               <button id="sc-bundle-revert">교체 되돌리기</button>
               <input type="file" id="sc-bundle-file" accept=".json" style="display:none">
+              <input type="file" id="sc-bundle-recipe-file" accept=".json" style="display:none">
             </div>
             <div id="sc-bundle-report" class="report"></div>
+            <div id="sc-bundle-picker" class="report"></div>
           </section>
           <div id="sc-save-report" class="report"></div>
         </div>
@@ -48180,34 +48319,122 @@ count(목록)  has(목록, "항목")</pre>
 
     // ── 개조 번들 (v1.0.5) · 🧩 조각 (v1.25.0) ──
     const bundleRep = () => document.getElementById('sc-bundle-report');
+    let bundlePending = null; // { data, kind: 'piece'|'whole', until, choices, fresh, restOpen }
+    // 내보내기 (v1.25.0) — 누르면 고르기가 먼저 뜬다: 전체 번들 / 🧩 조각 고르기 / 지난 조각 / 지난 파일로 구성 되살리기
+    const pickerEl = () => document.getElementById('sc-bundle-picker');
+    const downloadJson = (data, filename) => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    const fileSafe = (s) => String(s || '').replace(/[^\w가-힣-]/g, '_');
+    let piecePick = null; // { char, pk, id, rev, name, note, picks } — 🧩 조각 고르기 화면의 상태
     document.getElementById('sc-bundle-export').onclick = async () => {
       const rep = bundleRep();
       try {
         const char = await Risuai.getCharacter();
         if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
-        const data = bundleFromChar(char, schema?.meta?.name);
-        if (!data.lorebook.length) {
-          rep.innerHTML = '<span class="status-bad">이 캐릭터의 로어북이 비어 있음 — 내보낼 게 없어요</span>'; return;
-        }
+        bundlePending = null;
+        rep.innerHTML = bundleChooserHtml(await bundleRecipes(char));
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
+      }
+    };
+    async function runWholeExport() {
+      const rep = bundleRep();
+      try {
+        const char = await Risuai.getCharacter();
+        if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+        const { data, error } = await bundleExportWhole(char);
+        if (error) { rep.innerHTML = `<span class="status-bad">${escapeText(error)}</span>`; return; }
         const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `simcore-bundle-${data.name.replace(/[^\w가-힣-]/g, '_')}.json`;
-        a.click();
-        URL.revokeObjectURL(a.href);
+        downloadJson(data, `simcore-bundle-${fileSafe(data.name)}.json`);
         const profN = data.lorebook.filter((l) => profileMod.profileNameOf(l) != null).length; // 🔀 (v1.24.0)
-        rep.innerHTML = `<span class="status-ok">✓ 내보내기 완료 — 로어북 ${data.lorebook.length}개 · 정규식 ${data.regex.length}개`
+        rep.innerHTML = `<span class="status-ok">✓ 내보내기 완료 (r${data.rev}) — 로어북 ${data.lorebook.length}개 · 정규식 ${data.regex.length}개`
           + `${hasSchema ? ' · ⚙simcore 동봉' : ' · <b>⚠ ⚙simcore 없음 — 스키마를 먼저 [설치/업데이트] 하고 다시 내보내세요</b>'}`
           + `${profN ? ` · 🔀 프로필 ${profN}개 동봉` : ''}</span>`;
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
       }
+    }
+    function renderPiecePicker() {
+      const el = pickerEl();
+      if (!el) return;
+      if (!piecePick) { el.innerHTML = ''; return; }
+      // 다시 그리기 전에 입력 중이던 글과 펼친 접이식을 챙긴다 (체크 하나마다 통째로 다시 그린다)
+      const nameEl = el.querySelector('#sc-piece-name'), noteEl = el.querySelector('#sc-piece-note');
+      if (nameEl) piecePick.name = nameEl.value;
+      if (noteEl) piecePick.note = noteEl.value;
+      const open = [...el.querySelectorAll('details[open]')].map((d) => d.dataset.pfold);
+      const built = bundleMod.buildPiece(piecePick.char, piecePick.picks, { id: piecePick.id || 'b_preview', rev: piecePick.rev, name: piecePick.name, note: piecePick.note });
+      el.innerHTML = bundlePickerHtml(piecePick.pk, built, { picks: piecePick.picks, name: piecePick.name, note: piecePick.note, rev: piecePick.rev, open });
+    }
+    function openPiecePicker(char, recipe) {
+      const p = (recipe && recipe.picks) || {};
+      piecePick = { char, pk: bundleMod.pickables(char), id: recipe ? recipe.id : null, rev: (recipe ? Number(recipe.rev) || 0 : 0) + 1,
+        name: (recipe && recipe.name) || '', note: (recipe && recipe.note) || '',
+        picks: { tabs: [...(p.tabs || [])], items: JSON.parse(JSON.stringify(p.items || {})), lore: [...(p.lore || [])], regex: [...(p.regex || [])] } };
+      const el = pickerEl();
+      if (el) el.innerHTML = '';
+      renderPiecePicker();
+    }
+    pickerEl().addEventListener('change', (ev) => {
+      const t = ev.target;
+      if (!piecePick || !t || t.type !== 'checkbox') return;
+      const tog = (arr, v) => { const at = arr.indexOf(v); if (t.checked && at < 0) arr.push(v); if (!t.checked && at >= 0) arr.splice(at, 1); };
+      if (t.dataset.ptab) tog(piecePick.picks.tabs, t.dataset.ptab);
+      else if (t.dataset.plist) tog(piecePick.picks.items[t.dataset.plist] || (piecePick.picks.items[t.dataset.plist] = []), t.dataset.pid);
+      else if (t.dataset.plore) tog(piecePick.picks.lore, t.dataset.plore);
+      else if (t.dataset.pregex) tog(piecePick.picks.regex, t.dataset.pregex);
+      else return;
+      renderPiecePicker();
+    });
+    pickerEl().addEventListener('click', async (ev) => {
+      const t = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+      if (!t || !piecePick) return;
+      if (t.id === 'sc-piece-close') { piecePick = null; renderPiecePicker(); return; }
+      if (t.id !== 'sc-piece-export') return;
+      const rep = bundleRep();
+      try {
+        renderPiecePicker(); // 이름·설명 칸의 글을 상태로
+        const r = await bundleExportPiece(piecePick.char, piecePick.picks, { id: piecePick.id, name: piecePick.name, note: piecePick.note });
+        if (r.errors.length) { rep.innerHTML = `<span class="status-bad">내보낼 수 없어요 — ${escapeText(r.errors[0])}</span>`; return; }
+        downloadJson(r.data, `simcore-piece-${fileSafe(r.data.name)}-r${r.data.rev}.json`);
+        const sN = r.data.schema ? bundleMod.schemaUnits(r.data.schema).length : 0;
+        rep.innerHTML = `<span class="status-ok">✓ 조각 내보내기 완료 — '${escapeText(r.data.name)}' r${r.data.rev} · 스키마 단위 ${sN}개`
+          + ` · 로어북 ${(r.data.lorebook || []).length}개 · 정규식 ${(r.data.regex || []).length}개. 받는 분은 💾 세이브 탭의 [번들 넣기]로 넣어요 (v1.25.0 이상).</span>`;
+        piecePick.id = r.data.id; piecePick.rev = r.data.rev + 1;
+        renderPiecePicker();
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">조각 내보내기 실패: ${escapeText(e.message)}</span>`;
+      }
+    });
+    document.getElementById('sc-bundle-recipe-file').onchange = async (ev) => {
+      const rep = bundleRep();
+      const file = ev.target.files?.[0];
+      ev.target.value = '';
+      if (!file) return;
+      try {
+        const char = await Risuai.getCharacter();
+        if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+        const r = await bundleRecipeFromFile(char, JSON.parse(await file.text()));
+        if (r.error) { rep.innerHTML = `<span class="status-bad">${escapeText(r.error)}</span>`; return; }
+        if (r.recipe.kind === 'piece') {
+          rep.innerHTML = `<span class="status-ok">✓ '${escapeText(r.recipe.name)}' r${r.recipe.rev}의 구성을 되살렸어요 — 아래에서 확인하고 내보내면 r${r.recipe.rev + 1}이에요</span>`;
+          openPiecePicker(char, r.recipe);
+        } else {
+          rep.innerHTML = `<span class="status-ok">✓ 전체 번들 '${escapeText(r.recipe.name)}'의 id를 이었어요 — 다음 [전체 번들] 내보내기는 r${r.recipe.rev + 1}이에요</span>`;
+        }
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">파일 읽기 실패: ${escapeText(e.message)}</span>`;
+      }
     };
     // 교체는 파괴적이라 패널 안 2단 확인 (규칙 #6 — 패널 위 host alert 금지). 파일을 먼저
     // 읽어 형식·개수를 보여준 상태에서 같은 버튼을 한 번 더 눌러야 실제로 갈아 끼운다.
     // 🧩 조각(v1.25.0)은 교체가 아니라 병합 — 요약 줄마다 [번들 것]/[내 것]을 바꿀 수 있고, 바꿀 때마다 다시 계획한다.
-    let bundlePending = null; // { data, kind: 'piece'|'whole', until, choices, fresh, restOpen }
     let bundleHeld = null;    // 더티 작업본 때문에 멈춘 파일 — [작업본 버리고 계속]이 이어 간다
     document.getElementById('sc-bundle-apply').onclick = () => {
       if (bundlePending && Date.now() < bundlePending.until) return runBundleApply();
@@ -48288,6 +48515,16 @@ count(목록)  has(목록, "항목")</pre>
         if (t.dataset.bdiscard) {
           const held = bundleHeld; bundleHeld = null;
           if (held) await showBundlePlan(held.data, held.kind);
+          return;
+        }
+        if (t.dataset.bexp === 'whole') { await runWholeExport(); return; }
+        if (t.dataset.bexp === 'file') { document.getElementById('sc-bundle-recipe-file').click(); return; }
+        if (t.dataset.bexp === 'piece' || t.dataset.bexpRecipe) {
+          const char = await Risuai.getCharacter();
+          if (!char) { bundleRep().innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+          const recipe = t.dataset.bexpRecipe ? (await bundleRecipes(char)).find((r) => r.id === t.dataset.bexpRecipe && r.kind === 'piece') : null;
+          bundleRep().innerHTML = '<span class="status-ok">아래에서 실을 것을 골라 주세요 — 고른 항목이 쓰는 변수는 자동으로 따라와요.</span>';
+          openPiecePicker(char, recipe || null);
           return;
         }
         if (!bundlePending || bundlePending.kind !== 'piece') return;

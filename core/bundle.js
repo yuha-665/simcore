@@ -618,5 +618,5 @@ function picksFromPiece(data) {
 module.exports = {
   hash53, unitHash, sameUnit, loreUnits, regexUnits, schemaUnits, pairUnits, fingerprintOf,
   pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER,
-  newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, PICK_LISTS,
+  newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, PICK_LISTS, TAB_COVERS,
 };

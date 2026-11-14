@@ -16362,6 +16362,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const src = fenced ? fenced[1] : raw;
         try {
           const candidate = JSON.parse(src);
+          // 🧩 번들 파일을 여기 넣으면 "vars는 배열이어야…" 같은 엉뚱한 오류만 뜬다 — 번들 칸을 가리킨다 (v1.25.0)
+          if (candidate && typeof candidate === 'object' && !Array.isArray(candidate) && candidate.simcoreBundle != null) {
+            sourceState.textContent = '번들 파일이에요 — 여기(스키마 JSON)가 아니라 설정의 💾 세이브 탭 → 🧳 개조 번들의 [번들 넣기]로 넣어 주세요.';
+            sourceState.className = 'sce-json-source-state sce-err';
+            return;
+          }
           jsonImportPreview = { candidate, validation: validateSchema(candidate) };
           renderImportPreview();
           setDraftState('검사가 끝났어요. 아래 내용을 확인해 주세요.');

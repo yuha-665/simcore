@@ -196,6 +196,41 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('찾아낸 곳인데 구역 없음 경고는 전 장 기준', !has(iss((m) => { delete m.zones; }), '$.map.listVar', '구역') && has(iss((m) => { delete m.zones; delete m.sheets[0].zones; }), '$.map.listVar', '구역', 'warn'), '');
   }
 
+  console.log('── ③ 그리기 — 띠 · 문 · 가림');
+  {
+    const html = (schema, vars, opts, ui = {}, ropts = {}) => MAP.renderMapHtml(view(schema, vars, opts), ui, ropts);
+    let h = html(TWO, {});
+    ck('띠 — 장 이름 단추 (안 가 본 안개 장은 없다 · 구경 중이 아니면 돌아가기 없음)', h.includes('class="scm-sheets"') && /<button type="button" class="scm-sbtn scm-on" data-scm-sheet="main">📍 교토 전도<\/button>/.test(h)
+      && !h.includes('data-scm-sheet="under"') && !h.includes('scm-back'), h.slice(0, 400));
+    ck('★ 문 달린 이정표는 단추, 문 없는 이정표는 글자 그대로', /<button type="button" class="scm-exit scm-door scm-edge-right" data-scm-go="under" style="top:[\d.]+%">→ 에도<\/button>/.test(h)
+      && /<span class="scm-exit scm-edge-right" style="top:[\d.]+%">→ 도카이도<\/span>/.test(h), (h.match(/<[a-z]+[^>]*scm-exit[^>]*>[^<]*<\/[a-z]+>/g) || []).join('\n'));
+    h = html(TWO, { location: '수문' });
+    ck('띠 — 지금 여기의 장에 📍·켜짐', /<button type="button" class="scm-sbtn scm-on" data-scm-sheet="under">📍 지하 수로<\/button>/.test(h) && /<button type="button" class="scm-sbtn" data-scm-sheet="main">교토 전도<\/button>/.test(h), h.slice(0, 400));
+    h = html(TWO, {}, { sheet: 'under' }, {}, { bgUrl: 'blob:x' });
+    ck('구경 중 — [📍 내 위치로]', /<button type="button" class="scm-sbtn scm-back" data-scm-sheet="">📍 내 위치로<\/button>/.test(h), h.slice(0, 500));
+    ck('★ 가림 — 문구가 뜨고 그림은 안 깐다 (그림 주소를 받아도)', h.includes('<div class="scm-veil">아직 가 보지 않은 곳이에요</div>') && !h.includes('scm-bg'), '');
+    ck('★ 구경 — 안 가 본 곳은 그림에도 없다', !h.includes('수문') && h.includes('망루 밑'), '');
+    ck('구경 중 아래 줄 — 지금 여기의 장 이름 ("지도 밖"이 아니다)', h.includes('📍 <b>어소</b> <span class="scm-off">(교토 전도)</span>') && !h.includes('지도 밖'), (h.match(/<div class="scm-hereline">.*?<\/div>/) || [''])[0]);
+    h = html(TWO, { visited: ['수문'] }, { sheet: 'under' }, {}, { bgUrl: 'blob:x' });
+    ck('발 디딘 장은 그림이 깔리고 가림 문구가 없다', h.includes('class="scm-bg"') && !h.includes('scm-veil'), '');
+    h = html(TWO, { location: '에도' });
+    ck('어느 장에도 없는 위치는 지금처럼 (지도 밖)', h.includes('<span class="scm-off">(지도 밖)</span>'), (h.match(/<div class="scm-hereline">.*?<\/div>/) || [''])[0]);
+    h = html(TWO, {}, undefined, { sel: 'p0' });
+    ck('★ 문 달린 장소 — 카드에 [지도 펼치기]', h.includes('<button type="button" class="scm-dt-go" data-scm-go="under">🗺 지하 수로 지도 펼치기</button>') && h.includes('천황의 거처'), (h.match(/<div class="scm-detail">.*$/) || [''])[0].slice(0, 400));
+    ck('문 없는 장소 카드엔 단추 없음', !html(TWO, {}, undefined, { sel: 'p2' }).includes('scm-dt-go'), '');
+    const d0 = MAP.detailOf(view(TWO, {}), 'p0');
+    ck('detailOf — go', J(d0.go) === J({ id: 'under', label: '지하 수로' }) && MAP.detailOf(view(TWO, {}), 'p2').go == null, J(d0.go));
+    const dp = MAP.detailOf(view(TWO, { finds: ['폐사 (가모가와 동안)'] }), 'd0');
+    ck('detailOf — 찾아낸 곳은 own·raw', dp.own === true && dp.raw === '폐사 (가모가와 동안)' && !MAP.detailOf(view(TWO, {}), 'p0').own, J(dp));
+    {
+      const s = clone(TWO); s.map.sheets[0].label = '<script>alert(1)</script>'; s.map.sheets[0].fog = false; s.map.exits[0].label = '<img src=x>';
+      const x = html(s, {}, undefined, { sel: 'p0' });
+      ck('★ 장 이름·문 이름표는 이스케이프', !x.includes('<script>') && !x.includes('<img src=x>') && x.includes('&lt;script&gt;alert(1)&lt;/script&gt; 지도 펼치기') && x.includes('&lt;img src=x&gt;'), '');
+    }
+    ck('MAP_CSS — 띠·문·가림·카드 단추 모양', ['.scm-sheets', '.scm-sbtn', '.scm-back', '.scm-exit.scm-door', '.scm-veil', '.scm-dt-go'].every((c) => MAP.MAP_CSS.includes(c)), '');
+    ck('문 단추는 눌린다 (이정표 기본은 pointer-events:none)', /\.scm-exit\.scm-door\{[^}]*pointer-events:auto/.test(MAP.MAP_CSS), '');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })().catch((e) => { console.log('FAIL 테스트 본문이 던짐 →', e && e.stack || e); console.log('\n0 passed, 1 failed'); process.exit(1); });

@@ -532,13 +532,13 @@ function detailOf(view, key) {
     const z = p.zone ? view.zoneOf(p.zone) : null;
     const badge = p.here ? '📍 지금 여기' : p.state === 'seen' ? (view.fogOn ? '✓ 가 본 곳' : '') : view.fog ? '소문으로만 아는 곳' : '';
     const text = (p.state === 'seen' || !view.fog) ? p.desc : (p.rumor || '아직 가 보지 않은 곳이다.');
-    return { title: p.name, sub: p.sub, where: [z?.open ? z.label : null, p.cat].filter(Boolean).join(' · '), badge, text, list: [] };
+    return { title: p.name, sub: p.sub, where: [z?.open ? z.label : null, p.cat].filter(Boolean).join(' · '), badge, text, list: [], go: p.to || null };
   }
   const d = view.pins.find((x) => x.key === key);
   if (d) {
     const z = view.zoneOf(d.zone);
     return { title: d.name, sub: '', where: [z?.label, d.cat].filter(Boolean).join(' · '), badge: d.here ? '📍 지금 여기' : '✓ 찾아낸 곳',
-      text: d.raw !== d.name ? d.raw : '', list: [] };
+      text: d.raw !== d.name ? d.raw : '', list: [], own: true, raw: d.raw };
   }
   const z = view.zoneOf(key);
   if (z) {
@@ -566,6 +566,13 @@ function renderMapHtml(view, ui = {}, opts = {}) {
   const sel = ui.sel || null;
   const h = [];
   h.push(`<div class="scm${opts.pick ? ' scm-picking' : ''}">`);
+  // 장 띠 (v1.26.0) — 장이 둘 이상일 때만. 구경 중이면 끝에 [내 위치로]
+  if (view.multi && Array.isArray(view.strip) && view.strip.length) {
+    h.push('<div class="scm-sheets" role="toolbar" aria-label="지도">');
+    for (const sh of view.strip) h.push(`<button type="button" class="scm-sbtn${sh.on ? ' scm-on' : ''}" data-scm-sheet="${esc(sh.id)}">${sh.here ? '📍 ' : ''}${esc(sh.label)}</button>`);
+    if (view.peek) h.push('<button type="button" class="scm-sbtn scm-back" data-scm-sheet="">📍 내 위치로</button>');
+    h.push('</div>');
+  }
   if (view.cats.length) {
     h.push('<div class="scm-filters" role="toolbar" aria-label="분류">');
     h.push(`<button type="button" class="scm-fbtn${cat ? '' : ' scm-on'}" data-scm-cat="">전체</button>`);
@@ -575,7 +582,8 @@ function renderMapHtml(view, ui = {}, opts = {}) {
     h.push('</div>');
   }
   h.push(`<div class="scm-frame" style="--scm-ratio:${round1(view.ratio * 100)}%"><div class="scm-surface">`);
-  if (opts.bgUrl) h.push(`<img class="scm-bg" src="${esc(opts.bgUrl)}" alt="">`);
+  if (opts.bgUrl && !view.veiled) h.push(`<img class="scm-bg" src="${esc(opts.bgUrl)}" alt="">`);
+  if (view.veiled) h.push('<div class="scm-veil">아직 가 보지 않은 곳이에요</div>');
   for (const z of view.zones) {
     const cls = `scm-zone${z.open ? '' : ' scm-fog'}${z.here ? ' scm-here' : ''}${sel === z.key ? ' scm-sel' : ''}${dim(z.cat)}`;
     h.push(`<button type="button" class="${cls}" data-scm="${z.key}" style="left:${z.x}%;top:${z.y}%;width:${z.w}%;height:${z.h}%;${z.open ? color(z.color) : ''}" aria-label="${esc(z.open ? z.label : '아직 그려지지 않은 곳')}${z.here ? ' (현재 위치)' : ''}">`
@@ -600,13 +608,15 @@ function renderMapHtml(view, ui = {}, opts = {}) {
   }
   for (const e of view.exits) {
     const pos = e.edge === 'top' || e.edge === 'bottom' ? `left:${e.at}%` : `top:${e.at}%`;
-    h.push(`<span class="scm-exit scm-edge-${e.edge}" style="${pos}">${e.arrow} ${esc(e.label)}</span>`);
+    if (e.to) h.push(`<button type="button" class="scm-exit scm-door scm-edge-${e.edge}" data-scm-go="${esc(e.to.id)}" style="${pos}">${e.arrow} ${esc(e.label)}</button>`);
+    else h.push(`<span class="scm-exit scm-edge-${e.edge}" style="${pos}">${e.arrow} ${esc(e.label)}</span>`);
   }
   h.push('</div></div>');
 
   // 아래 — 지금 · 채운 정도 · 고른 곳의 사정
   h.push('<div class="scm-under">');
-  if (view.loc) h.push(`<div class="scm-hereline">📍 <b>${esc(view.loc)}</b>${view.here ? '' : ' <span class="scm-off">(지도 밖)</span>'}</div>`);
+  const hereLabel = view.here && view.hereOn === false ? (Array.isArray(view.strip) ? view.strip.find((x) => x.here)?.label : null) : null;
+  if (view.loc) h.push(`<div class="scm-hereline">📍 <b>${esc(view.loc)}</b>${view.here ? (hereLabel ? ` <span class="scm-off">(${esc(hereLabel)})</span>` : '') : ' <span class="scm-off">(지도 밖)</span>'}</div>`);
   const cnt = [];
   if (view.counts.places) cnt.push(view.fogOn ? `장소 ${view.counts.seen} / ${view.counts.places}` : `장소 ${view.counts.places}곳`);
   if (view.counts.zones && view.fogOn) cnt.push(`지역 ${view.counts.open} / ${view.counts.zones}`);
@@ -621,6 +631,7 @@ function renderMapHtml(view, ui = {}, opts = {}) {
     if (dt.where) h.push(`<div class="scm-dt-where">${esc(dt.where)}</div>`);
     if (dt.text) h.push(`<div class="scm-dt-text">${esc(dt.text)}</div>`);
     if (dt.list.length) h.push(`<div class="scm-dt-list">${dt.list.map((n) => `<span>${esc(n)}</span>`).join('')}</div>`);
+    if (dt.go) h.push(`<div class="scm-dt-acts"><button type="button" class="scm-dt-go" data-scm-go="${esc(dt.go.id)}">🗺 ${esc(dt.go.label)} 지도 펼치기</button></div>`);
     h.push('</div>');
   } else {
     h.push('<div class="scm-hint">장소를 누르면 그곳의 사정을 볼 수 있어요. 다시 누르면 닫혀요.</div>');
@@ -681,6 +692,17 @@ const MAP_CSS = `
 .scm-edge-bottom{bottom:5px;transform:translateX(-50%)}
 .scm-edge-left{left:5px;transform:translateY(-50%)}
 .scm-edge-right{right:5px;transform:translateY(-50%)}
+.scm-exit.scm-door{pointer-events:auto;cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:2px}
+.scm-exit.scm-door:hover,.scm-exit.scm-door:focus-visible{background:#6a4a30}
+.scm-veil{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:rgba(60,50,40,.72);pointer-events:none;
+  background:repeating-linear-gradient(45deg,rgba(105,96,82,.30) 0 9px,rgba(105,96,82,.18) 9px 18px)}
+.scm-sheets{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 7px}
+.scm-sbtn{border:1px solid rgba(128,128,128,.45);border-radius:7px;background:rgba(128,128,128,.12);color:inherit;padding:3px 10px;font-size:12.5px;cursor:pointer;font-family:inherit}
+.scm-sbtn:hover{border-color:rgba(128,128,128,.8)}
+.scm-sbtn.scm-on{background:#4a3423;border-color:#8a6a48;color:#f3e6c8;font-weight:700}
+.scm-sbtn.scm-back{margin-left:auto;border-style:dashed}
+.scm-dt-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.scm-dt-go{border:1px solid #7d2a20;background:#7d2a20;color:#fff8e8;border-radius:7px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
 .scm-under{margin-top:9px}
 .scm-hereline{display:inline-block;border:1px solid rgba(163,39,27,.7);background:rgba(163,39,27,.12);color:inherit;border-radius:7px;padding:3px 10px;font-size:12.5px}
 .scm-off{opacity:.65;font-size:11.5px}

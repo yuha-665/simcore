@@ -25,7 +25,7 @@ const { evaluate, truthy } = require('./expr');
 
 const DIRS = { n: '↑', ne: '↗', e: '→', se: '↘', s: '↓', sw: '↙', w: '←', nw: '↖' };
 const DIR_EDGE = { n: 'top', s: 'bottom', e: 'right', ne: 'right', se: 'right', w: 'left', nw: 'left', sw: 'left' };
-const CAPS = { CATS: 10, ZONES: 40, PLACES: 80, EXITS: 16, DYN: 80, NAME: 30, TEXT: 600 };
+const CAPS = { CATS: 10, ZONES: 40, PLACES: 80, EXITS: 16, DYN: 80, NAME: 30, TEXT: 600, SHEETS: 12 };
 const DEFAULT_RATIO = 1;
 const PALETTE = ['#b3392f', '#2f5fa8', '#7a3fa0', '#3f8a4a', '#b07a1c', '#2b8a8a', '#a33a6b', '#5a6b2f', '#8a5a2b', '#4a4a8a'];
 
@@ -138,10 +138,40 @@ function placeInZone(z, name, taken, inner = []) {
   return { x: round1(z.x + z.w / 2 + ((k % 3) - 1) * 3), y: round1(z.y + z.h / 2 + ((Math.floor(k / 3) % 3) - 1) * 3) };
 }
 
+const SHEET_ID = /^[A-Za-z0-9_-]{1,32}$/;
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * 장 목록 (v1.26.0) — 지금의 map(zones·places·exits·bg·ratio·note)이 첫 장 'main', 그 뒤에 map.sheets[].
+ * 여기 한 군데가 둘을 같은 모양으로 편다 — 나머지 코드는 첫 장이 바깥에 풀려 있는 줄 모른다.
+ * 남이 준 번들 조각으로도 들어오므로 깨진 항목(객체 아님·id 없음·형식 밖·'main'·겹침)은 던지지 않고 건너뛴다 (검증이 오류를 낸다).
+ */
+function sheetsOf(m) {
+  if (!isObj(m)) return [];
+  const out = [{
+    id: 'main', main: true, label: str(m.label) || '지도', bg: str(m.bg) || null, ratio: ratioOf(m), note: str(m.note),
+    fog: m.fog === true, bgAlways: true, zones: m.zones, places: m.places, exits: m.exits,
+  }];
+  const ids = new Set(['main']);
+  for (const s of arr(m.sheets)) {
+    if (out.length >= CAPS.SHEETS) break;
+    if (!isObj(s) || typeof s.id !== 'string' || !SHEET_ID.test(s.id) || ids.has(s.id)) continue;
+    ids.add(s.id);
+    out.push({
+      id: s.id, main: false, label: str(s.label) || s.id, bg: str(s.bg) || null, ratio: ratioOf(s), note: str(s.note),
+      fog: (s.fog ?? m.fog) === true, bgAlways: s.bgAlways === true, zones: s.zones, places: s.places, exits: s.exits,
+    });
+  }
+  return out;
+}
+
 /**
  * 그리기 재료. 상태를 바꾸지 않는다.
  * opts.reveal = true면 안개를 걷은 모습 (편집기 미리보기 "다 밝힌 모습").
- * 반환: { label, icon, note, ratio, bg, fog, cats, zones, places, pins, exits, stray, here, loc, counts }
+ * opts.sheet = 장 id면 그 장을 구경한다 (v1.26.0) — 없거나 없는 장이면 지금 여기의 장, 그것도 없으면 첫 장.
+ * 반환: 보여 줄 장 하나의 { label, icon, note, ratio, bg, fog, cats, zones, places, pins, exits, stray, here, loc, counts }
+ *   + 장 { sheet, hereSheet, hereOn, peek, multi, strip, veiled }.
+ * 지금 여기·찾아낸 곳·발자취는 전 장에서 찾는다 — 이름은 지도 전체에서 하나다 (검증).
  */
 function mapView(schema, state, makeLookup, opts = {}) {
   const m = mapConfig(schema);
@@ -157,127 +187,157 @@ function mapView(schema, state, makeLookup, opts = {}) {
   };
   const listOf = (id) => { const v = read(id); return Array.isArray(v) ? v.map(String) : []; };
   const reveal = !!opts.reveal;
-  const fog = m.fog === true && !reveal;
   const cats = categoriesOf(m);
   const catColor = (c) => cats.find((x) => x.label === c)?.color ?? null;
   const locRaw = read(m.locVar);
   const loc = locRaw == null ? '' : String(locRaw).trim();
   const seenSet = new Set(listOf(m.seenVar).map(norm));
+  const sheets = sheetsOf(m);
+  const sheetLabel = new Map(sheets.map((s) => [s.id, s.label]));
+  // 문 — 있는 장이고 자기 장이 아닐 때만. 아니면 키 자체를 안 단다 (옛 재료와 모양이 같게)
+  const doorOf = (e, sh) => (typeof e.to === 'string' && e.to !== sh.id && sheetLabel.has(e.to) ? { id: e.to, label: sheetLabel.get(e.to) } : null);
 
-  // ① 구역
-  const zones = [];
-  arr(m.zones).slice(0, CAPS.ZONES).forEach((z, i) => {
-    if (!z || typeof z !== 'object') return;
-    const label = str(z.label);
-    const x = pct(z.x), y = pct(z.y), w = pct(z.w), h = pct(z.h);
-    if (!label || x == null || y == null || !w || !h) return;
-    zones.push({
-      key: `z${i}`, label, x, y, w: Math.min(w, 100 - x), h: Math.min(h, 100 - y),
-      cat: str(z.cat) || null, color: str(z.color) || catColor(str(z.cat)) || null,
-      desc: str(z.desc), match: [label, ...arr(z.match).map(str).filter(Boolean)],
-      known: reveal || knownOf(z, lookup, fog, !fog), seen: reveal || seenSet.has(norm(label)),
-      here: false, open: false, pins: [], places: [],
+  // ①② 장마다 구역·고정 장소
+  const built = sheets.map((sh) => {
+    const fog = sh.fog && !reveal;
+    const zones = [];
+    arr(sh.zones).slice(0, CAPS.ZONES).forEach((z, i) => {
+      if (!z || typeof z !== 'object') return;
+      const label = str(z.label);
+      const x = pct(z.x), y = pct(z.y), w = pct(z.w), h = pct(z.h);
+      if (!label || x == null || y == null || !w || !h) return;
+      zones.push({
+        key: `z${i}`, label, x, y, w: Math.min(w, 100 - x), h: Math.min(h, 100 - y),
+        cat: str(z.cat) || null, color: str(z.color) || catColor(str(z.cat)) || null,
+        desc: str(z.desc), match: [label, ...arr(z.match).map(str).filter(Boolean)],
+        known: reveal || knownOf(z, lookup, fog, !fog), seen: reveal || seenSet.has(norm(label)),
+        here: false, open: false, pins: [], places: [],
+      });
     });
+    const zoneAt = (x, y) => {
+      let best = null;
+      for (const z of zones) {
+        if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h && (!best || z.w * z.h < best.w * best.h)) best = z;
+      }
+      return best;
+    };
+    const places = [];
+    arr(sh.places).slice(0, CAPS.PLACES).forEach((p, i) => {
+      if (!p || typeof p !== 'object') return;
+      const name = str(p.name);
+      const x = pct(p.x), y = pct(p.y);
+      if (!name || x == null || y == null) return;
+      const alias = arr(p.alias).map(str).filter(Boolean);
+      const cat = str(p.cat) || null;
+      const zone = zoneAt(x, y);
+      const place = {
+        key: `p${i}`, name, sub: str(p.sub), x, y, cat, color: catColor(cat),
+        desc: str(p.desc), rumor: str(p.rumor), alias, zone: zone ? zone.key : null,
+        known: reveal || knownOf(p, lookup, fog, !fog),
+        seen: reveal || seenSet.has(norm(name)) || alias.some((a) => seenSet.has(norm(a))),
+        here: false, state: 'hidden',
+      };
+      const to = doorOf(p, sh);
+      if (to) place.to = to;
+      places.push(place);
+      if (zone) zone.places.push(`p${i}`);
+    });
+    return { sh, fog, zones, places, pins: [], exits: [], taken: places.map((p) => ({ x: p.x, y: p.y, name: p.name })) };
   });
-  const zoneAt = (x, y) => {
-    let best = null;
-    for (const z of zones) {
-      if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h && (!best || z.w * z.h < best.w * best.h)) best = z;
-    }
-    return best;
-  };
+
+  // ③ 찾아낸 곳 (listVar) — "이름 (구역)"이 그 구역에 핀으로 꽂힌다. 구역 이름은 지도 전체에서 하나라 구역이 있는 장에 꽂힌다
   const zoneByTag = (tag, text) => {
     if (tag) {
       const t = norm(tag);
-      const hit = zones.find((z) => z.match.some((mm) => norm(mm) === t));
-      if (hit) return hit;
+      for (const B of built) {
+        const hit = B.zones.find((z) => z.match.some((mm) => norm(mm) === t));
+        if (hit) return { B, z: hit };
+      }
     }
     // 꼬리표가 없거나 안 맞으면 항목 글에 든 구역 이름 (상태창 {목록:tags:구역}과 같은 '품은 글' 규약) — 긴 이름 우선
     const all = norm(text);
     let best = null, bestLen = 0;
-    for (const z of zones) for (const mm of z.match) {
+    for (const B of built) for (const z of B.zones) for (const mm of z.match) {
       const n = norm(mm);
-      if (n && all.includes(n) && n.length > bestLen) { best = z; bestLen = n.length; }
+      if (n && all.includes(n) && n.length > bestLen) { best = { B, z }; bestLen = n.length; }
     }
     return best;
   };
-
-  // ② 고정 장소
-  const places = [];
-  arr(m.places).slice(0, CAPS.PLACES).forEach((p, i) => {
-    if (!p || typeof p !== 'object') return;
-    const name = str(p.name);
-    const x = pct(p.x), y = pct(p.y);
-    if (!name || x == null || y == null) return;
-    const alias = arr(p.alias).map(str).filter(Boolean);
-    const cat = str(p.cat) || null;
-    const zone = zoneAt(x, y);
-    places.push({
-      key: `p${i}`, name, sub: str(p.sub), x, y, cat, color: catColor(cat),
-      desc: str(p.desc), rumor: str(p.rumor), alias, zone: zone ? zone.key : null,
-      known: reveal || knownOf(p, lookup, fog, !fog),
-      seen: reveal || seenSet.has(norm(name)) || alias.some((a) => seenSet.has(norm(a))),
-      here: false, state: 'hidden',
-    });
-    if (zone) zone.places.push(`p${i}`);
-  });
-
-  // ③ 찾아낸 곳 (listVar) — "이름 (구역)"이 그 구역에 핀으로 꽂힌다
-  const pins = [];
   const stray = [];
-  const taken = places.map((p) => ({ x: p.x, y: p.y, name: p.name }));
   for (const raw of listOf(m.listVar).slice(0, CAPS.DYN)) {
     const { name, tag } = splitTag(raw);
     if (!name) continue;
-    const z = zoneByTag(tag, raw);
-    if (!z) { stray.push({ name, raw: String(raw), tag }); continue; }
-    const inner = zones.filter((o) => o !== z && o.x >= z.x && o.y >= z.y && o.x + o.w <= z.x + z.w && o.y + o.h <= z.y + z.h);
-    const pos = placeInZone(z, name, taken, inner);
-    taken.push({ ...pos, name });
-    const key = `d${pins.length}`;
-    pins.push({ key, name, raw: String(raw), x: pos.x, y: pos.y, zone: z.key, cat: z.cat, color: z.color, here: false });
+    const hit = zoneByTag(tag, raw);
+    if (!hit) { stray.push({ name, raw: String(raw), tag }); continue; }
+    const { B, z } = hit;
+    const inner = B.zones.filter((o) => o !== z && o.x >= z.x && o.y >= z.y && o.x + o.w <= z.x + z.w && o.y + o.h <= z.y + z.h);
+    const pos = placeInZone(z, name, B.taken, inner);
+    B.taken.push({ ...pos, name });
+    const key = `d${B.pins.length}`;
+    B.pins.push({ key, name, raw: String(raw), x: pos.x, y: pos.y, zone: z.key, cat: z.cat, color: z.color, here: false });
     z.pins.push(key);
   }
 
-  // ④ 지금 여기 — 장소(이름·별칭) > 찾아낸 곳 > 구역 순
-  let here = null;
+  // ④ 지금 여기 — 종류가 먼저, 장이 나중: 전 장의 장소(이름·별칭) > 전 장의 찾아낸 곳 > 전 장의 구역.
+  // 장마다 따로 돌면 앞 장의 찾아낸 곳이 뒷 장의 같은 이름 장소를 이겨 그 장소에 발자취가 영영 안 적힌다 (찾아낸 곳 이름은 보조가 적어 검증이 못 막는다)
+  let here = null, hereB = null;
   if (loc) {
     const L = norm(loc);
-    const p = places.find((q) => norm(q.name) === L || q.alias.some((a) => norm(a) === L));
-    if (p) { p.here = true; p.seen = true; here = { kind: 'place', key: p.key, name: p.name }; }
-    if (!here) {
-      const d = pins.find((q) => norm(q.name) === L);
-      if (d) { d.here = true; here = { kind: 'pin', key: d.key, name: d.name }; }
+    for (const B of built) {
+      const p = B.places.find((q) => norm(q.name) === L || q.alias.some((a) => norm(a) === L));
+      if (p) { p.here = true; p.seen = true; here = { kind: 'place', key: p.key, name: p.name }; hereB = B; break; }
     }
-    if (!here) {
-      const z = zones.find((q) => q.match.some((mm) => norm(mm) === L));
-      if (z) { z.here = true; z.seen = true; here = { kind: 'zone', key: z.key, name: z.label }; }
+    if (!here) for (const B of built) {
+      const d = B.pins.find((q) => norm(q.name) === L);
+      if (d) { d.here = true; here = { kind: 'pin', key: d.key, name: d.name }; hereB = B; break; }
+    }
+    if (!here) for (const B of built) {
+      const z = B.zones.find((q) => q.match.some((mm) => norm(mm) === L));
+      if (z) { z.here = true; z.seen = true; here = { kind: 'zone', key: z.key, name: z.label }; hereB = B; break; }
     }
   }
 
-  for (const p of places) p.state = p.seen ? 'seen' : p.known ? 'known' : 'hidden';
-  const zoneOf = (k) => zones.find((z) => z.key === k);
-  for (const z of zones) {
-    z.open = !fog || z.known || z.seen || z.here || z.pins.length > 0
-      || z.places.some((k) => places.find((p) => p.key === k)?.state === 'seen')
-      || (here && here.kind !== 'zone' && (places.find((p) => p.key === here.key)?.zone === z.key || pins.find((d) => d.key === here.key)?.zone === z.key));
-  }
-
-  // ⑤ 이정표 — 같은 변에 선 것들은 순서대로 고르게 나눈다 (at을 적은 것만 그 자리)
-  const exits = [];
   const ORDER = { ne: 0, nw: 0, n: 1, s: 1, e: 1, w: 1, se: 2, sw: 2 };
-  arr(m.exits).slice(0, CAPS.EXITS).forEach((e, i) => {
-    if (!e || typeof e !== 'object') return;
-    const label = str(e.label);
-    const dir = DIRS[e.dir] ? e.dir : null;
-    if (!label || !dir) return;
-    if (!(reveal || knownOf(e, lookup, fog, true))) return;
-    exits.push({ key: `e${i}`, label, dir, arrow: DIRS[dir], edge: DIR_EDGE[dir], at: pct(e.at), i });
-  });
-  for (const edge of ['top', 'bottom', 'left', 'right']) {
-    const on = exits.filter((e) => e.edge === edge && e.at == null).sort((a, b) => (ORDER[a.dir] - ORDER[b.dir]) || (a.i - b.i));
-    on.forEach((e, k) => { e.at = round1(on.length === 1 ? (ORDER[e.dir] === 0 ? 10 : ORDER[e.dir] === 2 ? 90 : 50) : 10 + (80 * k) / (on.length - 1)); });
+  for (const B of built) {
+    const { zones, places, pins, fog, sh } = B;
+    for (const p of places) p.state = p.seen ? 'seen' : p.known ? 'known' : 'hidden';
+    const hereHere = hereB === B ? here : null;
+    for (const z of zones) {
+      z.open = !fog || z.known || z.seen || z.here || z.pins.length > 0
+        || z.places.some((k) => places.find((p) => p.key === k)?.state === 'seen')
+        || (hereHere && hereHere.kind !== 'zone' && (places.find((p) => p.key === hereHere.key)?.zone === z.key || pins.find((d) => d.key === hereHere.key)?.zone === z.key));
+    }
+    // ⑤ 이정표 — 같은 변에 선 것들은 순서대로 고르게 나눈다 (at을 적은 것만 그 자리)
+    arr(sh.exits).slice(0, CAPS.EXITS).forEach((e, i) => {
+      if (!e || typeof e !== 'object') return;
+      const label = str(e.label);
+      const dir = typeof e.dir === 'string' && Object.prototype.hasOwnProperty.call(DIRS, e.dir) ? e.dir : null;
+      if (!label || !dir) return;
+      if (!(reveal || knownOf(e, lookup, fog, true))) return;
+      const exit = { key: `e${i}`, label, dir, arrow: DIRS[dir], edge: DIR_EDGE[dir], at: pct(e.at), i };
+      const to = doorOf(e, sh);
+      if (to) exit.to = to;
+      B.exits.push(exit);
+    });
+    for (const edge of ['top', 'bottom', 'left', 'right']) {
+      const on = B.exits.filter((e) => e.edge === edge && e.at == null).sort((a, b) => (ORDER[a.dir] - ORDER[b.dir]) || (a.i - b.i));
+      on.forEach((e, k) => { e.at = round1(on.length === 1 ? (ORDER[e.dir] === 0 ? 10 : ORDER[e.dir] === 2 ? 90 : 50) : 10 + (80 * k) / (on.length - 1)); });
+    }
+    // 발 디딘 장인가 — 장 띠와 안 가 본 장의 그림 가림이 본다
+    B.stepped = hereB === B || pins.length > 0 || places.some((p) => p.state === 'seen') || zones.some((z) => z.seen || z.here);
   }
+
+  // 보여 줄 장 — 고른 장(구경) > 지금 여기의 장 > 첫 장
+  const follow = hereB || built[0];
+  const want = typeof opts.sheet === 'string' ? built.find((B) => B.sh.id === opts.sheet) : null;
+  const shown = want || follow;
+  const { zones, places, pins, exits } = shown;
+  const multi = built.length > 1;
+  // 띠 — 첫 장 · 지금 여기의 장 · 발 디딘 장 · 안개 없는 장 · 구경 중인 장. 안개 낀 안 가 본 장은 이름이 스포일러라 띠에 없다 (문으로는 들어가 본다)
+  const strip = !multi ? [] : built.filter((B) => B.sh.main || B === hereB || B === shown || B.stepped || !B.fog)
+    .map((B) => ({ id: B.sh.id, label: B.sh.label, here: B === hereB, on: B === shown }));
+  // 안 가 본 안개 장(더한 장)은 배경 그림을 안 깐다 — 문을 누르는 순간 던전 지도가 통째로 보이지 않게. bgAlways면 깐다. 첫 장은 옛 지도 그대로
+  const veiled = !shown.sh.main && shown.fog && !shown.stepped && !shown.sh.bgAlways;
 
   const counts = {
     places: places.length,
@@ -287,10 +347,13 @@ function mapView(schema, state, makeLookup, opts = {}) {
     open: zones.filter((z) => z.open).length,
     pins: pins.length,
   };
+  const zoneOf = (k) => zones.find((z) => z.key === k);
   return {
-    label: str(m.label) || '지도', icon: str(m.icon) || '🗺️', note: str(m.note), ratio: ratioOf(m),
-    bg: str(m.bg) || null, fog, fogOn: m.fog === true, cats, zones, places, pins, exits, stray,
+    label: shown.sh.label, icon: str(m.icon) || '🗺️', note: shown.sh.note, ratio: shown.sh.ratio,
+    bg: veiled ? null : shown.sh.bg, fog: shown.fog, fogOn: shown.sh.fog, cats, zones, places, pins, exits, stray,
     here, loc, counts, zoneOf,
+    sheet: shown.sh.id, hereSheet: hereB ? hereB.sh.id : null, hereOn: !!here && hereB === shown, peek: !!want && want !== follow,
+    multi, strip, veiled,
   };
 }
 
@@ -597,5 +660,5 @@ const MAP_CSS = `
 
 module.exports = {
   DIRS, DIR_EDGE, CAPS, PALETTE, DEFAULT_RATIO, MAP_CSS,
-  mapConfig, mapButtonSpec, mapView, recordVisit, validateMap, renderMapHtml, detailOf, splitTag, categoriesOf, ratioOf,
+  mapConfig, mapButtonSpec, sheetsOf, SHEET_ID, mapView, recordVisit, validateMap, renderMapHtml, detailOf, splitTag, categoriesOf, ratioOf,
 };

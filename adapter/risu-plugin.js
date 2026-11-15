@@ -6812,19 +6812,63 @@
     const cacheKey = view.bg ? `${currentChaId}:${view.bg}` : null;
     const bgUrl = cacheKey && portraitCache.has(cacheKey) ? portraitCache.get(cacheKey) : null;
     const body = document.createElement('div');
-    body.innerHTML = mapMod.renderMapHtml(view, mapUi, { bgUrl });
+    // 장소 적기 (v1.26.0) — 칸의 글자는 mapUi.form에 두고(턴이 돌아 다시 그려도 안 날아가게), 지우기는 같은 단추 두 번(60초 — 리수 확인창은 패널에 가린다)
+    const armedRaw = mapUi.armDel && Date.now() < mapUi.armDel.until ? mapUi.armDel.raw : null;
+    body.innerHTML = mapMod.renderMapHtml(view, { ...mapUi, armDel: armedRaw }, { bgUrl });
+    const syncForm = (ev) => {
+      const el = ev && ev.target; if (!mapUi.form || !el || !el.classList) return;
+      if (el.classList.contains('scm-in-name')) mapUi.form.name = String(el.value ?? '');
+      else if (el.classList.contains('scm-in-zone')) mapUi.form.zone = String(el.value ?? '');
+    };
+    body.addEventListener('input', syncForm);
+    body.addEventListener('change', syncForm);
+    const mapAct = async (name) => {
+      const fromDom = (sel, fallback) => { const el = body.querySelector ? body.querySelector(sel) : null; return el && el.value != null ? String(el.value) : fallback; };
+      if (name === 'add-open') { mapUi = { ...mapUi, form: { kind: 'add', name: '', zone: view.addZones[0] || '', error: '' }, armDel: null }; renderGamePanel(); return; }
+      if (name === 'form-cancel') { mapUi = { ...mapUi, form: null }; renderGamePanel(); return; }
+      const dt = mapMod.detailOf(view, mapUi.sel);
+      if (name === 'rename-open') {
+        if (!dt || !dt.own) return;
+        mapUi = { ...mapUi, form: { kind: 'rename', raw: dt.raw, name: dt.title, error: '' }, armDel: null }; renderGamePanel(); return;
+      }
+      if (name === 'add-save' || name === 'rename-save') {
+        const form = mapUi.form;
+        if (!form || (form.kind === 'add') !== (name === 'add-save')) return;
+        const nm = fromDom('.scm-in-name', form.name), zone = fromDom('.scm-in-zone', form.zone);
+        const keep = (error) => { mapUi = { ...mapUi, form: { ...form, name: nm, zone, error } }; renderGamePanel(); };
+        if (turnBusy) { keep(TURN_BUSY_MSG); return; }
+        const r = form.kind === 'add' ? mapMod.addFind(schema, session.current, engine.makeLookup, { name: nm, zone, sheet: view.sheet })
+          : mapMod.renameFind(schema, session.current, engine.makeLookup, { raw: form.raw, name: nm });
+        if (!r.ok) { keep(r.reason); return; }
+        mapUi = { ...mapUi, form: null, sel: null, armDel: null };
+        gameNotice = form.kind === 'add' ? `✓ ${r.item} — 지도에 적었어요` : `✓ ${r.item} — 이름을 고쳤어요`;
+        await commitPanelChanges({ [r.listId]: r.next }, form.kind === 'add' ? '지도 장소 적기' : '지도 장소 이름 고치기');
+        return;
+      }
+      if (name === 'del') {
+        if (!dt || !dt.own) return;
+        if (turnBusy) { gameNotice = TURN_BUSY_MSG; renderGamePanel(); return; }
+        if (armedRaw !== dt.raw) { mapUi = { ...mapUi, armDel: { raw: dt.raw, until: Date.now() + 60000 }, form: null }; renderGamePanel(); return; }
+        const r = mapMod.removeFind(schema, session.current, { raw: dt.raw });
+        mapUi = { ...mapUi, armDel: null, sel: null };
+        if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+        gameNotice = `✓ ${dt.title} — 지도에서 지웠어요`;
+        await commitPanelChanges({ [r.listId]: r.next }, '지도 장소 지우기');
+      }
+    };
     body.addEventListener('click', (ev) => {
       const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm-act],[data-scm-go],[data-scm-sheet],[data-scm-cat],[data-scm]') : null;
       if (!t) return;
+      if (t.hasAttribute('data-scm-act')) return mapAct(t.getAttribute('data-scm-act'));
       if (t.hasAttribute('data-scm-go') || t.hasAttribute('data-scm-sheet')) {
         const id = t.hasAttribute('data-scm-go') ? t.getAttribute('data-scm-go') : t.getAttribute('data-scm-sheet');
-        mapUi = { ...mapUi, sheet: id || null, sel: null };
+        mapUi = { ...mapUi, sheet: id || null, sel: null, form: null, armDel: null };   // 장을 옮기면 열어 둔 칸·지우기 무장도 놓는다
       } else if (t.hasAttribute('data-scm-cat')) {
         const c = t.getAttribute('data-scm-cat') || null;
         mapUi = { ...mapUi, cat: mapUi.cat === c ? null : c };
       } else {
         const k = t.getAttribute('data-scm');
-        mapUi = { ...mapUi, sel: mapUi.sel === k ? null : k };
+        mapUi = { ...mapUi, sel: mapUi.sel === k ? null : k, armDel: null, form: mapUi.form && mapUi.form.kind === 'add' ? mapUi.form : null };
       }
       renderGamePanel();
     });

@@ -250,12 +250,12 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     const cache = new Map();   // 진짜 resolvePortraitUrl처럼 읽은 그림을 캐시에 넣는다
     const rig = { root, session, asked, commits, turnBusy: false, notice: null };
     const names = ['document', 'mapMod', 'engine', 'schema', 'session', 'mapUi', 'closeGamePanel', 'currentChaId', 'portraitCache', 'resolvePortraitUrl', 'renderGamePanel', 'gameNotice',
-      'commitPanelChanges', 'turnBusyNow', 'TURN_BUSY_MSG'];
+      'commitPanelChanges', 'turnBusy', 'TURN_BUSY_MSG'];
     const api = new Function(...names, src.slice(a, b)
-      + '\nreturn { renderMapPanel, ui: () => mapUi, setUi: (v) => { mapUi = v; }, setSchema: (v) => { schema = v; }, notice: () => gameNotice, setNotice: (v) => { gameNotice = v; } };')(
+      + '\nreturn { renderMapPanel, ui: () => mapUi, setUi: (v) => { mapUi = v; }, setSchema: (v) => { schema = v; }, notice: () => gameNotice, setNotice: (v) => { gameNotice = v; }, setBusy: (v) => { turnBusy = v; } };')(
       { createElement: mk }, MAP, engine, clone(schema0), session, { cat: null, sel: null, sheet: null }, () => {}, 'c1', cache,
       (name) => { asked.push(name); cache.set('c1:' + name, 'blob:' + name); return Promise.resolve('blob:' + name); }, () => api.renderMapPanel(root), null,
-      async (changes, what) => { commits.push({ changes: clone(changes), what }); Object.assign(session.current.vars, changes); api.renderMapPanel(root); }, () => rig.turnBusy, '턴 진행 중');
+      async (changes, what) => { commits.push({ changes: clone(changes), what }); Object.assign(session.current.vars, changes); api.renderMapPanel(root); }, false, '턴 진행 중');
     rig.api = api;
     rig.render = () => api.renderMapPanel(root);
     rig.body = () => root.children[0].children.find((c) => c.listeners.click && String(c._html).includes('class="scm'));
@@ -300,6 +300,95 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     await R.click({ 'data-scm-cat': '유흥' });
     ck('분류 단추는 그대로', R.api.ui().cat === '유흥', J(R.api.ui()));
     ck('어댑터 — 열 때 장 고르기도 초기화 · 위임 선택자', src.includes("mapUi = { cat: null, sel: null, sheet: null };") && src.includes("closest('[data-scm-act],[data-scm-go],[data-scm-sheet],[data-scm-cat],[data-scm]')"), '');
+  }
+
+  console.log('── ⑤ [＋ 장소] — 플레이 중에 적어 넣기');
+  {
+    const ADD = clone(TWO); ADD.map.addPlace = true;
+    const html = (schema, vars, opts, ui = {}) => MAP.renderMapHtml(view(schema, vars, opts), ui, {});
+    ck('기본은 꺼짐 — 찾아낸 곳 목록이 있어도 단추가 하나도 없다', view(TWO, {}).canAdd === false && !html(TWO, { finds: ['폐사 (가모가와 동안)'] }, undefined, { sel: 'd0' }).includes('data-scm-act'), '');
+    ck('켜면 [＋ 장소 적기] · 적을 수 있는 구역 = 보고 있는 장의 걷힌 구역', view(ADD, {}).canAdd === true && J(view(ADD, {}).addZones) === J(['가모가와 동안', '서쪽 들판'])
+      && html(ADD, {}).includes('<button type="button" class="scm-abtn" data-scm-act="add-open">＋ 장소 적기</button>'), J(view(ADD, {}).addZones));
+    ck('목록 변수가 없으면 켜도 안 생긴다', (() => { const s = clone(ADD); delete s.map.listVar; return view(s, {}).canAdd === false; })(), '');
+    ck('안개에 가린 구역은 고를 수 없다', J(view(ADD, {}, { sheet: 'under' }).addZones) === '[]' && J(view(ADD, { visited: ['북쪽 수로'] }, { sheet: 'under' }).addZones) === J(['북쪽 수로']), '');
+
+    const s0 = st(ADD, {}); const before = J(s0);
+    const r = MAP.addFind(ADD, s0, engine.makeLookup, { name: '  새   굴 ', zone: '가모가와 동안', sheet: 'main' });
+    ck('★ 적기 — "이름 (구역)"이 목록 끝에, 상태는 그대로 (적는 건 부르는 쪽)', r.ok === true && r.listId === 'finds' && r.item === '새 굴 (가모가와 동안)' && J(r.next) === J(['새 굴 (가모가와 동안)']) && J(s0) === before, J(r));
+    const no = (schema, vars, arg) => { const x = MAP.addFind(schema, st(schema, vars), engine.makeLookup, { zone: '가모가와 동안', sheet: 'main', ...arg }); return x.ok ? '(통과)' : x.reason; };
+    ck('거절 — 빈 이름', no(ADD, {}, { name: '   ' }) === '이름을 적어 주세요', no(ADD, {}, { name: '   ' }));
+    ck('거절 — 괄호·@', no(ADD, {}, { name: '굴(북)' }) === '이름에 괄호·@는 쓸 수 없어요' && no(ADD, {}, { name: '굴@3' }) === '이름에 괄호·@는 쓸 수 없어요', no(ADD, {}, { name: '굴(북)' }));
+    ck('★ 거절 — 이미 있는 이름 (장소·별칭·구역·다른 이름·다른 장의 장소·찾아낸 곳)', ['기온', '島原', '서쪽 들판', '들판', '수문', '폐사'].every((n) => no(ADD, { finds: ['폐사 (서쪽 들판)'] }, { name: n }) === `'${n}'은(는) 이미 지도에 있는 이름이에요`),
+      ['기온', '島原', '서쪽 들판', '들판', '수문', '폐사'].map((n) => no(ADD, { finds: ['폐사 (서쪽 들판)'] }, { name: n })).join(' / '));
+    ck('거절 — 구역을 안 골랐거나 걷힌 구역이 아니다', no(ADD, {}, { name: '굴', zone: '' }) === '적어 넣을 구역을 골라 주세요' && no(ADD, {}, { name: '굴', zone: '없는 곳' }) === '적어 넣을 구역을 골라 주세요'
+      && no(ADD, {}, { name: '굴', zone: '북쪽 수로', sheet: 'under' }) === '적어 넣을 구역을 골라 주세요', no(ADD, {}, { name: '굴', zone: '북쪽 수로', sheet: 'under' }));
+    ck('거절 — 목록이 꽉 참', (() => { const s = clone(ADD); s.vars[3].maxItems = 1; return no(s, { finds: ['폐사 (서쪽 들판)'] }, { name: '굴' }); })() === '목록이 꽉 찼어요 (1칸)', '');
+    ck('거절 — 너무 긴 이름 (구역 이름까지 40자)', no(ADD, {}, { name: '가'.repeat(35) }) === '이름이 너무 길어요 (구역 이름까지 40자)' && no(ADD, {}, { name: '가'.repeat(20) }) === '(통과)', no(ADD, {}, { name: '가'.repeat(35) }));
+    ck('거절 — 안 켠 지도', no(TWO, {}, { name: '굴' }) === '이 지도는 장소 적기를 쓰지 않아요', no(TWO, {}, { name: '굴' }));
+
+    const rn = MAP.renameFind(ADD, st(ADD, { finds: ['가 (서쪽 들판)', '폐사 (가모가와 동안) @12'] }), engine.makeLookup, { raw: '폐사 (가모가와 동안) @12', name: '옛 절' });
+    ck('★ 고치기 — 그 자리의 이름만, 꼬리표·기한은 남는다', rn.ok && rn.item === '옛 절 (가모가와 동안) @12' && J(rn.next) === J(['가 (서쪽 들판)', '옛 절 (가모가와 동안) @12']), J(rn));
+    ck('고치기 — 겹치는 이름은 거절, 제 이름 그대로는 통과', MAP.renameFind(ADD, st(ADD, { finds: ['가 (서쪽 들판)', '나 (서쪽 들판)'] }), engine.makeLookup, { raw: '나 (서쪽 들판)', name: '가' }).reason === "'가'은(는) 이미 지도에 있는 이름이에요"
+      && MAP.renameFind(ADD, st(ADD, { finds: ['가 (서쪽 들판)'] }), engine.makeLookup, { raw: '가 (서쪽 들판)', name: '가' }).ok === true, '');
+    ck('고치기 — 목록에 없는 항목', /목록에 없어요/.test(MAP.renameFind(ADD, st(ADD, {}), engine.makeLookup, { raw: '없음 (서쪽 들판)', name: '가' }).reason || ''), '');
+    const rm = MAP.removeFind(ADD, st(ADD, { finds: ['가 (서쪽 들판)', '가 (서쪽 들판)', '나 (서쪽 들판)'] }), { raw: '가 (서쪽 들판)' });
+    ck('★ 지우기 — 같은 항목이 둘이어도 하나만', rm.ok && rm.listId === 'finds' && J(rm.next) === J(['가 (서쪽 들판)', '나 (서쪽 들판)']), J(rm));
+    ck('지우기 — 안 켠 지도·없는 항목은 거절', MAP.removeFind(TWO, st(TWO, { finds: ['가 (서쪽 들판)'] }), { raw: '가 (서쪽 들판)' }).ok === false && MAP.removeFind(ADD, st(ADD, {}), { raw: 'x' }).ok === false, '');
+
+    let h = html(ADD, {}, undefined, { form: { kind: 'add', name: '"><b>굴', zone: '서쪽 들판', error: '<i>오류</i>' } });
+    ck('★ 적기 칸 — 이름·구역 고르기·적기·취소, 받은 글자는 이스케이프', h.includes('class="scm-in-name"') && h.includes('value="&quot;&gt;&lt;b&gt;굴"') && /<option value="서쪽 들판" selected>서쪽 들판<\/option>/.test(h)
+      && h.includes('<option value="가모가와 동안">가모가와 동안</option>') && h.includes('data-scm-act="add-save"') && h.includes('data-scm-act="form-cancel"')
+      && h.includes('&lt;i&gt;오류&lt;/i&gt;') && !h.includes('<i>오류</i>') && !h.includes('data-scm-act="add-open"'), (h.match(/<div class="scm-form">.*$/) || [''])[0].slice(0, 500));
+    h = html(ADD, {}, { sheet: 'under' }, { form: { kind: 'add', name: '', zone: '', error: '' } });
+    ck('적기 칸 — 걷힌 구역이 없으면 그렇다고 알린다', h.includes('아직 적어 넣을 수 있는 구역이 없어요') && !h.includes('data-scm-act="add-save"'), '');
+    h = html(ADD, { finds: ['<img src=x> (가모가와 동안)'] }, undefined, { sel: 'd0' });
+    ck('★ 찾아낸 곳 카드 — [이름 고치기]·[지우기], 이름은 이스케이프', h.includes('data-scm-act="rename-open"') && h.includes('data-scm-act="del"') && h.includes('>지우기<') && !h.includes('<img src=x>'), (h.match(/<div class="scm-detail">.*$/) || [''])[0].slice(0, 400));
+    h = html(ADD, { finds: ['폐사 (가모가와 동안)'] }, undefined, { sel: 'd0', armDel: '폐사 (가모가와 동안)' });
+    ck('지우기 무장 — 한 번 더 누르면 지워요', h.includes('한 번 더 누르면 지워요'), '');
+    h = html(ADD, { finds: ['폐사 (가모가와 동안)'] }, undefined, { sel: 'd0', form: { kind: 'rename', raw: '폐사 (가모가와 동안)', name: '폐사', error: '' } });
+    ck('고치기 칸 — 이름 칸과 [고치기]', h.includes('class="scm-in-name"') && h.includes('value="폐사"') && h.includes('data-scm-act="rename-save"') && !h.includes('scm-in-zone'), '');
+    ck('★ 제작자의 장소 카드엔 고치기·지우기가 없다', !html(ADD, {}, undefined, { sel: 'p0' }).includes('rename-open') && !html(ADD, {}, undefined, { sel: 'p0' }).includes('data-scm-act="del"'), '');
+
+    // 패널 — 달력 일정 등록과 같은 길(commitPanelChanges)
+    const R = panelRig(ADD);
+    R.render();
+    const typeName = (v) => { for (const fn of (R.body().listeners.input || [])) fn({ target: { classList: { contains: (c) => c === 'scm-in-name' }, value: v } }); };
+    await R.click({ 'data-scm-act': 'add-open' });
+    ck('패널 — [＋ 장소 적기] → 칸이 열린다 (구역은 첫 걷힌 구역)', R.api.ui().form && R.api.ui().form.kind === 'add' && R.api.ui().form.zone === '가모가와 동안' && R.html().includes('scm-in-name'), J(R.api.ui().form));
+    typeName('새 굴');
+    ck('패널 — 치는 글자는 화면 상태에 남는다 (다시 그려도 안 날아간다)', R.api.ui().form.name === '새 굴' && (R.render(), R.html().includes('value="새 굴"')), J(R.api.ui().form));
+    R.api.setBusy(true);
+    await R.click({ 'data-scm-act': 'add-save' });
+    ck('★ 턴이 도는 중이면 안 적고 알린다', R.commits.length === 0 && R.api.ui().form && R.api.ui().form.error === '턴 진행 중' && R.api.ui().form.name === '새 굴', J(R.api.ui().form));
+    R.api.setBusy(false);
+    await R.click({ 'data-scm-act': 'add-save' });
+    ck('★ 적기 → 목록 변수에 한 줄, 칸이 닫힌다', R.commits.length === 1 && J(R.commits[0].changes) === J({ finds: ['새 굴 (가모가와 동안)'] }) && R.commits[0].what === '지도 장소 적기'
+      && R.api.ui().form == null && R.html().includes('새 굴') && /적었어요/.test(R.api.notice() || ''), J([R.commits, R.api.ui().form]));
+    await R.click({ 'data-scm-act': 'add-open' });
+    typeName('기온');
+    await R.click({ 'data-scm-act': 'add-save' });
+    ck('거절은 칸 아래에 이유 (안 적는다)', R.commits.length === 1 && /이미 지도에 있는/.test(R.api.ui().form.error) && R.html().includes('이미 지도에 있는'), J(R.api.ui().form));
+    await R.click({ 'data-scm-act': 'form-cancel' });
+    ck('[취소] → 칸이 닫힌다', R.api.ui().form == null && R.html().includes('data-scm-act="add-open"'), '');
+    await R.click({ 'data-scm': 'd0' });
+    await R.click({ 'data-scm-act': 'rename-open' });
+    ck('패널 — [이름 고치기] → 지금 이름이 든 칸', R.api.ui().form && R.api.ui().form.kind === 'rename' && R.api.ui().form.name === '새 굴' && R.api.ui().form.raw === '새 굴 (가모가와 동안)', J(R.api.ui().form));
+    typeName('옛 굴');
+    await R.click({ 'data-scm-act': 'rename-save' });
+    ck('★ 고치기 → 그 줄만 바뀐다', R.commits.length === 2 && J(R.commits[1].changes) === J({ finds: ['옛 굴 (가모가와 동안)'] }) && R.commits[1].what === '지도 장소 이름 고치기', J(R.commits[1]));
+    await R.click({ 'data-scm': 'd0' });
+    await R.click({ 'data-scm-act': 'del' });
+    ck('★ 지우기 한 번은 무장만 (리수 확인창을 안 쓴다 — 규칙 #6)', R.commits.length === 2 && R.html().includes('한 번 더 누르면 지워요'), '');
+    R.api.setBusy(true);
+    await R.click({ 'data-scm-act': 'del' });
+    ck('턴이 도는 중이면 안 지운다', R.commits.length === 2 && R.api.notice() === '턴 진행 중', J(R.api.notice()));
+    R.api.setBusy(false);
+    await R.click({ 'data-scm-act': 'del' });
+    ck('★ 한 번 더 → 지운다', R.commits.length === 3 && J(R.commits[2].changes) === J({ finds: [] }) && R.commits[2].what === '지도 장소 지우기' && R.api.ui().sel === null, J(R.commits[2]));
+    await R.click({ 'data-scm-act': 'add-open' });
+    await R.click({ 'data-scm-go': 'under' });
+    ck('장을 옮기면 열어 둔 칸은 닫힌다', R.api.ui().form == null && R.api.ui().sheet === 'under', J(R.api.ui()));
+    ck('어댑터 — 지우기 무장은 60초', /armDel: \{ raw: [^}]*until: Date\.now\(\) \+ 60000 \}/.test(src), '');
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

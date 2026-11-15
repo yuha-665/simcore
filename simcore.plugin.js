@@ -6742,7 +6742,85 @@ function mapView(schema, state, makeLookup, opts = {}) {
     here, loc, counts, zoneOf,
     sheet: shown.sh.id, hereSheet: hereB ? hereB.sh.id : null, hereOn: !!here && hereB === shown, peek: !!want && want !== follow,
     multi, strip, veiled,
+    // 장소 적기 (v1.26.0) — 제작자가 켠 지도에서만. 적을 수 있는 곳 = 보고 있는 장의 걷힌 구역
+    canAdd: !!findListDef(schema), addZones: findListDef(schema) ? zones.filter((z) => z.open).map((z) => z.label) : [],
   };
+}
+
+// ── 장소 적기 (v1.26.0) — 플레이어가 찾아낸 곳 목록(listVar)에 "이름 (구역)"을 적는다 ──
+// 제작자의 places는 안 건드린다(번들 업데이트 때 덮인다). 보조 모델이 적는 것과 같은 모양이라 그리는 쪽·조건식은 그대로.
+// 여기 함수들은 상태를 안 바꾼다 — 새 목록(next)을 돌려주고, 적는 것은 패널의 commitPanelChanges(달력 일정 등록과 같은 길).
+
+/** 장소 적기가 켜져 있고(map.addPlace) 찾아낸 곳 목록이 list 변수일 때 그 정의 */
+function findListDef(schema) {
+  const m = mapConfig(schema);
+  if (!m || m.addPlace !== true || typeof m.listVar !== 'string') return null;
+  const def = arr(schema.vars).find((v) => v && v.id === m.listVar);
+  return def && def.type === 'list' ? def : null;
+}
+const findListNow = (def, state) => (Array.isArray(state?.vars?.[def.id]) ? state.vars[def.id] : (Array.isArray(def.init) ? def.init : [])).map(String);
+const ADD_OFF = '이 지도는 장소 적기를 쓰지 않아요';
+/** 적을 이름 다듬기·검사 — { name } | { reason }. skipRaw = 고치는 중인 항목(제 이름은 겹침이 아니다) */
+function checkFindName(schema, cur, raw, skipRaw) {
+  const name = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!name) return { reason: '이름을 적어 주세요' };
+  if (/[()（）@]/.test(name)) return { reason: '이름에 괄호·@는 쓸 수 없어요' };
+  const taken = new Set();
+  for (const sh of sheetsOf(mapConfig(schema))) {
+    for (const p of arr(sh.places)) if (isObj(p)) for (const n of [p.name, ...arr(p.alias)]) taken.add(norm(n));
+    for (const z of arr(sh.zones)) if (isObj(z)) for (const n of [z.label, ...arr(z.match)]) taken.add(norm(n));
+  }
+  let skipped = false;
+  for (const item of cur) {
+    if (!skipped && skipRaw != null && item === skipRaw) { skipped = true; continue; }
+    taken.add(norm(splitTag(item).name));
+  }
+  if (taken.has(norm(name))) return { reason: `'${name}'은(는) 이미 지도에 있는 이름이에요` };
+  return { name };
+}
+/** 찾아낸 곳 적기 — { ok, listId, item, next } | { ok: false, reason }. zone은 보고 있는 장(sheet)의 걷힌 구역 이름 */
+function addFind(schema, state, makeLookup, { name, zone, sheet } = {}) {
+  const def = findListDef(schema);
+  if (!def) return { ok: false, reason: ADD_OFF };
+  const cur = findListNow(def, state);
+  const nm = checkFindName(schema, cur, name, null);
+  if (nm.reason) return { ok: false, reason: nm.reason };
+  const view = mapView(schema, state, makeLookup, { sheet });
+  const z = view && typeof zone === 'string' && (typeof sheet !== 'string' || view.sheet === sheet) ? view.zones.find((q) => q.open && q.label === zone.trim()) : null;
+  if (!z) return { ok: false, reason: '적어 넣을 구역을 골라 주세요' };
+  const item = `${nm.name} (${z.label})`;
+  const maxLen = Number.isInteger(def.itemMaxLength) ? def.itemMaxLength : 40;
+  if (item.length > maxLen) return { ok: false, reason: `이름이 너무 길어요 (구역 이름까지 ${maxLen}자)` };
+  const maxItems = Number.isInteger(def.maxItems) ? def.maxItems : 20;
+  if (cur.length >= maxItems) return { ok: false, reason: `목록이 꽉 찼어요 (${maxItems}칸)` };
+  return { ok: true, listId: def.id, item, next: [...cur, item] };
+}
+/** 찾아낸 곳 이름 고치기 — 그 자리의 이름만 바꾼다 (구역 꼬리표·기한 표기는 남긴다) */
+function renameFind(schema, state, makeLookup, { raw, name } = {}) {
+  const def = findListDef(schema);
+  if (!def) return { ok: false, reason: ADD_OFF };
+  const cur = findListNow(def, state);
+  const at = cur.indexOf(String(raw));
+  if (at < 0) return { ok: false, reason: '그 항목이 목록에 없어요 — 지도를 닫았다 다시 열어 주세요' };
+  const nm = checkFindName(schema, cur, name, cur[at]);
+  if (nm.reason) return { ok: false, reason: nm.reason };
+  const old = splitTag(cur[at]);
+  const body = cur[at].trim();
+  const item = old.name && body.startsWith(old.name) ? nm.name + body.slice(old.name.length) : `${nm.name}${old.tag ? ` (${old.tag})` : ''}`;
+  const maxLen = Number.isInteger(def.itemMaxLength) ? def.itemMaxLength : 40;
+  if (item.length > maxLen) return { ok: false, reason: `이름이 너무 길어요 (구역 이름까지 ${maxLen}자)` };
+  const next = [...cur]; next[at] = item;
+  return { ok: true, listId: def.id, item, next };
+}
+/** 찾아낸 곳 지우기 — 같은 항목이 여럿이어도 하나만 */
+function removeFind(schema, state, { raw } = {}) {
+  const def = findListDef(schema);
+  if (!def) return { ok: false, reason: ADD_OFF };
+  const cur = findListNow(def, state);
+  const at = cur.indexOf(String(raw));
+  if (at < 0) return { ok: false, reason: '그 항목이 목록에 없어요 — 지도를 닫았다 다시 열어 주세요' };
+  const next = [...cur]; next.splice(at, 1);
+  return { ok: true, listId: def.id, next };
 }
 
 /**
@@ -7013,6 +7091,7 @@ function renderMapHtml(view, ui = {}, opts = {}) {
   if (cnt.length) h.push(`<div class="scm-count">${cnt.join(' · ')}</div>`);
   if (view.note) h.push(`<div class="scm-note">${esc(view.note)}</div>`);
   const dt = detailOf(view, sel);
+  const form = view.canAdd && ui.form && typeof ui.form === 'object' ? ui.form : null;
   if (dt) {
     h.push('<div class="scm-detail">');
     h.push(`<div class="scm-dt-head"><b class="scm-dt-title">${esc(dt.title)}</b>${dt.sub ? ` <span class="scm-dt-sub">${esc(dt.sub)}</span>` : ''}${dt.badge ? ` <span class="scm-dt-badge">${esc(dt.badge)}</span>` : ''}</div>`);
@@ -7020,9 +7099,37 @@ function renderMapHtml(view, ui = {}, opts = {}) {
     if (dt.text) h.push(`<div class="scm-dt-text">${esc(dt.text)}</div>`);
     if (dt.list.length) h.push(`<div class="scm-dt-list">${dt.list.map((n) => `<span>${esc(n)}</span>`).join('')}</div>`);
     if (dt.go) h.push(`<div class="scm-dt-acts"><button type="button" class="scm-dt-go" data-scm-go="${esc(dt.go.id)}">🗺 ${esc(dt.go.label)} 지도 펼치기</button></div>`);
+    // 찾아낸 곳(플레이어·보조가 적은 것)만 고치고 지울 수 있다 — 제작자의 장소엔 없다. 장소 적기를 켠 지도에서만
+    if (dt.own && view.canAdd) {
+      if (form && form.kind === 'rename' && form.raw === dt.raw) {
+        h.push('<div class="scm-form">'
+          + `<div class="scm-form-row"><input class="scm-in-name" type="text" maxlength="40" placeholder="새 이름" value="${esc(form.name)}"></div>`
+          + (form.error ? `<div class="scm-form-err">${esc(form.error)}</div>` : '')
+          + '<div class="scm-form-row"><button type="button" class="scm-abtn scm-primary" data-scm-act="rename-save">고치기</button>'
+          + '<button type="button" class="scm-abtn" data-scm-act="form-cancel">취소</button></div></div>');
+      } else {
+        h.push('<div class="scm-dt-acts"><button type="button" class="scm-abtn" data-scm-act="rename-open">이름 고치기</button>'
+          + `<button type="button" class="scm-abtn scm-danger" data-scm-act="del">${ui.armDel && ui.armDel === dt.raw ? '한 번 더 누르면 지워요' : '지우기'}</button></div>`);
+      }
+    }
     h.push('</div>');
   } else {
     h.push('<div class="scm-hint">장소를 누르면 그곳의 사정을 볼 수 있어요. 다시 누르면 닫혀요.</div>');
+  }
+  if (view.canAdd) {
+    if (form && form.kind === 'add') {
+      const zs = Array.isArray(view.addZones) ? view.addZones : [];
+      h.push('<div class="scm-form">'
+        + (zs.length
+          ? `<div class="scm-form-row"><input class="scm-in-name" type="text" maxlength="40" placeholder="장소 이름" value="${esc(form.name)}">`
+            + `<select class="scm-in-zone" aria-label="구역">${zs.map((z) => `<option value="${esc(z)}"${z === form.zone ? ' selected' : ''}>${esc(z)}</option>`).join('')}</select></div>`
+          : '<div class="scm-form-err">이 지도에는 아직 적어 넣을 수 있는 구역이 없어요 — 구역이 걷힌 뒤에 적을 수 있어요.</div>')
+        + (form.error ? `<div class="scm-form-err">${esc(form.error)}</div>` : '')
+        + '<div class="scm-form-row">' + (zs.length ? '<button type="button" class="scm-abtn scm-primary" data-scm-act="add-save">적기</button>' : '')
+        + '<button type="button" class="scm-abtn" data-scm-act="form-cancel">취소</button></div></div>');
+    } else {
+      h.push('<div class="scm-add"><button type="button" class="scm-abtn" data-scm-act="add-open">＋ 장소 적기</button></div>');
+    }
   }
   if (view.stray.length) {
     h.push(`<div class="scm-stray">자리를 못 찾은 곳 — ${view.stray.map((s) => esc(s.raw)).join(', ')}<br><small>항목 끝에 구역 이름을 괄호로 붙이면 그 구역에 놓여요 (예: "이름 (${esc(view.zones[0]?.label || '구역')})")</small></div>`);
@@ -7091,6 +7198,18 @@ const MAP_CSS = `
 .scm-sbtn.scm-back{margin-left:auto;border-style:dashed}
 .scm-dt-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .scm-dt-go{border:1px solid #7d2a20;background:#7d2a20;color:#fff8e8;border-radius:7px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.scm-add{margin-top:8px}
+.scm-abtn{border:1px solid rgba(128,128,128,.5);border-radius:7px;background:rgba(128,128,128,.14);color:inherit;padding:4px 11px;font-size:12.5px;cursor:pointer;font-family:inherit}
+.scm-abtn:hover{border-color:rgba(128,128,128,.85)}
+.scm-abtn.scm-primary{background:#7d2a20;border-color:#7d2a20;color:#fff8e8;font-weight:700}
+.scm-detail .scm-abtn{border-color:rgba(90,70,48,.5);background:rgba(90,70,48,.08)}
+.scm-detail .scm-abtn.scm-danger{color:#a3271b;border-color:rgba(163,39,27,.5)}
+.scm-form{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.scm-form-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.scm-in-name,.scm-in-zone{font:inherit;font-size:13px;padding:4px 8px;border:1px solid rgba(128,128,128,.6);border-radius:7px;background:rgba(255,255,255,.92);color:#2b1d10;min-width:0}
+.scm-in-name{flex:1 1 140px}
+.scm-form-err{color:#c0392b;font-size:12px}
+.scm-detail .scm-form-err{color:#a3271b}
 .scm-under{margin-top:9px}
 .scm-hereline{display:inline-block;border:1px solid rgba(163,39,27,.7);background:rgba(163,39,27,.12);color:inherit;border-radius:7px;padding:3px 10px;font-size:12.5px}
 .scm-off{opacity:.65;font-size:11.5px}
@@ -7116,7 +7235,7 @@ const MAP_CSS = `
 
 module.exports = {
   DIRS, DIR_EDGE, CAPS, PALETTE, DEFAULT_RATIO, MAP_CSS,
-  mapConfig, mapButtonSpec, sheetsOf, SHEET_ID, mapView, recordVisit, validateMap, renderMapHtml, detailOf, splitTag, categoriesOf, ratioOf,
+  mapConfig, mapButtonSpec, sheetsOf, SHEET_ID, mapView, recordVisit, addFind, renameFind, removeFind, validateMap, renderMapHtml, detailOf, splitTag, categoriesOf, ratioOf,
 };
 
 });
@@ -45618,19 +45737,63 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const cacheKey = view.bg ? `${currentChaId}:${view.bg}` : null;
     const bgUrl = cacheKey && portraitCache.has(cacheKey) ? portraitCache.get(cacheKey) : null;
     const body = document.createElement('div');
-    body.innerHTML = mapMod.renderMapHtml(view, mapUi, { bgUrl });
+    // 장소 적기 (v1.26.0) — 칸의 글자는 mapUi.form에 두고(턴이 돌아 다시 그려도 안 날아가게), 지우기는 같은 단추 두 번(60초 — 리수 확인창은 패널에 가린다)
+    const armedRaw = mapUi.armDel && Date.now() < mapUi.armDel.until ? mapUi.armDel.raw : null;
+    body.innerHTML = mapMod.renderMapHtml(view, { ...mapUi, armDel: armedRaw }, { bgUrl });
+    const syncForm = (ev) => {
+      const el = ev && ev.target; if (!mapUi.form || !el || !el.classList) return;
+      if (el.classList.contains('scm-in-name')) mapUi.form.name = String(el.value ?? '');
+      else if (el.classList.contains('scm-in-zone')) mapUi.form.zone = String(el.value ?? '');
+    };
+    body.addEventListener('input', syncForm);
+    body.addEventListener('change', syncForm);
+    const mapAct = async (name) => {
+      const fromDom = (sel, fallback) => { const el = body.querySelector ? body.querySelector(sel) : null; return el && el.value != null ? String(el.value) : fallback; };
+      if (name === 'add-open') { mapUi = { ...mapUi, form: { kind: 'add', name: '', zone: view.addZones[0] || '', error: '' }, armDel: null }; renderGamePanel(); return; }
+      if (name === 'form-cancel') { mapUi = { ...mapUi, form: null }; renderGamePanel(); return; }
+      const dt = mapMod.detailOf(view, mapUi.sel);
+      if (name === 'rename-open') {
+        if (!dt || !dt.own) return;
+        mapUi = { ...mapUi, form: { kind: 'rename', raw: dt.raw, name: dt.title, error: '' }, armDel: null }; renderGamePanel(); return;
+      }
+      if (name === 'add-save' || name === 'rename-save') {
+        const form = mapUi.form;
+        if (!form || (form.kind === 'add') !== (name === 'add-save')) return;
+        const nm = fromDom('.scm-in-name', form.name), zone = fromDom('.scm-in-zone', form.zone);
+        const keep = (error) => { mapUi = { ...mapUi, form: { ...form, name: nm, zone, error } }; renderGamePanel(); };
+        if (turnBusy) { keep(TURN_BUSY_MSG); return; }
+        const r = form.kind === 'add' ? mapMod.addFind(schema, session.current, engine.makeLookup, { name: nm, zone, sheet: view.sheet })
+          : mapMod.renameFind(schema, session.current, engine.makeLookup, { raw: form.raw, name: nm });
+        if (!r.ok) { keep(r.reason); return; }
+        mapUi = { ...mapUi, form: null, sel: null, armDel: null };
+        gameNotice = form.kind === 'add' ? `✓ ${r.item} — 지도에 적었어요` : `✓ ${r.item} — 이름을 고쳤어요`;
+        await commitPanelChanges({ [r.listId]: r.next }, form.kind === 'add' ? '지도 장소 적기' : '지도 장소 이름 고치기');
+        return;
+      }
+      if (name === 'del') {
+        if (!dt || !dt.own) return;
+        if (turnBusy) { gameNotice = TURN_BUSY_MSG; renderGamePanel(); return; }
+        if (armedRaw !== dt.raw) { mapUi = { ...mapUi, armDel: { raw: dt.raw, until: Date.now() + 60000 }, form: null }; renderGamePanel(); return; }
+        const r = mapMod.removeFind(schema, session.current, { raw: dt.raw });
+        mapUi = { ...mapUi, armDel: null, sel: null };
+        if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+        gameNotice = `✓ ${dt.title} — 지도에서 지웠어요`;
+        await commitPanelChanges({ [r.listId]: r.next }, '지도 장소 지우기');
+      }
+    };
     body.addEventListener('click', (ev) => {
       const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm-act],[data-scm-go],[data-scm-sheet],[data-scm-cat],[data-scm]') : null;
       if (!t) return;
+      if (t.hasAttribute('data-scm-act')) return mapAct(t.getAttribute('data-scm-act'));
       if (t.hasAttribute('data-scm-go') || t.hasAttribute('data-scm-sheet')) {
         const id = t.hasAttribute('data-scm-go') ? t.getAttribute('data-scm-go') : t.getAttribute('data-scm-sheet');
-        mapUi = { ...mapUi, sheet: id || null, sel: null };
+        mapUi = { ...mapUi, sheet: id || null, sel: null, form: null, armDel: null };   // 장을 옮기면 열어 둔 칸·지우기 무장도 놓는다
       } else if (t.hasAttribute('data-scm-cat')) {
         const c = t.getAttribute('data-scm-cat') || null;
         mapUi = { ...mapUi, cat: mapUi.cat === c ? null : c };
       } else {
         const k = t.getAttribute('data-scm');
-        mapUi = { ...mapUi, sel: mapUi.sel === k ? null : k };
+        mapUi = { ...mapUi, sel: mapUi.sel === k ? null : k, armDel: null, form: mapUi.form && mapUi.form.kind === 'add' ? mapUi.form : null };
       }
       renderGamePanel();
     });

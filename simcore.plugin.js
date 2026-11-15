@@ -20840,6 +20840,10 @@ const SCHEMA_MAP_RULES = [
   '- `known`: true = 처음부터 보임(집·출발지), 조건식 = 참이 되면 보임(소문·탐사 진척), 없음 = 가 봐야 보임. 보이지만 안 가 본 곳은 desc 대신 `rumor`가 나옵니다.',
   '- `listVar`(list 변수) 항목 "이름 (구역)"은 그 구역 빈자리에 핀으로 꽂힙니다 — 보조가 서사로 찾아낸 곳(채집지·던전·발견물)을 적는 목록에. 그 목록 desc에 "이름 (구역)" 꼴을 못박으세요.',
   '- 조건식이 들른 곳을 읽습니다 — `has(visited, "기온")`, `count(visited) >= 10` (지도를 채운 만큼 열리는 이벤트·막).',
+  '- **지도 여러 장**: `sheets`: [{ "id"(영문·숫자), "label", "bg"?, "ratio"?, "fog"?, "bgAlways"?, "zones"?, "places"?, "exits"? }] — 지금의 zones·places·exits가 첫 장(id `main`)이고 `sheets`가 그 뒤에 더하는 장입니다(도시 + 던전 상층 + 중층). '
+  + '장소·구역 이름은 **전 장에서 하나**여야 합니다. 장소·이정표에 `"to": "장 id"`를 달면 누를 때 그 장을 펼쳐 봅니다(구경만 — 이동은 위치 변수). 위치 값이 다른 장의 장소면 패널이 그 장을 띄웁니다. '
+  + '안개 낀 더한 장은 가 보기 전엔 배경 그림을 가립니다(`bgAlways: true`면 처음부터 보임).',
+  '- `addPlace: true` + `listVar`면 플레이어가 패널에서 찾아낸 곳을 직접 적고 고치고 지울 수 있습니다 (기본 끔 — 그 목록이 보조 전용이면 켜지 마세요).',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -21305,7 +21309,7 @@ function featureDigestLines(s) {
   if (fmObj(s.questBoard)) lines.push(`- **의뢰판**: ${brief(s.questBoard)}${held(s.questBoard.listVar)}`);
   if (fmObj(s.map)) {
     const M = s.map;
-    lines.push(`- **지도**: ${brief({ label: M.label, locVar: M.locVar, seenVar: M.seenVar, listVar: M.listVar, fog: M.fog, places: fmN(M.places), zones: fmN(M.zones), exits: fmN(M.exits) })}${held(M.locVar, M.seenVar, M.listVar)}`);
+    lines.push(`- **지도**: ${brief({ label: M.label, locVar: M.locVar, seenVar: M.seenVar, listVar: M.listVar, fog: M.fog, places: fmN(M.places), zones: fmN(M.zones), exits: fmN(M.exits), ...(fmN(M.sheets) ? { sheets: fmN(M.sheets) } : {}), ...(M.addPlace === true ? { addPlace: true } : {}) })}${held(M.locVar, M.seenVar, M.listVar)}`);
   }
   const acts = Array.isArray(s.scenario?.acts) ? s.scenario.acts.filter(fmObj) : [];
   if (acts.length) {
@@ -22069,7 +22073,11 @@ function varReferenceIndex(schema) {
   }
   if (schema.map && typeof schema.map === 'object') { // 지도 (v1.23.0)
     add(schema.map.locVar, '지도', '현재 위치'); add(schema.map.seenVar, '지도', '발자취'); add(schema.map.listVar, '지도', '찾아낸 곳');
-    for (const k of ['zones', 'places', 'exits']) for (const e of (Array.isArray(schema.map[k]) ? schema.map[k] : [])) if (typeof e?.known === 'string') ex(e.known, '지도', `${e.name ?? e.label ?? '?'} 공개 조건`);
+    // 더한 장(sheets, v1.26.0)의 것도 같이 걷는다
+    for (const S of [schema.map, ...(Array.isArray(schema.map.sheets) ? schema.map.sheets : [])]) {
+      if (!S || typeof S !== 'object') continue;
+      for (const k of ['zones', 'places', 'exits']) for (const e of (Array.isArray(S[k]) ? S[k] : [])) if (typeof e?.known === 'string') ex(e.known, '지도', `${e.name ?? e.label ?? '?'} 공개 조건`);
+    }
   }
   for (const L of (Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [])) { // 보조 갈림길 (v1.8.0, 여러 벌 v1.13.0)
     if (!L || typeof L !== 'object') continue;
@@ -22411,7 +22419,10 @@ function planVarPurge(schema0, rootIds) {
   if (schema.map && typeof schema.map === 'object') { // 지도 (v1.23.0) — 연결 변수는 정체성(막는다), 공개 조건은 빼낸다(가 봐야 보임으로)
     const M = schema.map;
     for (const [k, nm] of [['locVar', '현재 위치 변수'], ['seenVar', '발자취 목록'], ['listVar', '찾아낸 곳 목록']]) if (doomed.has(M[k])) block('지도', `${nm} '${M[k]}'`);
-    for (const k of ['zones', 'places', 'exits']) for (const e of (Array.isArray(M[k]) ? M[k] : [])) dropWhen(e, 'known', '지도', `'${e?.name ?? e?.label ?? '?'}'의 공개 조건 — 빼냄`);
+    for (const S of [M, ...(Array.isArray(M.sheets) ? M.sheets : [])]) {   // 더한 장(v1.26.0)도
+      if (!S || typeof S !== 'object') continue;
+      for (const k of ['zones', 'places', 'exits']) for (const e of (Array.isArray(S[k]) ? S[k] : [])) dropWhen(e, 'known', '지도', `'${e?.name ?? e?.label ?? '?'}'의 공개 조건 — 빼냄`);
+    }
   }
   if (schema.calendar && typeof schema.calendar === 'object' && doomed.has(schema.calendar.list)) block('달력', `일정 목록 변수 '${schema.calendar.list}'`);
   for (const pk of (Array.isArray(schema.assets?.packs) ? schema.assets.packs : [])) dropWhen(pk, 'when', '에셋', `팩 '${pk?.id ?? ''}'의 여는 조건`);
@@ -22588,7 +22599,7 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); if (schema.shops) out.push(['shops', schema.shops.length]); }
   else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
   else if (tabKey === 'quest') { if (schema.questBoard) out.push(['questBoard', 1]); }
-  else if (tabKey === 'map') { push('map.places', schema.map?.places); push('map.zones', schema.map?.zones); push('map.exits', schema.map?.exits); }
+  else if (tabKey === 'map') { push('map.places', schema.map?.places); push('map.zones', schema.map?.zones); push('map.exits', schema.map?.exits); push('map.sheets', schema.map?.sheets); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'secrets') {
@@ -23981,6 +23992,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let purge = null, purgeDone = null, purgeBackup = null;
   // 지도 탭 (v1.23.0) — 찍기 대기(어느 칸에 좌표를 넣을지)·미리보기에서 고른 것·안개 걷은 모습
   let mapPick = null, mapSel = null, mapReveal = true;
+  let mapSheet = 'main';              // 지도 탭이 고치는 장 (v1.26.0) — 'main' = 첫 장
+  const mapBgCache = new Map();       // 미리보기 배경 그림: 에셋 이름 → 주소 | null(읽는 중·없음)
   // 변수 카드의 접힘 상태는 편집 화면에만 남기고 스키마에는 기록하지 않는다.
   // v1.9.29: 예전엔 카드 **객체**를 열쇠로 한 WeakSet이라, 어시스턴트 패치·되돌리기·가져오기처럼 스키마 객체가 통째로 바뀌는
   // 순간 전부 풀렸고 편집기를 닫으면 사라졌다 (커뮤니티 제보: "변수 접고 AI 가이드 보고 돌아오면 도로 펼쳐져 있어 매번 다시 접는다").
@@ -28436,15 +28449,29 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             const n = Math.min(loc.enum.length, 40), cols = Math.ceil(Math.sqrt(n));
             M.places = loc.enum.slice(0, n).map((name, i) => ({ name: String(name), x: Math.round(12 + (76 * (i % cols)) / Math.max(1, cols - 1)), y: Math.round(12 + (76 * Math.floor(i / cols)) / Math.max(1, Math.ceil(n / cols) - 1)) }));
           }
-          schema.map = M; mapPick = null; mapSel = null; rerender();
+          schema.map = M; mapPick = null; mapSel = null; mapSheet = 'main'; rerender();
         } }, '지도 만들기')));
       wrap.appendChild(aiTools());
       return wrap;
     }
     const M = schema.map;
-    const arrOf = (k) => (Array.isArray(M[k]) ? M[k] : (M[k] = []));
+    // 장 (v1.26.0) — 지금의 지도가 첫 장('main'), M.sheets가 더한 장. S = 지금 고치는 장 (구역·장소·이정표는 S의 것, 분류·변수 연결은 지도 전체 M의 것)
+    const moreSheets = (Array.isArray(M.sheets) ? M.sheets : []).filter((x) => x && typeof x === 'object' && !Array.isArray(x) && typeof x.id === 'string');
+    const allSheets = () => [M, ...(Array.isArray(M.sheets) ? M.sheets : []).filter((x) => x && typeof x === 'object' && !Array.isArray(x))];
+    if (mapSheet !== 'main' && !moreSheets.some((x) => x.id === mapSheet)) mapSheet = 'main';
+    const S = mapSheet === 'main' ? M : moreSheets.find((x) => x.id === mapSheet);
+    const isMain = S === M;
+    const sheetOpts = [['main', `첫 장 — ${M.label || '지도'}`], ...moreSheets.map((x) => [x.id, `${x.label || x.id} (${x.id})`])];
+    const ownerOf = (k) => (k === 'categories' ? M : S);
+    const arrOf = (k) => { const o = ownerOf(k); return Array.isArray(o[k]) ? o[k] : (o[k] = []); };
+    const tag = (el, name) => { el.setAttribute('data-map', name); return el; };   // 칸에 이름표 (테스트·스타일이 찾는다)
+    const eachDoor = (fn) => { for (const X of allSheets()) for (const k of ['places', 'exits']) for (const e of (Array.isArray(X[k]) ? X[k] : [])) if (e && typeof e === 'object') fn(e); };
+    // 문 — 누르면 펼칠 장. 장이 하나뿐이면 칸을 안 그린다
+    const doorSelect = (e) => (sheetOpts.length < 2 ? null : tag(bindSelect(sheetOpts.some(([id]) => id === e.to && id !== mapSheet) ? e.to : '',
+      [['', '(문 없음)'], ...sheetOpts.filter(([id]) => id !== mapSheet).map(([id, l]) => [id, `🚪 ${l}`])], (x) => { if (x) e.to = x; else delete e.to; rerender(); }), 'door'));
     const cats = (Array.isArray(M.categories) ? M.categories : []).map((c) => (typeof c === 'string' ? c : c?.label)).filter(Boolean);
-    const fogOn = M.fog === true;
+    const mapFog = M.fog === true;
+    const fogOn = (isMain ? M.fog : (S.fog ?? M.fog)) === true;   // 고친 장의 안개 (장마다 켜고 끌 수 있다)
     const n2 = (x) => { const v = Number(x); return isFinite(v) ? Math.max(0, Math.min(100, Math.round(v * 10) / 10)) : null; };
     const numInput = (val, apply, ph = '') => bindInput(val ?? '', (x) => { const v = n2(x); apply(v); rerender(); }, { type: 'number', ph, cls: '' });
     const catSelect = (val, apply) => bindSelect(val ?? '', [['', '(분류 없음)'], ...cats.map((c) => [c, c])], (x) => { apply(x || undefined); rerender(); });
@@ -28465,20 +28492,22 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const pickBtn = (pick, label = '📍 찍기') => h('button', { type: 'button', class: 'sce-btn sce-mini', title: '누른 뒤 미리보기 지도를 누르면 그 자리로 옮겨요',
       onclick: () => { mapPick = pick; rerender(); } }, label);
     const delBtn = (k, i) => h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', title: '삭제', onclick: () => {
-      arrOf(k).splice(i, 1); if (!M[k].length) delete M[k]; mapSel = null; mapPick = null; rerender();
+      arrOf(k).splice(i, 1); if (!ownerOf(k)[k].length) delete ownerOf(k)[k]; mapSel = null; mapPick = null; rerender();
     } }, '✕');
 
     // 검증 — 이 탭 몫만
     const v = validateSchema(schema);
     const mine = [...v.errors.map((e) => ({ ...e, err: true })), ...v.warnings].filter((e) => String(e.path).startsWith('$.map'));
-    const nPl = (M.places || []).length, nZo = (M.zones || []).length, nEx = (M.exits || []).length;
+    const nPl = (S.places || []).length, nZo = (S.zones || []).length, nEx = (S.exits || []).length;
+    const nAll = allSheets().reduce((n, X) => n + (Array.isArray(X.places) ? X.places.length : 0) + (Array.isArray(X.zones) ? X.zones.length : 0), 0);   // 발자취 칸 수의 기준 — 전 장
     wrap.appendChild(h('header', { class: 'sce-board-head' },
       h('div', {}, h('h3', {}, '지도'),
         h('p', {}, '미리보기에서 📍 찍기를 누르고 지도를 누르면 그 자리에 놓여요. 구역은 두 번(한 모서리 → 맞은편 모서리) 눌러요.')),
       h('div', { class: 'sce-board-summary' },
         h('span', {}, `${M.icon || '🗺️'} ${M.label || '지도'}`),
         h('span', {}, `장소 ${nPl}`), h('span', {}, `구역 ${nZo}`), h('span', {}, `이정표 ${nEx}`),
-        h('span', {}, fogOn ? '안개 켬' : '안개 끔'))));
+        h('span', {}, fogOn ? '안개 켬' : '안개 끔'),
+        sheetOpts.length > 1 ? h('span', {}, `장 ${sheetOpts.length} · 지금: ${isMain ? '첫 장' : (S.label || S.id)}`) : null)));
     if (mine.length) {
       wrap.appendChild(h('div', { class: 'sce-map-issues' }, ...mine.slice(0, 12).map((e) => h('div', { class: 'sce-warn' },
         `${e.err ? '× ' : '! '}${String(e.path).replace(/^\$\.map\.?/, '') || 'map'} — ${e.msg}`))));
@@ -28491,7 +28520,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         field('세로 비율', bindInput(M.ratio ?? '', (x) => { const r = Number(x); if (x !== '' && isFinite(r)) M.ratio = Math.max(0.4, Math.min(2.5, r)); else delete M.ratio; rerender(); },
           { type: 'number', cls: 'sce-w-s', ph: '1' }), '세로 ÷ 가로. 1은 정사각, 1.3은 세로로 긴 지도예요.'),
         field('배경 그림', bindInput(M.bg, (x) => { M.bg = x.trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '카드 에셋 이름 (선택)' }),
-          '카드에 넣은 이미지 에셋 이름이에요. 비우면 종이 지도 바탕을 써요. (편집기 미리보기엔 안 보여요)'),
+          '카드에 넣은 이미지 에셋 이름이에요. 비우면 종이 지도 바탕을 써요. 아래 미리보기에도 깔려서 그림을 보며 찍을 수 있어요.'),
         field('아래 설명', bindInput(M.note, (x) => { M.note = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '예: 교토 17곳 · 교토 밖 11곳' }), '지도 아래 작은 글씨예요.', true))));
 
     wrap.appendChild(section('02', '위치와 채워지는 지도', '어느 변수가 "지금 여기"인지, 가 본 곳을 어디에 적을지 정해요.',
@@ -28502,7 +28531,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           bindSelect(M.seenVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
             (x) => { if (x) M.seenVar = x; else delete M.seenVar; rerender(); }),
           !M.seenVar && !(schema.vars || []).some((x) => x.id === 'visited') ? h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
-            schema.vars.push({ id: 'visited', label: '발자취', type: 'list', init: [], maxItems: Math.max(20, nPl + nZo + 4), itemMaxLength: 30,
+            schema.vars.push({ id: 'visited', label: '발자취', type: 'list', init: [], maxItems: Math.max(20, nAll + 4), itemMaxLength: 30,
               desc: '지도에서 들른 곳 — 시스템이 위치를 보고 적는다. 직접 고치지 않는다.' });
             M.seenVar = 'visited'; rerender();
           } }, '발자취 목록 만들기') : null),
@@ -28512,21 +28541,87 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-board-toggle' },
           h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '안개 — 가 본 만큼 채워지는 지도'),
             h('span', {}, '못 가 본 구역은 가리고, 모르는 장소는 안 그려요. 장소마다 "처음부터 보임 / 가 봐야 보임 / 조건식"을 고를 수 있어요.')),
-          bindCheck(fogOn, (x) => { if (x) M.fog = true; else delete M.fog; rerender(); }, '사용')))));
+          bindCheck(mapFog, (x) => { if (x) M.fog = true; else delete M.fog; rerender(); }, '사용')),
+        h('div', { class: 'sce-board-toggle', style: M.listVar ? '' : 'opacity:.55' },
+          h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '플레이어가 장소를 적어 넣기'),
+            h('span', {}, '패널에 [＋ 장소 적기]가 생겨요. 찾아낸 곳 목록에 "이름 (구역)"으로 적히고, 플레이어가 고치고 지울 수 있어요. 그 목록이 보조 AI 전용(예: 아는 채집지)이면 켜지 마세요. 찾아낸 곳 목록이 있어야 해요.')),
+          tag(bindCheck(M.addPlace === true, (x) => { if (x) M.addPlace = true; else delete M.addPlace; rerender(); }, '사용'), 'add-place')))));
+
+    // 장 줄 (v1.26.0)
+    {
+      const sheetSelect = tag(bindSelect(mapSheet, sheetOpts, (x) => { mapSheet = x; mapSel = null; mapPick = null; rerender(); }), 'sheet');
+      const full = sheetOpts.length >= mapMod.CAPS.SHEETS;
+      const addSheetBtn = h('button', { type: 'button', class: 'sce-btn sce-mini', title: full ? `지도는 첫 장을 포함해 ${mapMod.CAPS.SHEETS}장까지예요` : '장을 하나 더해요', onclick: () => {
+        if (full) return;
+        const ids = new Set(sheetOpts.map(([id]) => id));
+        let n = sheetOpts.length + 1; while (ids.has(`sheet${n}`)) n++;
+        (Array.isArray(M.sheets) ? M.sheets : (M.sheets = [])).push({ id: `sheet${n}`, label: `새 지도 ${n}` });
+        mapSheet = `sheet${n}`; mapSel = null; mapPick = null; rerender();
+      } }, '＋ 장');
+      const delSheetBtn = isMain ? null : h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', onclick: () => {
+        let n = 0; eachDoor((e) => { if (e.to === S.id) n++; });
+        if (confirm(`'${S.label || S.id}' 장을 지울까요? 이 장의 구역·장소·이정표가 같이 지워져요.${n ? ` 이 장을 가리키던 문 ${n}개도 같이 빠져요.` : ''}`)) {
+          const old = S.id;
+          M.sheets = M.sheets.filter((x) => x !== S); if (!M.sheets.length) delete M.sheets;
+          eachDoor((e) => { if (e.to === old) delete e.to; });
+          mapSheet = 'main'; mapSel = null; mapPick = null; rerender();
+        }
+      } }, '장 지우기');
+      const sheetFields = isMain ? h('small', {}, '첫 장의 이름·배경·비율·아래 설명은 위 01 기본 정보에서 정해요. 장을 더하려면 [＋ 장].')
+        : h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+          field('장 이름', bindInput(S.label, (x) => { S.label = x.trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '예: 던전 상층' }), '지도 위 띠와 "○○ 지도 펼치기" 단추에 보여요.'),
+          field('장 id', tag(bindInput(S.id, (x) => {
+            const t = x.trim();
+            if (t !== S.id && mapMod.SHEET_ID.test(t) && t !== 'main' && !sheetOpts.some(([id]) => id === t)) {
+              const old = S.id;
+              eachDoor((e) => { if (e.to === old) e.to = t; });   // 이 장을 가리키던 문도 같이
+              S.id = t; mapSheet = t;
+            }
+            rerender();
+          }, { cls: 'sce-w-s', ph: 'upper' }), 'sheet-id'), '영문·숫자·_·- . 문과 번들 조각이 이 이름으로 장을 찾아요 (main은 첫 장).'),
+          field('배경 그림', bindInput(S.bg, (x) => { S.bg = x.trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '카드 에셋 이름 (선택)' }), '이 장의 그림이에요. 아래 미리보기에도 깔려요.'),
+          field('세로 비율', bindInput(S.ratio ?? '', (x) => { const v = Number(x); if (x !== '' && isFinite(v)) S.ratio = Math.max(0.4, Math.min(2.5, v)); else delete S.ratio; rerender(); },
+            { type: 'number', cls: 'sce-w-s', ph: '1' }), '세로 ÷ 가로. 그림의 비율과 맞춰야 핀이 안 밀려요.'),
+          field('안개', tag(bindSelect(S.fog === true ? 'on' : S.fog === false ? 'off' : '', [['', `지도 설정 따름 (지금: ${mapFog ? '켬' : '끔'})`], ['on', '켬'], ['off', '끔']],
+            (x) => { if (x === 'on') S.fog = true; else if (x === 'off') S.fog = false; else delete S.fog; rerender(); }), 'sheet-fog'), '이 장만 따로 정할 수 있어요 (도시는 다 보이고 던전만 안개).'),
+          field('아래 설명', bindInput(S.note, (x) => { S.note = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '지도 아래 작은 글씨' }), '', true),
+          h('div', { class: 'sce-board-toggle', style: fogOn ? '' : 'opacity:.55' },
+            h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '가 보기 전에도 배경 그림 보이기'),
+              h('span', {}, '안개 낀 장은 가 보기 전엔 문으로 들여다봐도 그림을 가려요(구조가 먼저 드러나지 않게). 켜면 처음부터 그림이 보여요 — 핀·구역의 안개는 그대로예요. 안개 낀 장에서만 뜻이 있어요.')),
+            tag(bindCheck(S.bgAlways === true, (x) => { if (x) S.bgAlways = true; else delete S.bgAlways; rerender(); }, '사용'), 'bg-always')));
+      wrap.appendChild(section('＋', '지도 장', '지도를 여러 장으로 나눠요(도시 · 던전 상층 · 중층…). 아래 미리보기·구역·장소·이정표는 여기서 고른 장의 것이에요. 장소·이정표에 "문"을 달면 누를 때 그 장이 펼쳐져요 — 구경만이고, 이동은 위치 변수가 해요.',
+        h('div', { class: 'sce-board-stack sce-board-workgroup' },
+          h('div', { class: 'sce-map-tools' }, sheetSelect, addSheetBtn, delSheetBtn),
+          sheetFields)));
+    }
 
     // 미리보기 + 찍기
     let st0;
     try { st0 = engine.initState(schema); } catch { st0 = { vars: {} }; }
-    const view = mapMod.mapView(schema, st0, engine.makeLookup, { reveal: mapReveal });
+    const view = mapMod.mapView(schema, st0, engine.makeLookup, { reveal: mapReveal, sheet: mapSheet });
     const prev = h('div', { class: 'sce-map-preview' });
     if (M.css) prev.appendChild(h('style', {}, scopeCssFn(String(M.css), '.sce-map-preview')));
     const art = h('div', {});
-    art.innerHTML = mapMod.renderMapHtml(view, { sel: mapSel }, { pick: !!mapPick });
+    // 배경 그림 (v1.26.0) — 편집기는 리수를 모른다. 어댑터가 넘긴 훅(opts.assetUrl: 에셋 이름 → 주소)으로 읽어 미리보기에 깐다 — 그림을 보며 찍게.
+    // 훅이 없거나 못 읽으면 지금처럼 종이 바탕. 같은 그림은 한 번만 청한다
+    const bgName = view && view.bg && typeof opts.assetUrl === 'function' ? view.bg : null;
+    art.innerHTML = mapMod.renderMapHtml(view, { sel: mapSel }, { pick: !!mapPick, bgUrl: bgName ? (mapBgCache.get(bgName) || null) : null });
+    if (bgName && !mapBgCache.has(bgName)) {
+      mapBgCache.set(bgName, null);
+      let asked = null;
+      try { asked = opts.assetUrl(bgName); } catch { asked = null; }
+      Promise.resolve(asked).then((url) => {
+        if (!url) return;
+        mapBgCache.set(bgName, String(url));
+        const surf = art.querySelector ? art.querySelector('.scm-surface') : null;   // 그 미리보기가 아직 떠 있으면 바로 끼운다 (다시 그릴 땐 캐시에서)
+        if (surf && surf.isConnected !== false && typeof surf.insertBefore === 'function') surf.insertBefore(h('img', { class: 'scm-bg', alt: '', src: String(url) }), surf.firstChild || null);
+      }).catch(() => { mapBgCache.delete(bgName); });
+    }
     prev.appendChild(art);
     const pickLabel = !mapPick ? null
       : mapPick.kind === 'new' ? '새 장소를 놓을 자리를 누르세요'
-        : mapPick.kind === 'zone' ? (mapPick.step ? '맞은편 모서리를 누르세요' : `구역 '${M.zones?.[mapPick.i]?.label ?? ''}'의 한 모서리를 누르세요`)
-          : `'${M.places?.[mapPick.i]?.name ?? ''}'를 놓을 자리를 누르세요`;
+        : mapPick.kind === 'zone' ? (mapPick.step ? '맞은편 모서리를 누르세요' : `구역 '${S.zones?.[mapPick.i]?.label ?? ''}'의 한 모서리를 누르세요`)
+          : `'${S.places?.[mapPick.i]?.name ?? ''}'를 놓을 자리를 누르세요`;
     art.onclick = (ev) => {
       if (mapPick) {
         const surf = art.querySelector('.scm-surface');
@@ -28540,11 +28635,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           list.push({ name: `새 장소 ${list.length + 1}`, x, y });
           mapSel = `p${list.length - 1}`; mapPick = null;
         } else if (mapPick.kind === 'place') {
-          const pl = M.places?.[mapPick.i]; if (pl) { pl.x = x; pl.y = y; }
+          const pl = S.places?.[mapPick.i]; if (pl) { pl.x = x; pl.y = y; }
           mapPick = null;
         } else if (mapPick.kind === 'zone') {
           if (!mapPick.step) { mapPick = { ...mapPick, step: 1, x0: x, y0: y }; rerender(); return; }
-          const z = M.zones?.[mapPick.i];
+          const z = S.zones?.[mapPick.i];
           if (z) {
             z.x = Math.min(x, mapPick.x0); z.y = Math.min(y, mapPick.y0);
             z.w = Math.max(3, Math.round(Math.abs(x - mapPick.x0) * 10) / 10); z.h = Math.max(3, Math.round(Math.abs(y - mapPick.y0) * 10) / 10);
@@ -28553,6 +28648,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         }
         rerender();
         return;
+      }
+      // 띠·문을 누르면 그 장을 고친다 (v1.26.0) — 패널에서는 구경이지만 편집기에선 고칠 장을 고르는 것
+      const go = ev.target && ev.target.closest ? ev.target.closest('[data-scm-sheet],[data-scm-go]') : null;
+      if (go) {
+        const id = go.hasAttribute('data-scm-go') ? go.getAttribute('data-scm-go') : go.getAttribute('data-scm-sheet');
+        mapSheet = id || view.hereSheet || 'main'; mapSel = null; rerender(); return;
       }
       const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm]') : null;
       if (t) { const k = t.getAttribute('data-scm'); mapSel = mapSel === k ? null : k; rerender(); }
@@ -28575,7 +28676,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         bindInput(c.label, (x) => {
           const old = c.label; const t = x.trim(); if (!t) return;
           c.label = t;
-          for (const k of ['places', 'zones']) for (const e of (M[k] || [])) if (e && e.cat === old) e.cat = t; // 이름이 열쇠 — 같이 바꾼다
+          for (const X of allSheets()) for (const k of ['places', 'zones']) for (const e of (Array.isArray(X[k]) ? X[k] : [])) if (e && e.cat === old) e.cat = t; // 이름이 열쇠 — 전 장에서 같이 바꾼다
           rerender();
         }, { cls: 'sce-w-m', ph: '분류 이름' }),
         bindInput(c.color || mapMod.PALETTE[i % mapMod.PALETTE.length], (x) => { c.color = x; rerender(); }, { type: 'color', cls: '' }),
@@ -28590,7 +28691,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 구역
     const zoneRows = h('div', { class: 'sce-map-rows' });
-    (M.zones || []).forEach((z, i) => {
+    (S.zones || []).forEach((z, i) => {
       if (!z || typeof z !== 'object') return;
       zoneRows.appendChild(h('div', { class: `sce-map-row${mapSel === `z${i}` ? ' is-sel' : ''}` },
         h('div', { class: 'sce-map-row-main' },
@@ -28615,7 +28716,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 장소
     const placeRows = h('div', { class: 'sce-map-rows' });
-    (M.places || []).forEach((pl, i) => {
+    (S.places || []).forEach((pl, i) => {
       if (!pl || typeof pl !== 'object') return;
       placeRows.appendChild(h('div', { class: `sce-map-row${mapSel === `p${i}` ? ' is-sel' : ''}` },
         h('div', { class: 'sce-map-row-main' },
@@ -28624,6 +28725,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           cats.length ? catSelect(pl.cat, (x) => { if (x) pl.cat = x; else delete pl.cat; }) : null,
           h('span', { class: 'sce-map-xy' }, `(${pl.x ?? '?'}, ${pl.y ?? '?'})`),
           pickBtn({ kind: 'place', i }),
+          doorSelect(pl),
           ...(fogOn ? knownCtl(pl) : []),
           delBtn('places', i)),
         h('details', {}, h('summary', {}, '설명 · 소문 · 다른 이름'),
@@ -28639,12 +28741,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // 이정표
     const exitRows = h('div', { class: 'sce-map-rows' });
     const DIR_OPTS = Object.entries(mapMod.DIRS).map(([k, a]) => [k, `${a} ${k}`]);
-    (M.exits || []).forEach((e, i) => {
+    (S.exits || []).forEach((e, i) => {
       if (!e || typeof e !== 'object') return;
       exitRows.appendChild(h('div', { class: 'sce-map-row' }, h('div', { class: 'sce-map-row-main' },
         bindInput(e.label, (x) => { const t = x.trim(); if (t) e.label = t; rerender(); }, { cls: 'sce-w-m', ph: '이정표 (예: 에도)' }),
         bindSelect(e.dir ?? 'n', DIR_OPTS, (x) => { e.dir = x; rerender(); }),
         numInput(e.at, (x) => { if (x == null) delete e.at; else e.at = x; }, '자리(자동)'),
+        doorSelect(e),
         ...knownCtl(e, { always: true }),
         delBtn('exits', i))));
     });
@@ -28666,7 +28769,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('div', {}, h('strong', {}, '지도 설정 삭제'),
         h('span', {}, '설정만 지워요. 발자취·찾아낸 곳 목록 변수는 그대로 남아요.')),
       h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', onclick: () => {
-        if (confirm('지도를 지울까요? (발자취 목록은 남습니다)')) { delete schema.map; mapPick = null; mapSel = null; rerender(); }
+        if (confirm('지도를 지울까요? (발자취 목록은 남습니다)')) { delete schema.map; mapPick = null; mapSel = null; mapSheet = 'main'; rerender(); }
       } }, '지도 삭제')));
     wrap.appendChild(aiTools());
     return wrap;
@@ -34013,7 +34116,8 @@ module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, pack
   // 기능 지도 (v1.21.0) — test-featuremap이 UNSUPPORTED_HINT·activeSections와 대조한다
   FEATURE_MAP, PATCH_OFF_SPOTS,
   // 🧩 번들 조각 (v1.25.0) — core/bundle.js가 딸린 것 묶기·탭 고르기에 쓴다
-  varReferenceIndex, TAB_SLICES };
+  varReferenceIndex, TAB_SLICES,
+  planVarPurge };
 
 });
 
@@ -49376,6 +49480,8 @@ count(목록)  has(목록, "항목")</pre>
     // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
     if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
     editor = createSchemaEditor(document.getElementById('sc-editor'), base, {
+      // 지도 미리보기의 배경 그림 (v1.26.0) — 패널이 쓰는 그 길(카드 에셋 이름 → readImage). 편집기는 리수를 모르니 읽어 주기만 한다
+      assetUrl: (name) => resolvePortraitUrl(name),
       // 편집 화면 취향 (v1.9.29) — 변수 카드 접힘·기본 모드. 캐릭터별 pluginStorage(기기 로컬). 스키마엔 안 남는다.
       uiPrefs: {
         load: async () => {

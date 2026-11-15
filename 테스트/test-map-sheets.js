@@ -391,6 +391,139 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('어댑터 — 지우기 무장은 60초', /armDel: \{ raw: [^}]*until: Date\.now\(\) \+ 60000 \}/.test(src), '');
   }
 
+  console.log('── ⑥ 편집기 [지도] 탭 — 장 줄 · 문 고르기 · 미리보기 그림 · 적기 켜기');
+  {
+    // 가짜 DOM — test-map.js ⑧과 같은 것 (편집기는 createElement·onchange·onclick만 쓴다)
+    const makeDom = () => {
+      const mkEl = (tag) => {
+        const el = { tagName: String(tag).toUpperCase(), nodeType: 1, children: [], childNodes: [], style: { cssText: '' }, dataset: {}, attrs: {}, _text: '',
+          className: '', value: '', checked: false, open: false, disabled: false,
+          classList: { add(...c) { for (const x of c) if (!el.className.split(' ').includes(x)) el.className = (el.className + ' ' + x).trim(); },
+            remove(...c) { el.className = el.className.split(' ').filter((x) => !c.includes(x)).join(' '); }, contains: (c) => el.className.split(' ').includes(c),
+            toggle(c, on) { if (on === false || (on === undefined && el.classList.contains(c))) el.classList.remove(c); else el.classList.add(c); } },
+          setAttribute(k, v) { el.attrs[k] = String(v); if (k === 'open') el.open = true; if (k === 'disabled') el.disabled = true; },
+          getAttribute: (k) => (k in el.attrs ? el.attrs[k] : null), removeAttribute(k) { delete el.attrs[k]; },
+          appendChild(c) { el.children.push(c); el.childNodes.push(c); c.parentNode = el; return c; }, append(...cs) { for (const c of cs) el.appendChild(c); },
+          insertBefore(c, ref) { const i = el.children.indexOf(ref); el.children.splice(i < 0 ? el.children.length : i, 0, c); el.childNodes = el.children; c.parentNode = el; return c; },
+          removeChild(c) { const i = el.children.indexOf(c); if (i >= 0) { el.children.splice(i, 1); el.childNodes = el.children; } return c; },
+          remove() { if (el.parentNode) el.parentNode.removeChild(el); },
+          addEventListener() {}, removeEventListener() {}, focus() {}, blur() {}, click() { el.onclick?.({ preventDefault() {} }); },
+          scrollIntoView() {}, getBoundingClientRect: () => ({ top: 0, left: 0, width: 200, height: 30, bottom: 30, right: 200 }), setPointerCapture() {}, releasePointerCapture() {},
+          replaceChildren(...cs) { el.children = []; el.childNodes = []; for (const c of cs) el.appendChild(c); }, prepend(...cs) { el.children.unshift(...cs); el.childNodes = el.children; },
+          querySelector: () => null, querySelectorAll: () => [], closest: () => null, contains: () => false, cloneNode: () => mkEl(tag) };
+        Object.defineProperty(el, 'textContent', { get() { return el._text + el.children.map((c) => c.textContent ?? '').join(''); }, set(v) { el._text = String(v); el.children = []; el.childNodes = []; } });
+        Object.defineProperty(el, 'innerHTML', { get: () => el._html ?? '', set(v) { el._html = String(v); el.children = []; el.childNodes = []; } });
+        Object.defineProperty(el, 'firstChild', { get: () => el.children[0] ?? null });
+        Object.defineProperty(el, 'lastChild', { get: () => el.children[el.children.length - 1] ?? null });
+        return el;
+      };
+      const doc = { createElement: mkEl, createElementNS: (_ns, tag) => mkEl(tag), createTextNode: (t) => { const n = mkEl('#text'); n.nodeType = 3; n._text = String(t); return n; },
+        createDocumentFragment: () => mkEl('#frag'), getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} };
+      doc.body = mkEl('body'); doc.head = mkEl('head'); doc.documentElement = mkEl('html');
+      return doc;
+    };
+    const findAll = (root, pred, out = []) => { for (const c of root.children || []) { if (pred(c)) out.push(c); findAll(c, pred, out); } return out; };
+    const btn = (root, label) => findAll(root, (e) => e.tagName === 'BUTTON' && (e.textContent || '').includes(label))[0];
+    global.document = makeDom();
+    global.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+      getComputedStyle: () => ({ getPropertyValue: () => '' }), requestAnimationFrame: (f) => f(), setTimeout, clearTimeout };
+    global.navigator = { clipboard: { writeText: async () => {} } };
+    let confirmSaid = ''; global.confirm = (msg) => { confirmSaid = String(msg); return true; };
+    const E = SC.require('editor');
+    const open = (schema, extra = {}) => {
+      const box = document.createElement('div');
+      let last = null;
+      E.createSchemaEditor(box, clone(schema), { onChange: (x) => { last = x; }, floor: 'deep', ...extra });
+      const tab = findAll(box, (e) => e.tagName === 'BUTTON' && String(e.className).includes('sce-tab') && e.textContent === '지도')[0];
+      let err = null; try { tab.click(); } catch (e) { err = e; }
+      const T = { box, err, last: () => last };
+      T.tagged = (name) => findAll(box, (e) => e.attrs && e.attrs['data-map'] === name);
+      T.set = (el, v) => { el.value = v; el.onchange(); };
+      T.check = (label, on) => { const cb = label.children[0]; cb.checked = on; cb.onchange(); };
+      T.art = () => findAll(box, (e) => String(e._html || '').includes('scm-surface'))[0];
+      T.hasInput = (v) => findAll(box, (e) => e.tagName === 'INPUT' && e.value === v).length > 0;
+      T.pickAt = (x, y) => { const a = T.art(); a.querySelector = () => ({ getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 200 }) }); a.onclick({ clientX: x, clientY: y, target: a }); };
+      return T;
+    };
+
+    let t = open(TWO);
+    ck('장 둘 지도 탭 — 예외 없이 열린다', !t.err, t.err && t.err.stack);
+    const sel = () => t.tagged('sheet')[0];
+    ck('장 고르기 — 첫 장과 더한 장', !!sel() && J(sel().children.map((o) => o.attrs.value)) === J(['main', 'under']) && sel().value === 'main', sel() ? J(sel().children.map((o) => o.attrs.value)) : '없음');
+    ck('첫 장을 고른 동안 06은 첫 장의 장소', t.hasInput('어소') && !t.hasInput('수문'), '');
+    t.set(sel(), 'under');
+    ck('★ 장을 고르면 06·05·07이 그 장의 것', t.hasInput('수문') && t.hasInput('북쪽 수로') && t.hasInput('지상으로') && !t.hasInput('어소'), '');
+    ck('더한 장의 칸 — 이름·id·안개·그림 보이기', t.hasInput('지하 수로') && t.tagged('sheet-id')[0]?.value === 'under' && t.tagged('sheet-fog')[0]?.value === 'on' && t.tagged('bg-always').length === 1, '');
+    btn(t.box, '＋ 장소 찍어 넣기').click();
+    t.pickAt(50, 100);
+    ck('★ 찍기는 고른 장에 놓인다 (첫 장은 그대로)', t.last().map.sheets[0].places.length === 3 && t.last().map.places.length === 3 && t.last().map.sheets[0].places[2].x === 25 && t.last().map.sheets[0].places[2].y === 50,
+      J([t.last().map.sheets[0].places.length, t.last().map.places.length]));
+    const doors = () => t.tagged('door');
+    ck('문 고르기 — 자기 장은 선택지에 없다', doors().length >= 3 && J(doors()[0].children.map((o) => o.attrs.value)) === J(['', 'main']), doors().length ? J(doors()[0].children.map((o) => o.attrs.value)) : '없음');
+    t.set(doors()[0], 'main');
+    ck('★ 문을 고르면 장소에 to', t.last().map.sheets[0].places[0].to === 'main', J(t.last().map.sheets[0].places[0]));
+    t.set(doors()[0], '');
+    ck('문을 빼면 키가 없다', !('to' in t.last().map.sheets[0].places[0]), J(t.last().map.sheets[0].places[0]));
+    t.set(t.tagged('sheet-fog')[0], 'off');
+    ck('장 안개 — 끔 / 따름', t.last().map.sheets[0].fog === false && (t.set(t.tagged('sheet-fog')[0], ''), !('fog' in t.last().map.sheets[0])), J(t.last().map.sheets[0].fog));
+    t.set(t.tagged('sheet-fog')[0], 'on');
+    t.check(t.tagged('bg-always')[0], true);
+    ck('가 보기 전에도 그림 보이기 → bgAlways', t.last().map.sheets[0].bgAlways === true && (t.check(t.tagged('bg-always')[0], false), !('bgAlways' in t.last().map.sheets[0])), '');
+    for (const bad of ['a b', 'main', '']) t.set(t.tagged('sheet-id')[0], bad);
+    ck('장 id — 형식 밖·main·빈 값은 안 받는다', t.last().map.sheets[0].id === 'under', t.last().map.sheets[0].id);
+    t.set(t.tagged('sheet-id')[0], 'sewer');
+    ck('★ 장 id를 고치면 가리키던 문이 같이 바뀐다', t.last().map.sheets[0].id === 'sewer' && t.last().map.places[0].to === 'sewer' && t.last().map.exits[0].to === 'sewer' && sel().value === 'sewer',
+      J([t.last().map.sheets[0].id, t.last().map.places[0].to, t.last().map.exits[0].to]));
+    btn(t.box, '＋ 장').click();
+    ck('★ ＋ 장 — 새 장이 생기고 그 장이 골라진다', t.last().map.sheets.length === 2 && J(t.last().map.sheets[1]) === J({ id: 'sheet3', label: '새 지도 3' }) && sel().value === 'sheet3', J(t.last().map.sheets[1]));
+    btn(t.box, '장 지우기').click();
+    ck('장 지우기 — 고른 장만', t.last().map.sheets.length === 1 && t.last().map.sheets[0].id === 'sewer' && sel().value === 'main', J(t.last().map.sheets.map((x) => x.id)));
+    t.set(sel(), 'sewer');
+    btn(t.box, '장 지우기').click();
+    ck('★ 장을 지우면 가리키던 문이 빠지고, 지우기 전에 몇 개인지 알린다', !('sheets' in t.last().map) && !('to' in t.last().map.places[0]) && !('to' in t.last().map.exits[0]) && /문 2개/.test(confirmSaid), confirmSaid);
+    ck('첫 장엔 [장 지우기]가 없다', !btn(t.box, '장 지우기'), '');
+
+    t = open(TWO);
+    t.check(t.tagged('add-place')[0], true);
+    ck('★ 적기 켜기 → addPlace:true / 끄면 키가 없다', t.last().map.addPlace === true && (t.check(t.tagged('add-place')[0], false), !('addPlace' in t.last().map)), J(t.last().map.addPlace));
+    {
+      const a = t.art();
+      a.onclick({ target: { closest: (s) => (s.includes('data-scm-go') ? { hasAttribute: (k) => k === 'data-scm-go', getAttribute: (k) => (k === 'data-scm-go' ? 'under' : null) } : null) } });
+      ck('★ 미리보기의 문을 누르면 그 장으로 넘어간다', sel().value === 'under' && t.hasInput('수문'), sel().value);
+      ck('미리보기 띠 — 안개 걷은 모습엔 전 장', t.art()._html.includes('data-scm-sheet="main"') && t.art()._html.includes('data-scm-sheet="under"'), '');
+    }
+
+    {
+      const withBg = clone(TWO); withBg.map.bg = '교토도';
+      const asked = [];
+      const tb = open(withBg, { assetUrl: (name) => { asked.push(name); return Promise.resolve('blob:' + name); } });
+      ck('★ 미리보기 배경 — 훅이 그 장의 그림 이름으로 불린다', !tb.err && J(asked) === '["교토도"]', tb.err ? tb.err.stack : J(asked));
+      await new Promise((res) => setTimeout(res, 5));
+      tb.set(tb.tagged('sheet')[0], 'under');
+      await new Promise((res) => setTimeout(res, 5));
+      ck('장을 바꾸면 그 장의 그림을 읽는다 (같은 그림은 한 번만)', J(asked) === '["교토도","수로도"]', J(asked));
+      tb.set(tb.tagged('sheet')[0], 'main');
+      ck('★ 읽은 그림이 미리보기에 깔린다', tb.art()._html.includes('class="scm-bg" src="blob:교토도"') && J(asked) === '["교토도","수로도"]', (tb.art()._html.match(/<img[^>]*>/) || ['그림 없음'])[0]);
+      const tn = open(withBg);
+      ck('훅이 없으면 예외 없이 종이 바탕', !tn.err && !tn.art()._html.includes('scm-bg'), tn.err && tn.err.stack);
+      const tf = open(withBg, { assetUrl: () => Promise.reject(new Error('x')) });
+      await new Promise((res) => setTimeout(res, 5));
+      ck('훅이 던져도 탭은 멀쩡하다', !tf.err && !!tf.art(), tf.err && tf.err.stack);
+      ck('배경 그림 도움말 — "미리보기엔 안 보여요"를 뺐다', !(tb.box.textContent || '').includes('미리보기엔 안 보여요'), '');
+    }
+
+    {
+      const s = clone(TWO); s.map.sheets[0].places[0].known = 'has(rumors, "수문")';
+      const idx = E.varReferenceIndex(s);
+      ck('★ 변수 참조 색인 — 더한 장의 공개 조건 식', (idx.get('rumors') || []).some((r) => r.where === '지도' && /수문/.test(r.what)), J(idx.get('rumors')));
+      const plan = E.planVarPurge(s, ['rumors']);
+      ck('★ 변수 지우기 — 더한 장의 공개 조건에서도 빼낸다', !('known' in plan.schema.map.sheets[0].places[0]) && !('known' in plan.schema.map.places[1]) && plan.errors.length === 0, J([plan.schema.map.sheets[0].places[0], plan.errors]));
+    }
+    ck('규격서 — 장·문·적기 줄', src.includes('**지도 여러 장**') && src.includes('`addPlace: true`'), '');
+    ck('기능 현황 — 장 수를 싣는다', /sheets: fmN\(M\.sheets\)/.test(src), '');
+    ck('어댑터 — 편집기에 그림 읽는 훅을 넘긴다', src.includes('assetUrl: (name) => resolvePortraitUrl(name)'), '');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })().catch((e) => { console.log('FAIL 테스트 본문이 던짐 →', e && e.stack || e); console.log('\n0 passed, 1 failed'); process.exit(1); });

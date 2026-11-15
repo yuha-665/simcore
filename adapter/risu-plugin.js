@@ -10451,6 +10451,8 @@ count(목록)  has(목록, "항목")</pre>
     // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
     if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
     editor = createSchemaEditor(document.getElementById('sc-editor'), base, {
+      // 지도 미리보기의 배경 그림 (v1.26.0) — 패널이 쓰는 그 길(카드 에셋 이름 → readImage). 편집기는 리수를 모르니 읽어 주기만 한다
+      assetUrl: (name) => resolvePortraitUrl(name),
       // 편집 화면 취향 (v1.9.29) — 변수 카드 접힘·기본 모드. 캐릭터별 pluginStorage(기기 로컬). 스키마엔 안 남는다.
       uiPrefs: {
         load: async () => {

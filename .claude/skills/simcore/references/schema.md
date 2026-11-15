@@ -777,6 +777,10 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `seenVar` | 발자취 list 변수 — **정산(8.92)이 적는다**: 지금 여기가 장소·구역이면 그 이름을 넣음. 보조 allow에 안 넣어도 됨. 꽉 차면 안 넣고 안 민다. maxItems < 장소+구역 수면 경고 |
 | `listVar` | 찾아낸 곳 list 변수 — 항목 `"이름 (구역)"`이 그 구역 빈자리에 핀. 꼬리표가 없으면 글에 든 구역 이름(긴 것 우선). 못 찾으면 "자리를 못 찾은 곳"으로 알림 |
 | `fog` | true면 안개 — 못 가 본 구역은 가리고(？), 모르는 장소는 안 그림 |
+| `sheets` | **지도 여러 장 (v1.26.0)** `[{ id, label?, bg?, ratio?, note?, fog?, bgAlways?, zones?, places?, exits? }]` — 더한 장. 위의 zones·places·exits·bg·ratio·note가 **첫 장(id `main`)**. id = 영문·숫자·`_`·`-` 32자, 첫 장 포함 12장. 장의 `fog`는 없으면 map.fog를 따름 |
+| `to` (places·exits의 항목) | 문 — 누르면 펼칠 장 id(`main` 포함). 이정표는 바로, 장소는 카드의 [🗺 ○○ 지도 펼치기]. **구경만** — 위치·발자취는 안 바뀐다. 없는 장·자기 장 = 오류 |
+| `bgAlways` (장) | 안개 낀 더한 장은 발 디디기 전엔 배경 그림을 안 깐다("아직 가 보지 않은 곳이에요"). true면 처음부터 깐다. 첫 장은 늘 깐다 |
+| `addPlace` | true + listVar면 패널에 [＋ 장소 적기] — 플레이어가 "이름 (구역)"을 찾아낸 곳 목록에 적고, 찾아낸 곳 카드에서 고치고 지운다. **기본 끔** |
 | `ratio` / `bg` / `note` / `label` / `icon` / `css` | 세로÷가로(0.4~2.5, 기본 1) / 배경 그림 = 카드 에셋 이름(패널만, 초상과 같은 readImage 길) / 아래 작은 글 / 버튼·제목 / CSS(#sc-game 범위) |
 
 - **known**: `true` = 처음부터 보임 · 식 = 참이면 보임(소문 `has(rumors,"기온")`, 진척 `explore_n >= 50`) · 없음 = 안개면 가 봐야 보임(안개 없으면 보임) · `false` = 가 봐야.
@@ -785,7 +789,11 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 - 구역이 걷히는 조건(안개): known · 발자취 · 지금 여기(구역 또는 그 안의 장소·핀) · 가 본 장소가 안에 있음 · 찾아낸 곳 핀이 꽂힘. **아는(소문) 장소만으로는 안 걷힌다.**
 - 찾아낸 곳 자리 = 이름 해시로 섞은 칸 순서 — 같은 이름은 늘 같은 자리. 구역 이름표·안에 든 작은 구역·다른 핀의 **이름표**와 안 겹치게, 첫 바퀴는 이름표까지 구역 안.
 - 조건식이 발자취를 읽는다: `count(visited) >= 10`, `has(visited, "기온")` — "지도를 채운 만큼" 열리는 이벤트·막·지시문.
-- 이름 겹침(장소 name·alias, 구역 label·match 사이)은 **오류** — 위치 값이 어디를 가리키는지 모호해진다.
+- 이름 겹침(장소 name·alias, 구역 label·match 사이)은 **오류** — 위치 값이 어디를 가리키는지 모호해진다. **장을 넘어서도** 하나여야 한다 (v1.26.0).
+- **여러 장 (v1.26.0)**: 변수는 그대로 하나씩 — 위치 값이 어느 장의 장소·구역인지는 이름으로 찾는다(전 장의 장소 → 찾아낸 곳 → 구역, 종류가 먼저). 패널은 지금 여기의 장을 띄우고,
+  문·띠로 다른 장을 구경하는 동안은 보던 장에 머문다. 띠에 뜨는 장 = 첫 장 · 지금 여기 · 발 디딘 장 · 안개 없는 장 · 구경 중인 장. 발자취 `maxItems`는 전 장의 장소+구역 합계로 잰다.
+  코어: `sheetsOf(map)`(첫 장 + sheets를 같은 모양으로) · `mapView(…, { sheet })` → 그 장의 재료 + `sheet`·`hereSheet`·`hereOn`·`peek`·`multi`·`strip`·`veiled`·`canAdd`·`addZones` ·
+  `addFind`/`renameFind`/`removeFind`(상태를 안 바꾸고 새 목록을 돌려준다). 그림의 위임 속성: `data-scm-sheet`(띠)·`data-scm-go`(문)·`data-scm-act`(장소 적기).
 - 안개 지도 + 위치 enum에서 **선택지에 없고 known도 없는 장소** = 영영 안개 → 경고.
 - 코어 API (`core/map.js`): `mapConfig` / `mapButtonSpec` / `mapView(schema,state,makeLookup,{reveal})` → `{zones,places,pins,exits,stray,here,counts,…}` /
   `recordVisit(schema,state,makeLookup)`(엔진 8.92) / `validateMap`(validate.js가 부름 — 규격서 크기 때문에 모듈에) / `renderMapHtml(view,{cat,sel},{bgUrl,pick})` / `detailOf` / `splitTag` / `MAP_CSS`(기본 모양 — 패널·편집기 공용).

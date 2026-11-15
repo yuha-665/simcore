@@ -33,7 +33,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 |---|---|
 | **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **31개** — build.js `CORE` 순서(`profile` 뒤에 **bundle**): expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**map**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·**sample**·**bible**·patch·**profile**·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **126종** — 2026-11-14) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **127종** — 2026-11-15) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
 | 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.20.0 ①). 가짜 실행 파일로 도는 `테스트/test-clibridge.js`. 배포판 = `node tools/cli-bridge/pack.js` → `배포\SimCore-bridge.zip`(bat·js·사용법 README.txt, 고치면 다시 만들 것) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · `hunter-dlc.js` (남의 DLC 호환 이름표 — 위 둘이 같이 읽는다) · `build-bundle.js` (배포 번들 조립) · 설계 `docs/design-얼헌-개조.md` |
@@ -172,6 +172,11 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
   하나뿐이다. 절을 새로 만들면 거기 넣고 편집기 `schemaIsBlank`(하니스 때문에 따로 적힘)도 같이. "변수부터 만들어라"는 문구를 되살리지 말 것.
   상태창은 `statusUI.mode:'off'`로 끈다(마커는 남는다 — 상태·되감기의 열쇠). 심코어 자체를 빼는 길은 [캐릭터 설치 관리 → 캐릭터에서 제거]
   (로어북 ⚙simcore + 루아 브리지 제거, 스키마 자동 백업) — 제거 뒤 옛 메시지의 마커는 display 훅이 숨기고 저장본은 안 건드린다.
+- **지도는 여러 장으로 (v1.26.0).** 도시 아래 던전, 세계 지도 속 도시처럼 한 장에 안 담기는 지도는 `map.sheets[]`에 장을 더한다 — 지금의 `map`이 첫 장(`main`)이고 옛 지도는 손댈 게 없다.
+  장소·이정표에 `to: "장 id"`를 달면 문: 누르면 그 장을 **구경**한다(상태는 안 바뀐다). **이동은 여전히 위치 변수 하나** — 보조가 다른 장의 장소로 바꾸면 패널이 그 장을 띄운다. 그래서 위치 enum에는 전 장의 장소가 다 들어가야 하고, 장소·구역 이름은 지도 전체에서 하나여야 한다.
+  안개 낀 더한 장은 가 보기 전엔 띠에도 안 뜨고 문으로 들여다봐도 배경 그림을 가린다(`bgAlways`로 끔). 플레이어가 장소를 적게 하려면 `addPlace: true`(기본 끔 — 찾아낸 곳 목록이 보조 전용인 봇이 있다). 설계: `docs/design-지도-여러장.md`.
+  ⚠ `mapView`의 열쇠(`p0`·`z0`·`d0`)는 **보여 주는 장 안에서만** 뜻이 있다 — 장이 바뀌면 고른 것(sel)을 놓을 것. `sheets` 없는 지도의 출력은 황금본(`테스트/fixtures/map-golden-v1.25.1.json`)이 글자까지 고정한다 — 다시 뜨지 말 것.
+  ⚠ 편집기 미리보기의 배경 그림은 어댑터가 넘긴 `assetUrl` 훅으로 읽는다(편집기는 리수를 모른다). 번들 조각에 그림은 안 실린다 — 고르기·요약 화면이 🖼 줄로 알린다.
 - **일부만 나눠 줄 땐 조각으로 (v1.25.0).** 지도 하나·로어 폴더 하나처럼 봇의 일부만 배포하려면 💾 세이브 → 🧳 개조 번들 → [번들 내보내기] → 🧩 조각 고르기.
   고른 것이 읽는 변수·파생·판정·액션과 AI 허용 줄은 자동으로 따라오고, 조각만으로 검증을 넘어야 내보낸다(빈 봇에도 설치된다는 보증). 값·📌 지침·🔒 보호는 안 실린다.
   받는 쪽은 같은 [번들 넣기] — 조각은 받는 봇의 것을 그대로 두고 얹히고, 같은 id의 다음 판은 기준 지문(`sim:bundle-base:<캐릭터>:<번들 id>`)으로 3자 비교해 받는 사람이 고친 것을 남긴다.

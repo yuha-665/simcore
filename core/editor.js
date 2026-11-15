@@ -4512,7 +4512,7 @@ const FEATURE_MAP = [
     need: '수락한 의뢰가 들어갈 목록(list 변수)', on: (s) => fmObj(s.questBoard),
     words: /의뢰|퀘스트|일감|\bquests?\b/i, rules: SCHEMA_QUEST_RULES },
   { id: 'map', name: '지도', keys: ['map'], where: '[지도] 탭',
-    what: '좌표 위 장소·구역·이정표 그림 지도 — 현재 위치 표시, 안개를 켜면 가 본 만큼 채워짐',
+    what: '좌표 위 장소·구역·이정표 그림 지도 — 현재 위치 표시, 안개를 켜면 가 본 만큼 채워짐, 여러 장(도시·던전 층…)과 누르면 다음 지도가 펼쳐지는 문',
     need: '현재 위치 변수(enum 추천)', on: (s) => fmObj(s.map),
     words: /지도|약도|안개|\bmap\b/i, rules: SCHEMA_MAP_RULES },
   { id: 'party', name: '편성표', keys: ['party'], where: '[편성표] 탭',
@@ -12029,6 +12029,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const ownerOf = (k) => (k === 'categories' ? M : S);
     const arrOf = (k) => { const o = ownerOf(k); return Array.isArray(o[k]) ? o[k] : (o[k] = []); };
     const tag = (el, name) => { el.setAttribute('data-map', name); return el; };   // 칸에 이름표 (테스트·스타일이 찾는다)
+    // 새 장소·구역의 기본 이름 — 이름은 지도 전체에서 하나라, 그 장의 개수가 아니라 전 장에 없는 첫 번호를 쓴다 (안 그러면 새 장에서 찍자마자 "겹칩니다")
+    const freshName = (prefix, start) => {
+      const taken = new Set();
+      for (const X of allSheets()) {
+        for (const p of (Array.isArray(X.places) ? X.places : [])) if (p && typeof p === 'object') for (const n of [p.name, ...(Array.isArray(p.alias) ? p.alias : [])]) taken.add(String(n ?? '').trim());
+        for (const z of (Array.isArray(X.zones) ? X.zones : [])) if (z && typeof z === 'object') for (const n of [z.label, ...(Array.isArray(z.match) ? z.match : [])]) taken.add(String(n ?? '').trim());
+      }
+      let n = start; while (taken.has(`${prefix} ${n}`)) n++;
+      return `${prefix} ${n}`;
+    };
     const eachDoor = (fn) => { for (const X of allSheets()) for (const k of ['places', 'exits']) for (const e of (Array.isArray(X[k]) ? X[k] : [])) if (e && typeof e === 'object') fn(e); };
     // 문 — 누르면 펼칠 장. 장이 하나뿐이면 칸을 안 그린다
     const doorSelect = (e) => (sheetOpts.length < 2 ? null : tag(bindSelect(sheetOpts.some(([id]) => id === e.to && id !== mapSheet) ? e.to : '',
@@ -12196,7 +12206,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (x == null || y == null) return;
         if (mapPick.kind === 'new') {
           const list = arrOf('places');
-          list.push({ name: `새 장소 ${list.length + 1}`, x, y });
+          list.push({ name: freshName('새 장소', list.length + 1), x, y });
           mapSel = `p${list.length - 1}`; mapPick = null;
         } else if (mapPick.kind === 'place') {
           const pl = S.places?.[mapPick.i]; if (pl) { pl.x = x; pl.y = y; }
@@ -12274,7 +12284,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(section('05', '구역', '권역·지형·방향처럼 넓은 땅이에요. 안개는 구역 단위로 걷혀요. 찾아낸 곳 "이름 (구역)"이 여기 꽂혀요.',
       h('div', { class: 'sce-board-stack sce-board-workgroup' }, zoneRows,
         h('div', {}, h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
-          const list = arrOf('zones'); list.push({ label: `구역 ${list.length + 1}`, x: 10, y: 10, w: 30, h: 25 });
+          const list = arrOf('zones'); list.push({ label: freshName('구역', list.length + 1), x: 10, y: 10, w: 30, h: 25 });
           mapPick = { kind: 'zone', i: list.length - 1 }; rerender();
         } }, '＋ 구역 (두 번 찍기)')))));
 

@@ -122,7 +122,7 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     v = view(TWO, { finds: ['뒷문 (북쪽 수로)', '폐사 (가모가와 동안)'] });
     ck('찾아낸 곳 — 구역이 있는 장에 꽂힌다', v.pins.length === 1 && v.pins[0].name === '폐사' && v.stray.length === 0, J(v.pins.map((p) => p.name)));
     v = view(TWO, { finds: ['뒷문 (북쪽 수로)', '폐사 (가모가와 동안)'] }, { sheet: 'under' });
-    ck('찾아낸 곳 — 둘째 장의 핀 · 핀이 꽂힌 장은 발 디딘 장', v.pins.length === 1 && v.pins[0].name === '뒷문' && v.veiled === false && v.zones[0].open === true, J([v.pins.map((p) => p.name), v.veiled]));
+    ck('찾아낸 곳 — 둘째 장의 핀 · 핀이 꽂힌 장은 띠에 뜨고 구역이 걷힌다 (그림 가림은 발자취·지금 여기만 푼다)', v.pins.length === 1 && v.pins[0].name === '뒷문' && v.veiled === true && v.zones[0].open === true && v.strip.some((x) => x.id === 'under'), J([v.pins.map((p) => p.name), v.veiled]));
     v = view(TWO, { finds: ['어딘가'] }, { sheet: 'under' });
     ck('자리를 못 찾은 곳은 어느 장을 보든 아래에', v.stray.length === 1 && v.stray[0].name === '어딘가', J(v.stray));
 
@@ -317,7 +317,8 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('★ 적기 — "이름 (구역)"이 목록 끝에, 상태는 그대로 (적는 건 부르는 쪽)', r.ok === true && r.listId === 'finds' && r.item === '새 굴 (가모가와 동안)' && J(r.next) === J(['새 굴 (가모가와 동안)']) && J(s0) === before, J(r));
     const no = (schema, vars, arg) => { const x = MAP.addFind(schema, st(schema, vars), engine.makeLookup, { zone: '가모가와 동안', sheet: 'main', ...arg }); return x.ok ? '(통과)' : x.reason; };
     ck('거절 — 빈 이름', no(ADD, {}, { name: '   ' }) === '이름을 적어 주세요', no(ADD, {}, { name: '   ' }));
-    ck('거절 — 괄호·@', no(ADD, {}, { name: '굴(북)' }) === '이름에 괄호·@는 쓸 수 없어요' && no(ADD, {}, { name: '굴@3' }) === '이름에 괄호·@는 쓸 수 없어요', no(ADD, {}, { name: '굴(북)' }));
+    ck('거절 — 쉼표 (채팅 변수 미러가 목록을 쉼표로 잇는다 — 되읽으면 둘로 갈린다)', no(ADD, {}, { name: '굴, 뒷문' }) === '이름에 괄호·@·쉼표는 쓸 수 없어요', no(ADD, {}, { name: '굴, 뒷문' }));
+    ck('거절 — 괄호·@', no(ADD, {}, { name: '굴(북)' }) === '이름에 괄호·@·쉼표는 쓸 수 없어요' && no(ADD, {}, { name: '굴@3' }) === '이름에 괄호·@·쉼표는 쓸 수 없어요', no(ADD, {}, { name: '굴(북)' }));
     ck('★ 거절 — 이미 있는 이름 (장소·별칭·구역·다른 이름·다른 장의 장소·찾아낸 곳)', ['기온', '島原', '서쪽 들판', '들판', '수문', '폐사'].every((n) => no(ADD, { finds: ['폐사 (서쪽 들판)'] }, { name: n }) === `'${n}'은(는) 이미 지도에 있는 이름이에요`),
       ['기온', '島原', '서쪽 들판', '들판', '수문', '폐사'].map((n) => no(ADD, { finds: ['폐사 (서쪽 들판)'] }, { name: n })).join(' / '));
     ck('거절 — 구역을 안 골랐거나 걷힌 구역이 아니다', no(ADD, {}, { name: '굴', zone: '' }) === '적어 넣을 구역을 골라 주세요' && no(ADD, {}, { name: '굴', zone: '없는 곳' }) === '적어 넣을 구역을 골라 주세요'
@@ -519,6 +520,22 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
       const plan = E.planVarPurge(s, ['rumors']);
       ck('★ 변수 지우기 — 더한 장의 공개 조건에서도 빼낸다', !('known' in plan.schema.map.sheets[0].places[0]) && !('known' in plan.schema.map.places[1]) && plan.errors.length === 0, J([plan.schema.map.sheets[0].places[0], plan.errors]));
     }
+    {
+      const tn = open(BASE);
+      btn(tn.box, '＋ 장').click();
+      btn(tn.box, '＋ 장소 찍어 넣기').click(); tn.pickAt(20, 20);
+      btn(tn.box, '＋ 장').click();
+      btn(tn.box, '＋ 장소 찍어 넣기').click(); tn.pickAt(40, 40);
+      const m = tn.last().map;
+      const names = [...m.places, ...m.sheets.flatMap((x) => x.places || [])].map((p) => p.name);
+      ck('★ 새 장에서 찍은 장소의 기본 이름이 다른 장과 안 겹친다 (검토 중요 2)', m.sheets.length === 2 && new Set(names).size === names.length && !validateSchema(tn.last()).errors.some((e) => /겹칩니다/.test(e.msg)), J(names));
+      const tz = open(BASE);
+      btn(tz.box, '＋ 장').click(); btn(tz.box, '＋ 구역').click();
+      btn(tz.box, '＋ 장').click(); btn(tz.box, '＋ 구역').click();
+      const zn = [...tz.last().map.zones, ...tz.last().map.sheets.flatMap((x) => x.zones || [])].map((z) => z.label);
+      ck('★ 새 장에 더한 구역의 기본 이름도 안 겹친다', tz.last().map.sheets.every((x) => (x.zones || []).length === 1) && new Set(zn).size === zn.length, J(zn));
+      ck('기능 지도 표 — 지도 줄에 여러 장·문 (설계 §7)', /여러 장/.test(E.FEATURE_MAP.find((x) => x.id === 'map').what) && /문/.test(E.FEATURE_MAP.find((x) => x.id === 'map').what), E.FEATURE_MAP.find((x) => x.id === 'map').what);
+    }
     ck('규격서 — 장·문·적기 줄', src.includes('**지도 여러 장**') && src.includes('`addPlace: true`'), '');
     ck('기능 현황 — 장 수를 싣는다', /sheets: fmN\(M\.sheets\)/.test(src), '');
     ck('어댑터 — 편집기에 그림 읽는 훅을 넘긴다', src.includes('assetUrl: (name) => resolvePortraitUrl(name)'), '');
@@ -579,6 +596,48 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('★ 고르기 화면 — 배경 그림은 파일에 안 들어간다고 알린다', hPick.includes('배경 그림 2장') && hPick.includes('교토도') && hPick.includes('수로도') && hPick.includes('파일에 안 들어가요'), (hPick.match(/🖼[^<]*/) || ['줄 없음'])[0]);
     const noMap = B.buildPiece(author, { tabs: [], items: { vars: ['location'] }, lore: [], regex: [] }, { name: 'x' });
     ck('지도를 안 고르면 그 줄이 없다', !pickerHtml(B.pickables(author), noMap, { picks: { tabs: [], items: { vars: ['location'] }, lore: [], regex: [] }, open: [], name: 'x', note: '', rev: 1 }).includes('🖼'), '');
+  }
+
+  console.log('── ⑧ 최종 검토에서 나온 것');
+  {
+    const ADD = clone(TWO); ADD.map.addPlace = true; ADD.map.sheets[0].zones[0].known = true;   // 수로 구역은 소문으로 안다(걷혀 있다)
+    let v = view(ADD, {}, { sheet: 'under' });
+    const tryAdd = MAP.addFind(ADD, st(ADD, {}), engine.makeLookup, { name: '아무거나', zone: '북쪽 수로', sheet: 'under' });
+    ck('★ 가려진 장에는 적어 넣을 수 없다 — 적어서 가림을 스스로 풀지 못하게 (검토 중요 1)', v.veiled === true && J(v.addZones) === '[]' && tryAdd.ok === false, J([v.veiled, v.addZones, tryAdd]));
+    v = view(ADD, { finds: ['북쪽 수로에서 흘러온 병', '뒷문 (북쪽 수로)'] }, { sheet: 'under' });
+    ck('★ 찾아낸 곳이 꽂혀도 그림 가림은 안 풀린다 (보조가 적은 것도) — 띠에는 뜬다', v.veiled === true && v.bg === null && v.pins.length === 2 && v.strip.some((x) => x.id === 'under'), J([v.veiled, v.bg, v.pins.length]));
+    v = view(ADD, { visited: ['북쪽 수로'] }, { sheet: 'under' });
+    ck('구역에 발 디딘 것도 가림을 푼다 · 그 뒤엔 적을 수 있다', v.veiled === false && v.bg === '수로도' && J(v.addZones) === J(['북쪽 수로']), J([v.veiled, v.addZones]));
+    let h = MAP.renderMapHtml(view(TWO, {}, { sheet: 'under' }), {}, {});
+    ck('★ 가려진 장 — 안개 구역 사각형·채운 정도·아래 설명을 안 그린다 (설계 §4-5: 한 줄과 아는 곳·이정표만)', !h.includes('scm-fog') && !h.includes('scm-count') && !h.includes('물소리가 난다') && h.includes('망루 밑') && h.includes('지상으로') && h.includes('scm-veil'),
+      (h.match(/class="scm-(count|note|zone[^"]*)"/g) || []).join(' '));
+    h = MAP.renderMapHtml(view(TWO, { visited: ['수문'] }, { sheet: 'under' }), {}, {});
+    ck('발 디딘 뒤엔 지금처럼 다 그린다', h.includes('scm-count') && h.includes('물소리가 난다') && h.includes('scm-zone'), '');
+    h = MAP.renderMapHtml(view(TWO, { finds: ['어딘가'] }, { sheet: 'under' }), {}, {});
+    ck('★ "자리를 못 찾은 곳" 안내가 가린 구역 이름을 예시로 내보내지 않는다', h.includes('자리를 못 찾은 곳') && !h.includes('북쪽 수로'), (h.match(/<div class="scm-stray">.*?<\/div>/) || [''])[0]);
+
+    const PAR = clone(TWO); PAR.map.addPlace = true; PAR.map.zones[0].label = '강 건너 (동안)';
+    ck('★ 이름에 괄호가 든 구역에는 적어 넣을 수 없다 — 고를 수 없고, 넣으려 해도 거절 (검토 중요 3)', J(view(PAR, {}).addZones) === J(['서쪽 들판'])
+      && /구역 이름에 괄호/.test(MAP.addFind(PAR, st(PAR, {}), engine.makeLookup, { name: '샘', zone: '강 건너 (동안)', sheet: 'main' }).reason || ''), J(view(PAR, {}).addZones));
+    const rnBad = MAP.renameFind(PAR, st(PAR, { finds: ['샘 (강 건너 (동안))', '서쪽 들판에서 주운 병'] }), engine.makeLookup, { raw: '샘 (강 건너 (동안))', name: '맑은 샘' });
+    const rnBad2 = MAP.renameFind(PAR, st(PAR, { finds: ['서쪽 들판에서 주운 병'] }), engine.makeLookup, { raw: '서쪽 들판에서 주운 병', name: '병' });
+    ck('★ 이름과 구역을 가를 수 없는 항목은 고치지 않는다 (고치면 구역이 떨어져 손댈 수 없게 된다)', rnBad.ok === false && /가를 수 없/.test(rnBad.reason) && rnBad2.ok === false, J([rnBad, rnBad2]));
+    const hasW = (schema, path, word) => validateSchema(clone(schema)).warnings.some((e) => e.path.startsWith(path) && e.msg.includes(word));
+    ck('장소 적기를 켠 지도에서 괄호 든 구역 이름은 경고 (안 켠 지도는 그대로)', hasW(PAR, '$.map.zones[0]', '적어 넣을 수 없') && (() => { const o = clone(PAR); delete o.map.addPlace; return !hasW(o, '$.map.zones[0]', '적어 넣을 수 없'); })(), '');
+
+    const one = clone(BASE); one.map.places[0].to = '에도 성'; one.map.exits[0].to = 'main';
+    const r1 = validateSchema(one);
+    ck('★ 장이 없는 옛 지도에 우연히 있던 to는 오류가 아니라 경고 (옛 봇의 설치를 막지 않는다)', !r1.errors.some((e) => e.path.startsWith('$.map')) && r1.warnings.filter((w) => /\.to$/.test(w.path)).length === 2,
+      J([r1.errors.filter((e) => e.path.startsWith('$.map')), r1.warnings.filter((w) => /\.to$/.test(w.path))]));
+    ck('그런 to는 문이 되지도 않는다', view(one, {}).places[0].to === undefined && !MAP.renderMapHtml(view(one, {}), {}, {}).includes('data-scm-go'), '');
+
+    const THREE = clone(TWO); THREE.map.sheets.push({ id: 'deep', label: '깊은 수로', fog: false, places: [{ name: '물밑 문', x: 30, y: 30 }] }); THREE.vars[0].enum.push('물밑 문');
+    const R = panelRig(THREE);
+    R.render();
+    await R.click({ 'data-scm-go': 'under' });
+    R.session.current.vars.location = '물밑 문'; R.render();
+    ck('★ 구경 중 위치가 다른 장으로 가도 보던 장에 머문다 — 아래 줄에 지금 여기의 장 이름 (검토 초점 2)', R.api.ui().sheet === 'under' && /class="scm-sbtn scm-on" data-scm-sheet="under"/.test(R.html())
+      && R.html().includes('(깊은 수로)') && R.html().includes('scm-back'), J(R.api.ui()));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

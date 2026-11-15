@@ -36,7 +36,12 @@
 //   **미리보기에 배경 그림이 깔린다** — 전엔 종이 바탕뿐이라 그림 지도는 좌표를 눈대중으로 맞춰야 했다. 어댑터가 `assetUrl`(에셋 이름 → 주소, 패널과 같은 길) 훅을 넘긴다.
 // - [번들 조각] 장 하나가 병합 단위 하나(원래 구조로 됐다 — id 있는 배열). `map.sheets`를 모양 검사 경로에 더해 id 없는 장이 든 조각은 "모양이 어긋남"으로 거절.
 //   배경 그림은 카드 에셋이라 파일에 안 실린다 — 고르기 화면과 받는 쪽 요약(그 이름의 에셋이 없을 때)이 🖼 한 줄로 알린다.
-// - 테스트: `테스트/test-map-sheets.js` (황금본 대조 · 재료 · 검증 · 그림 · 패널(구간을 떼어 가짜 DOM) · 적기 · 편집기 탭 · 번들).
+// - [구현 뒤 검토에서 고친 것] 그림 가림은 발자취·지금 여기만 푼다 — 찾아낸 곳이 꽂힌 것까지 "발 디딤"으로 쳐서, [＋ 장소 적기] 한 번으로 안 가 본 장의 그림이 열렸다
+//   (띠는 지금대로 찾아낸 곳도 본다). 가려진 장에는 적을 수도 없고, 안개 구역 사각형·채운 정도·아래 설명도 안 그린다. 이름에 괄호·@가 든 구역에는 못 적는다
+//   (항목 "이름 (구역)"에서 구역을 못 가른다 — 적으면 깨지고, 이름을 고치면 구역이 떨어져 손댈 수 없었다). 꼬리표를 못 읽는 항목은 이름 고치기를 거절(지우기는 된다).
+//   적는 이름의 쉼표도 막는다(채팅 변수 미러가 목록을 쉼표로 잇는다). 편집기의 새 장소·구역 기본 이름은 전 장에 없는 번호로(새 장에서 찍자마자 "겹칩니다"가 났다).
+//   장이 없는 옛 지도에 우연히 있던 `to`는 오류가 아니라 경고(옛 봇의 설치를 안 막는다).
+// - 테스트: `테스트/test-map-sheets.js` 198 (황금본 대조 · 재료 · 검증 · 그림 · 패널(구간을 떼어 가짜 DOM) · 적기 · 편집기 탭 · 번들 · 검토 수정).
 //
 // ── v1.25.1 ───────────────────────────────────────────────
 // **[교체 되돌리기]를 눌러도 넣은 것이 그대로 남아 보이던 것.** 실기 제보(2026-11-14): 심코어를 안 쓰던 봇에 지도 조각을 넣고 되돌렸는데 지도가 그대로였다.
@@ -6737,7 +6742,9 @@ function mapView(schema, state, makeLookup, opts = {}) {
       on.forEach((e, k) => { e.at = round1(on.length === 1 ? (ORDER[e.dir] === 0 ? 10 : ORDER[e.dir] === 2 ? 90 : 50) : 10 + (80 * k) / (on.length - 1)); });
     }
     // 발 디딘 장인가 — 장 띠와 안 가 본 장의 그림 가림이 본다
-    B.stepped = hereB === B || pins.length > 0 || places.some((p) => p.state === 'seen') || zones.some((z) => z.seen || z.here);
+    // footed = 실제로 발 디딘 장(발자취·지금 여기) — 그림 가림은 이것만 푼다. 찾아낸 곳(보조나 플레이어가 적은 것)까지 치면 적기만으로 안 가 본 장의 그림이 열린다
+    B.footed = hereB === B || places.some((p) => p.state === 'seen') || zones.some((z) => z.seen || z.here);
+    B.stepped = B.footed || pins.length > 0;
   }
 
   // 보여 줄 장 — 고른 장(구경) > 지금 여기의 장 > 첫 장
@@ -6750,7 +6757,7 @@ function mapView(schema, state, makeLookup, opts = {}) {
   const strip = !multi ? [] : built.filter((B) => B.sh.main || B === hereB || B === shown || B.stepped || !B.fog)
     .map((B) => ({ id: B.sh.id, label: B.sh.label, here: B === hereB, on: B === shown }));
   // 안 가 본 안개 장(더한 장)은 배경 그림을 안 깐다 — 문을 누르는 순간 던전 지도가 통째로 보이지 않게. bgAlways면 깐다. 첫 장은 옛 지도 그대로
-  const veiled = !shown.sh.main && shown.fog && !shown.stepped && !shown.sh.bgAlways;
+  const veiled = !shown.sh.main && shown.fog && !shown.footed && !shown.sh.bgAlways;
 
   const counts = {
     places: places.length,
@@ -6768,7 +6775,8 @@ function mapView(schema, state, makeLookup, opts = {}) {
     sheet: shown.sh.id, hereSheet: hereB ? hereB.sh.id : null, hereOn: !!here && hereB === shown, peek: !!want && want !== follow,
     multi, strip, veiled,
     // 장소 적기 (v1.26.0) — 제작자가 켠 지도에서만. 적을 수 있는 곳 = 보고 있는 장의 걷힌 구역
-    canAdd: !!findListDef(schema), addZones: findListDef(schema) ? zones.filter((z) => z.open).map((z) => z.label) : [],
+    // 가려진 장에는 못 적는다. 이름에 괄호·@가 든 구역도 뺀다 — 항목 "이름 (구역)"에서 구역을 못 가른다(splitTag)
+    canAdd: !!findListDef(schema), addZones: findListDef(schema) && !veiled ? zones.filter((z) => z.open && !TAG_BREAKERS.test(z.label)).map((z) => z.label) : [],
   };
 }
 
@@ -6785,11 +6793,13 @@ function findListDef(schema) {
 }
 const findListNow = (def, state) => (Array.isArray(state?.vars?.[def.id]) ? state.vars[def.id] : (Array.isArray(def.init) ? def.init : [])).map(String);
 const ADD_OFF = '이 지도는 장소 적기를 쓰지 않아요';
+const TAG_BREAKERS = /[()（）@]/;   // 꼬리표 "이름 (구역) @기한"을 깨는 글자
 /** 적을 이름 다듬기·검사 — { name } | { reason }. skipRaw = 고치는 중인 항목(제 이름은 겹침이 아니다) */
 function checkFindName(schema, cur, raw, skipRaw) {
   const name = String(raw ?? '').replace(/\s+/g, ' ').trim();
   if (!name) return { reason: '이름을 적어 주세요' };
-  if (/[()（）@]/.test(name)) return { reason: '이름에 괄호·@는 쓸 수 없어요' };
+  // 쉼표도 막는다 — 채팅 변수 미러가 목록을 쉼표로 이어 적고(String(배열)), 스냅샷 없이 미러에서 되읽으면 쉼표에서 둘로 갈린다
+  if (TAG_BREAKERS.test(name) || name.includes(',')) return { reason: '이름에 괄호·@·쉼표는 쓸 수 없어요' };
   const taken = new Set();
   for (const sh of sheetsOf(mapConfig(schema))) {
     for (const p of arr(sh.places)) if (isObj(p)) for (const n of [p.name, ...arr(p.alias)]) taken.add(norm(n));
@@ -6811,8 +6821,9 @@ function addFind(schema, state, makeLookup, { name, zone, sheet } = {}) {
   const nm = checkFindName(schema, cur, name, null);
   if (nm.reason) return { ok: false, reason: nm.reason };
   const view = mapView(schema, state, makeLookup, { sheet });
-  const z = view && typeof zone === 'string' && (typeof sheet !== 'string' || view.sheet === sheet) ? view.zones.find((q) => q.open && q.label === zone.trim()) : null;
+  const z = view && !view.veiled && typeof zone === 'string' && (typeof sheet !== 'string' || view.sheet === sheet) ? view.zones.find((q) => q.open && q.label === zone.trim()) : null;
   if (!z) return { ok: false, reason: '적어 넣을 구역을 골라 주세요' };
+  if (TAG_BREAKERS.test(z.label)) return { ok: false, reason: '이 구역에는 적어 넣을 수 없어요 — 구역 이름에 괄호·@가 있어요' };
   const item = `${nm.name} (${z.label})`;
   const maxLen = Number.isInteger(def.itemMaxLength) ? def.itemMaxLength : 40;
   if (item.length > maxLen) return { ok: false, reason: `이름이 너무 길어요 (구역 이름까지 ${maxLen}자)` };
@@ -6830,6 +6841,8 @@ function renameFind(schema, state, makeLookup, { raw, name } = {}) {
   const nm = checkFindName(schema, cur, name, cur[at]);
   if (nm.reason) return { ok: false, reason: nm.reason };
   const old = splitTag(cur[at]);
+  // 꼬리표를 못 읽은 항목(구역 이름에 괄호가 있거나, 글 속 구역 이름으로 꽂힌 것)은 이름만 바꾸면 구역이 떨어져 "자리를 못 찾은 곳"이 되고, 거기선 고칠 수도 지울 수도 없다
+  if (!old.tag) return { ok: false, reason: '이 항목은 이름과 구역을 가를 수 없어 고칠 수 없어요 — 지우고 다시 적어 주세요' };
   const body = cur[at].trim();
   const item = old.name && body.startsWith(old.name) ? nm.name + body.slice(old.name.length) : `${nm.name}${old.tag ? ` (${old.tag})` : ''}`;
   const maxLen = Number.isInteger(def.itemMaxLength) ? def.itemMaxLength : 40;
@@ -6964,9 +6977,12 @@ function validateMap(schema, { vars, exprIds, allIds, err, warn, checkExpr }) {
           for (const t of ['desc', 'rumor', 'sub', 'color']) if (e[t] != null && typeof e[t] !== 'string') err(`${ep}.${t}`, `${t}는 문자열`);
           knownChk(e.known, `${ep}.known`);
           // 문 — 장소·이정표를 누르면 펼칠 장
+          if (k === 'zones' && M.addPlace === true && typeof nm === 'string' && TAG_BREAKERS.test(nm)) warn(ep, `구역 이름 '${nm}'에 괄호·@가 있어 이 구역에는 플레이어가 장소를 적어 넣을 수 없습니다 (항목 "이름 (구역)"에서 구역을 못 가릅니다)`);
           if (k !== 'zones' && e.to != null) {
-            if (typeof e.to !== 'string' || !doorIds.has(e.to)) err(`${ep}.to`, `문(to) '${String(e.to)}'가 없는 지도(장)를 가리킵니다 — 장 id(문자열)를 적으세요 (첫 장은 main)`);
-            else if (e.to === sid) err(`${ep}.to`, '문(to)이 자기 장을 가리킵니다');
+            // 장이 하나도 없는 옛 지도에 우연히 있던 to는 설치를 막지 않는다 (v1.25.1까지는 모르는 키라 무시됐다) — 경고만
+            const toIssue = sheetList.length ? err : warn;
+            if (typeof e.to !== 'string' || !doorIds.has(e.to)) toIssue(`${ep}.to`, `문(to) '${String(e.to)}'가 없는 지도(장)를 가리킵니다 — 장 id(문자열)를 적으세요 (첫 장은 main)`);
+            else if (e.to === sid) toIssue(`${ep}.to`, '문(to)이 자기 장을 가리킵니다');
           }
           if (k === 'exits') {
             if (!['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].includes(e.dir)) err(`${ep}.dir`, 'dir은 n·ne·e·se·s·sw·w·nw 중 하나');
@@ -7076,6 +7092,7 @@ function renderMapHtml(view, ui = {}, opts = {}) {
   if (opts.bgUrl && !view.veiled) h.push(`<img class="scm-bg" src="${esc(opts.bgUrl)}" alt="">`);
   if (view.veiled) h.push('<div class="scm-veil">아직 가 보지 않은 곳이에요</div>');
   for (const z of view.zones) {
+    if (view.veiled && !z.open) continue;   // 가려진 장은 구역의 모양도 안 보인다 (구조가 먼저 드러나지 않게)
     const cls = `scm-zone${z.open ? '' : ' scm-fog'}${z.here ? ' scm-here' : ''}${sel === z.key ? ' scm-sel' : ''}${dim(z.cat)}`;
     h.push(`<button type="button" class="${cls}" data-scm="${z.key}" style="left:${z.x}%;top:${z.y}%;width:${z.w}%;height:${z.h}%;${z.open ? color(z.color) : ''}" aria-label="${esc(z.open ? z.label : '아직 그려지지 않은 곳')}${z.here ? ' (현재 위치)' : ''}">`
       // 구역이 '지금 여기'면 가운데 점 대신 이름표에 붙인다 — 가운데엔 그 구역의 핀들이 앉는다
@@ -7113,8 +7130,8 @@ function renderMapHtml(view, ui = {}, opts = {}) {
   if (view.counts.zones && view.fogOn) cnt.push(`지역 ${view.counts.open} / ${view.counts.zones}`);
   if (view.counts.pins) cnt.push(`찾아낸 곳 ${view.counts.pins}`);
   if (view.exits.length) cnt.push(`이정표 ${view.exits.length}`);
-  if (cnt.length) h.push(`<div class="scm-count">${cnt.join(' · ')}</div>`);
-  if (view.note) h.push(`<div class="scm-note">${esc(view.note)}</div>`);
+  if (cnt.length && !view.veiled) h.push(`<div class="scm-count">${cnt.join(' · ')}</div>`);
+  if (view.note && !view.veiled) h.push(`<div class="scm-note">${esc(view.note)}</div>`);
   const dt = detailOf(view, sel);
   const form = view.canAdd && ui.form && typeof ui.form === 'object' ? ui.form : null;
   if (dt) {
@@ -7157,7 +7174,7 @@ function renderMapHtml(view, ui = {}, opts = {}) {
     }
   }
   if (view.stray.length) {
-    h.push(`<div class="scm-stray">자리를 못 찾은 곳 — ${view.stray.map((s) => esc(s.raw)).join(', ')}<br><small>항목 끝에 구역 이름을 괄호로 붙이면 그 구역에 놓여요 (예: "이름 (${esc(view.zones[0]?.label || '구역')})")</small></div>`);
+    h.push(`<div class="scm-stray">자리를 못 찾은 곳 — ${view.stray.map((s) => esc(s.raw)).join(', ')}<br><small>항목 끝에 구역 이름을 괄호로 붙이면 그 구역에 놓여요 (예: "이름 (${esc(view.zones.find((z) => z.open)?.label || '구역')})")</small></div>`);
   }
   h.push('</div></div>');
   return h.join('');
@@ -20988,7 +21005,7 @@ const FEATURE_MAP = [
     need: '수락한 의뢰가 들어갈 목록(list 변수)', on: (s) => fmObj(s.questBoard),
     words: /의뢰|퀘스트|일감|\bquests?\b/i, rules: SCHEMA_QUEST_RULES },
   { id: 'map', name: '지도', keys: ['map'], where: '[지도] 탭',
-    what: '좌표 위 장소·구역·이정표 그림 지도 — 현재 위치 표시, 안개를 켜면 가 본 만큼 채워짐',
+    what: '좌표 위 장소·구역·이정표 그림 지도 — 현재 위치 표시, 안개를 켜면 가 본 만큼 채워짐, 여러 장(도시·던전 층…)과 누르면 다음 지도가 펼쳐지는 문',
     need: '현재 위치 변수(enum 추천)', on: (s) => fmObj(s.map),
     words: /지도|약도|안개|\bmap\b/i, rules: SCHEMA_MAP_RULES },
   { id: 'party', name: '편성표', keys: ['party'], where: '[편성표] 탭',
@@ -28505,6 +28522,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const ownerOf = (k) => (k === 'categories' ? M : S);
     const arrOf = (k) => { const o = ownerOf(k); return Array.isArray(o[k]) ? o[k] : (o[k] = []); };
     const tag = (el, name) => { el.setAttribute('data-map', name); return el; };   // 칸에 이름표 (테스트·스타일이 찾는다)
+    // 새 장소·구역의 기본 이름 — 이름은 지도 전체에서 하나라, 그 장의 개수가 아니라 전 장에 없는 첫 번호를 쓴다 (안 그러면 새 장에서 찍자마자 "겹칩니다")
+    const freshName = (prefix, start) => {
+      const taken = new Set();
+      for (const X of allSheets()) {
+        for (const p of (Array.isArray(X.places) ? X.places : [])) if (p && typeof p === 'object') for (const n of [p.name, ...(Array.isArray(p.alias) ? p.alias : [])]) taken.add(String(n ?? '').trim());
+        for (const z of (Array.isArray(X.zones) ? X.zones : [])) if (z && typeof z === 'object') for (const n of [z.label, ...(Array.isArray(z.match) ? z.match : [])]) taken.add(String(n ?? '').trim());
+      }
+      let n = start; while (taken.has(`${prefix} ${n}`)) n++;
+      return `${prefix} ${n}`;
+    };
     const eachDoor = (fn) => { for (const X of allSheets()) for (const k of ['places', 'exits']) for (const e of (Array.isArray(X[k]) ? X[k] : [])) if (e && typeof e === 'object') fn(e); };
     // 문 — 누르면 펼칠 장. 장이 하나뿐이면 칸을 안 그린다
     const doorSelect = (e) => (sheetOpts.length < 2 ? null : tag(bindSelect(sheetOpts.some(([id]) => id === e.to && id !== mapSheet) ? e.to : '',
@@ -28672,7 +28699,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (x == null || y == null) return;
         if (mapPick.kind === 'new') {
           const list = arrOf('places');
-          list.push({ name: `새 장소 ${list.length + 1}`, x, y });
+          list.push({ name: freshName('새 장소', list.length + 1), x, y });
           mapSel = `p${list.length - 1}`; mapPick = null;
         } else if (mapPick.kind === 'place') {
           const pl = S.places?.[mapPick.i]; if (pl) { pl.x = x; pl.y = y; }
@@ -28750,7 +28777,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(section('05', '구역', '권역·지형·방향처럼 넓은 땅이에요. 안개는 구역 단위로 걷혀요. 찾아낸 곳 "이름 (구역)"이 여기 꽂혀요.',
       h('div', { class: 'sce-board-stack sce-board-workgroup' }, zoneRows,
         h('div', {}, h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
-          const list = arrOf('zones'); list.push({ label: `구역 ${list.length + 1}`, x: 10, y: 10, w: 30, h: 25 });
+          const list = arrOf('zones'); list.push({ label: freshName('구역', list.length + 1), x: 10, y: 10, w: 30, h: 25 });
           mapPick = { kind: 'zone', i: list.length - 1 }; rerender();
         } }, '＋ 구역 (두 번 찍기)')))));
 

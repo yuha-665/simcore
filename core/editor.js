@@ -4403,6 +4403,7 @@ const SCHEMA_MAP_RULES = [
   '- **채워지는 지도**: `fog: true`면 못 가 본 구역은 안개로 가리고 모르는 장소는 안 그립니다. `seenVar`(list 변수)를 주면 **시스템이** 들른 장소·구역 이름을 적어 한 번 간 곳은 계속 보입니다 (allow에 안 넣어도 됨, maxItems ≥ 장소+구역 수).',
   '- `known`: true = 처음부터 보임(집·출발지), 조건식 = 참이 되면 보임(소문·탐사 진척), 없음 = 가 봐야 보임. 보이지만 안 가 본 곳은 desc 대신 `rumor`가 나옵니다.',
   '- `listVar`(list 변수) 항목 "이름 (구역)"은 그 구역 빈자리에 핀으로 꽂힙니다 — 보조가 서사로 찾아낸 곳(채집지·던전·발견물)을 적는 목록에. 그 목록 desc에 "이름 (구역)" 꼴을 못박으세요.',
+  '- `moreLists`: ["list 변수 id", …] — 찾아낸 곳으로 **함께 읽는** 목록들(최대 8). 발견이 종류별 목록에 나뉘어 쌓일 때(특산품·개척지…) 씁니다. 읽기만 합니다 — 플레이어가 적는 곳은 `listVar` 하나.',
   '- 조건식이 들른 곳을 읽습니다 — `has(visited, "기온")`, `count(visited) >= 10` (지도를 채운 만큼 열리는 이벤트·막).',
   '- **지도 여러 장**: `sheets`: [{ "id"(영문·숫자), "label", "bg"?, "ratio"?, "fog"?, "bgAlways"?, "zones"?, "places"?, "exits"? }] — 지금의 zones·places·exits가 첫 장(id `main`)이고 `sheets`가 그 뒤에 더하는 장입니다(도시 + 던전 상층 + 중층). '
   + '장소·구역 이름은 **전 장에서 하나**여야 합니다. 장소·이정표에 `"to": "장 id"`를 달면 누를 때 그 장을 펼쳐 봅니다(구경만 — 이동은 위치 변수). 위치 값이 다른 장의 장소면 패널이 그 장을 띄웁니다. '
@@ -4873,7 +4874,7 @@ function featureDigestLines(s) {
   if (fmObj(s.questBoard)) lines.push(`- **의뢰판**: ${brief(s.questBoard)}${held(s.questBoard.listVar)}`);
   if (fmObj(s.map)) {
     const M = s.map;
-    lines.push(`- **지도**: ${brief({ label: M.label, locVar: M.locVar, seenVar: M.seenVar, listVar: M.listVar, fog: M.fog, places: fmN(M.places), zones: fmN(M.zones), exits: fmN(M.exits), ...(fmN(M.sheets) ? { sheets: fmN(M.sheets) } : {}), ...(M.addPlace === true ? { addPlace: true } : {}) })}${held(M.locVar, M.seenVar, M.listVar)}`);
+    lines.push(`- **지도**: ${brief({ label: M.label, locVar: M.locVar, seenVar: M.seenVar, listVar: M.listVar, ...(fmN(M.moreLists) ? { moreLists: M.moreLists.join(',') } : {}), fog: M.fog, places: fmN(M.places), zones: fmN(M.zones), exits: fmN(M.exits), ...(fmN(M.sheets) ? { sheets: fmN(M.sheets) } : {}), ...(M.addPlace === true ? { addPlace: true } : {}) })}${held(M.locVar, M.seenVar, M.listVar)}`);
   }
   const acts = Array.isArray(s.scenario?.acts) ? s.scenario.acts.filter(fmObj) : [];
   if (acts.length) {
@@ -5637,6 +5638,7 @@ function varReferenceIndex(schema) {
   }
   if (schema.map && typeof schema.map === 'object') { // 지도 (v1.23.0)
     add(schema.map.locVar, '지도', '현재 위치'); add(schema.map.seenVar, '지도', '발자취'); add(schema.map.listVar, '지도', '찾아낸 곳');
+    for (const id of (Array.isArray(schema.map.moreLists) ? schema.map.moreLists : [])) add(id, '지도', '함께 읽는 목록');
     // 더한 장(sheets, v1.26.0)의 것도 같이 걷는다
     for (const S of [schema.map, ...(Array.isArray(schema.map.sheets) ? schema.map.sheets : [])]) {
       if (!S || typeof S !== 'object') continue;
@@ -5983,6 +5985,12 @@ function planVarPurge(schema0, rootIds) {
   if (schema.map && typeof schema.map === 'object') { // 지도 (v1.23.0) — 연결 변수는 정체성(막는다), 공개 조건은 빼낸다(가 봐야 보임으로)
     const M = schema.map;
     for (const [k, nm] of [['locVar', '현재 위치 변수'], ['seenVar', '발자취 목록'], ['listVar', '찾아낸 곳 목록']]) if (doomed.has(M[k])) block('지도', `${nm} '${M[k]}'`);
+    if (Array.isArray(M.moreLists) && M.moreLists.some((id) => doomed.has(id))) {
+      const gone = M.moreLists.filter((id) => doomed.has(id));
+      M.moreLists = M.moreLists.filter((id) => !doomed.has(id));
+      if (!M.moreLists.length) delete M.moreLists;
+      note('지도', `함께 읽는 목록 '${gone.join("', '")}' — 빼냄`);
+    }
     for (const S of [M, ...(Array.isArray(M.sheets) ? M.sheets : [])]) {   // 더한 장(v1.26.0)도
       if (!S || typeof S !== 'object') continue;
       for (const k of ['zones', 'places', 'exits']) for (const e of (Array.isArray(S[k]) ? S[k] : [])) dropWhen(e, 'known', '지도', `'${e?.name ?? e?.label ?? '?'}'의 공개 조건 — 빼냄`);
@@ -12029,6 +12037,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const ownerOf = (k) => (k === 'categories' ? M : S);
     const arrOf = (k) => { const o = ownerOf(k); return Array.isArray(o[k]) ? o[k] : (o[k] = []); };
     const tag = (el, name) => { el.setAttribute('data-map', name); return el; };   // 칸에 이름표 (테스트·스타일이 찾는다)
+    // 찾아낸 곳·발자취로 고른 목록은 함께 읽을 목록(moreLists)에서 뺀다 — 그 목록의 체크 칸은 숨으므로 남겨 두면 뺄 길이 없고 경고만 남는다
+    const dropMore = (id) => {
+      if (!id || !Array.isArray(M.moreLists)) return;
+      M.moreLists = M.moreLists.filter((x) => x !== id);
+      if (!M.moreLists.length) delete M.moreLists;
+    };
     // 새 장소·구역의 기본 이름 — 이름은 지도 전체에서 하나라, 그 장의 개수가 아니라 전 장에 없는 첫 번호를 쓴다 (안 그러면 새 장에서 찍자마자 "겹칩니다")
     const freshName = (prefix, start) => {
       const taken = new Set();
@@ -12102,16 +12116,31 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         field('현재 위치 변수', bindSelect(M.locVar ?? '', [['', '(없음)'], ...ones.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
           (x) => { if (x) M.locVar = x; else delete M.locVar; rerender(); }), '값이 장소 이름·구역 이름과 똑같으면 거기에 현재 위치가 찍혀요. 선택지(enum)를 장소 이름과 맞추세요.'),
         field('발자취 목록', h('div', { class: 'sce-map-tools' },
-          bindSelect(M.seenVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
-            (x) => { if (x) M.seenVar = x; else delete M.seenVar; rerender(); }),
+          tag(bindSelect(M.seenVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
+            (x) => { if (x) M.seenVar = x; else delete M.seenVar; dropMore(x); rerender(); }), 'seen-var'),
           !M.seenVar && !(schema.vars || []).some((x) => x.id === 'visited') ? h('button', { type: 'button', class: 'sce-btn sce-mini', onclick: () => {
             schema.vars.push({ id: 'visited', label: '발자취', type: 'list', init: [], maxItems: Math.max(20, nAll + 4), itemMaxLength: 30,
               desc: '지도에서 들른 곳 — 시스템이 위치를 보고 적는다. 직접 고치지 않는다.' });
             M.seenVar = 'visited'; rerender();
           } }, '발자취 목록 만들기') : null),
           '시스템이 들른 장소·구역 이름을 여기 적어요. 한 번 간 곳은 안개가 다시 덮지 않아요.'),
-        field('찾아낸 곳 목록', bindSelect(M.listVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
-          (x) => { if (x) M.listVar = x; else delete M.listVar; rerender(); }), '항목 "이름 (구역)"이 그 구역 빈자리에 핀으로 꽂혀요. 보조 AI가 서사로 찾은 곳을 적는 목록에 써요.'),
+        field('찾아낸 곳 목록', tag(bindSelect(M.listVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
+          (x) => { if (x) M.listVar = x; else delete M.listVar; dropMore(x); rerender(); }), 'list-var'), '항목 "이름 (구역)"이 그 구역 빈자리에 핀으로 꽂혀요. 보조 AI가 서사로 찾은 곳을 적는 목록에 써요.'),
+        // 함께 읽을 목록 (v1.26.1) — 발견이 종류별 목록에 나뉘어 쌓이는 봇. 변수 순서대로 담는다
+        (() => {
+          const cand = lists.filter((x) => x.id !== M.listVar && x.id !== M.seenVar);
+          if (!cand.length) return null;
+          const on = new Set(Array.isArray(M.moreLists) ? M.moreLists : []);
+          const flip = (id, yes) => {
+            if (yes) on.add(id); else on.delete(id);
+            const next = lists.map((x) => x.id).filter((x) => on.has(x) && x !== M.listVar);
+            if (next.length) M.moreLists = next; else delete M.moreLists;
+            rerender();
+          };
+          return field('함께 읽을 목록', h('div', { style: 'display:flex;flex-wrap:wrap;gap:4px 12px' },
+            ...cand.map((x) => tag(bindCheck(on.has(x.id), (yes) => flip(x.id, yes), `${x.label ?? x.id} (${x.id})`), 'more-list'))),
+            '이 목록들의 "이름 (구역)" 항목도 핀으로 꽂혀요(최대 8개). 읽기만 해요 — 플레이어가 적고 고치는 곳은 위의 찾아낸 곳 목록 하나예요.');
+        })(),
         h('div', { class: 'sce-board-toggle' },
           h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '안개 — 가 본 만큼 채워지는 지도'),
             h('span', {}, '못 가 본 구역은 가리고, 모르는 장소는 안 그려요. 장소마다 "처음부터 보임 / 가 봐야 보임 / 조건식"을 고를 수 있어요.')),

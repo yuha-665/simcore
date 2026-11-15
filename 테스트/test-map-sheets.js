@@ -536,6 +536,28 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
       ck('★ 새 장에 더한 구역의 기본 이름도 안 겹친다', tz.last().map.sheets.every((x) => (x.zones || []).length === 1) && new Set(zn).size === zn.length, J(zn));
       ck('기능 지도 표 — 지도 줄에 여러 장·문 (설계 §7)', /여러 장/.test(E.FEATURE_MAP.find((x) => x.id === 'map').what) && /문/.test(E.FEATURE_MAP.find((x) => x.id === 'map').what), E.FEATURE_MAP.find((x) => x.id === 'map').what);
     }
+    {
+      const ML = clone(BASE); ML.vars.push({ id: 'ores', label: '광맥', type: 'list', init: [] }, { id: 'ruins', label: '폐허', type: 'list', init: [] });
+      const tm = open(ML);
+      const boxes = () => tm.tagged('more-list');
+      ck('★ 편집기 — 함께 읽을 목록 칸: 찾아낸 곳·발자취로 안 쓰는 list 변수마다 하나', !tm.err && boxes().length === 3 && boxes().every((b) => b.children[0].checked === false), tm.err ? tm.err.stack : String(boxes().length));
+      const boxOf = (word) => boxes().find((b) => (b.textContent || '').includes(word));
+      tm.check(boxOf('ores'), true); tm.check(boxOf('ruins'), true);
+      ck('★ 켜면 moreLists에 변수 순서대로', J(tm.last().map.moreLists) === J(['ores', 'ruins']), J(tm.last().map.moreLists));
+      tm.check(boxOf('ores'), false);
+      ck('끄면 빠진다 · 다 끄면 키가 없다', J(tm.last().map.moreLists) === J(['ruins']) && (tm.check(boxOf('ruins'), false), !('moreLists' in tm.last().map)), J(tm.last().map.moreLists));
+      const s2 = clone(ML); s2.map.moreLists = ['ores'];
+      ck('변수 쓰임 색인 — 함께 읽는 목록도 지도가 쓴다', (E.varReferenceIndex(s2).get('ores') || []).some((r) => r.where === '지도'), J(E.varReferenceIndex(s2).get('ores')));
+      const plan = E.planVarPurge(s2, ['ores']);
+      ck('변수 지우기 계획 — 함께 읽는 목록은 지도에서 빼낸다(막지 않는다)', !('moreLists' in plan.schema.map) && plan.errors.length === 0, J([plan.schema.map.moreLists, plan.errors]));
+      const tx = open(s2);
+      tx.set(tx.tagged('seen-var')[0], 'ores');
+      ck('★ 발자취로 고른 목록은 함께 읽을 목록에서 빠진다 (검토 — 칸이 숨어 뺄 길이 없었다)', tx.last().map.seenVar === 'ores' && !('moreLists' in tx.last().map), J([tx.last().map.seenVar, tx.last().map.moreLists]));
+      const ty = open(s2);
+      ty.set(ty.tagged('list-var')[0], 'ores');
+      ck('★ 찾아낸 곳으로 고른 목록도 빠진다', ty.last().map.listVar === 'ores' && !('moreLists' in ty.last().map), J([ty.last().map.listVar, ty.last().map.moreLists]));
+      ck('규격서 — moreLists 줄', src.includes('- `moreLists`: ['), '');
+    }
     ck('규격서 — 장·문·적기 줄', src.includes('**지도 여러 장**') && src.includes('`addPlace: true`'), '');
     ck('기능 현황 — 장 수를 싣는다', /sheets: fmN\(M\.sheets\)/.test(src), '');
     ck('어댑터 — 편집기에 그림 읽는 훅을 넘긴다', src.includes('assetUrl: (name) => resolvePortraitUrl(name)'), '');
@@ -638,6 +660,52 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     R.session.current.vars.location = '물밑 문'; R.render();
     ck('★ 구경 중 위치가 다른 장으로 가도 보던 장에 머문다 — 아래 줄에 지금 여기의 장 이름 (검토 초점 2)', R.api.ui().sheet === 'under' && /class="scm-sbtn scm-on" data-scm-sheet="under"/.test(R.html())
       && R.html().includes('(깊은 수로)') && R.html().includes('scm-back'), J(R.api.ui()));
+  }
+
+  console.log('── ⑨ 찾아낸 곳 목록 여러 개 (moreLists, v1.26.1)');
+  {
+    const ML = clone(TWO); ML.map.addPlace = true;
+    ML.vars.push({ id: 'ores', label: '광맥', type: 'list', init: [] }, { id: 'ruins', label: '폐허', type: 'list', init: [] });
+    ML.map.moreLists = ['ores', 'ruins'];
+    const vars = { finds: ['뒷문 (서쪽 들판)'], ores: ['철광 (가모가와 동안)', '어딘가의 은'], ruins: ['옛 탑 (들판)', '물밑 사당 (북쪽 수로)'] };
+    let v = view(ML, vars);
+    ck('★ 세 목록의 항목이 다 핀으로 — 찾아낸 곳 목록 먼저, 그 뒤 moreLists 순서', J(v.pins.map((p) => p.name)) === J(['뒷문', '철광', '옛 탑']), J(v.pins.map((p) => p.name)));
+    ck('★ 핀이 어느 목록 것인지 안다 — 고칠 수 있는 건 찾아낸 곳 목록 것뿐', J(v.pins.map((p) => [p.list ?? null, p.own !== false])) === J([[null, true], ['ores', false], ['ruins', false]]), J(v.pins.map((p) => [p.list, p.own])));
+    ck('자리를 못 찾은 항목은 어느 목록 것이든 알림으로', J(v.stray.map((x) => x.name)) === J(['어딘가의 은']), J(v.stray));
+    ck('다른 장의 구역에 꽂히는 것도 같다 (핀이 꽂힌 장은 띠에)', J(view(ML, vars, { sheet: 'under' }).pins.map((p) => p.name)) === J(['물밑 사당']) && v.strip.some((x) => x.id === 'under'), J(view(ML, vars, { sheet: 'under' }).pins));
+    v = view(ML, { ...vars, location: '철광' });
+    ck('위치 값이 함께 읽는 목록의 핀이면 지금 여기', v.here && v.here.kind === 'pin' && v.here.name === '철광', J(v.here));
+    const FOG = clone(ML); FOG.map.fog = true;
+    ck('안개 — 함께 읽는 목록의 핀이 꽂혀도 구역이 걷힌다', view(FOG, { ores: ['철광 (가모가와 동안)'] }).zones.find((z) => z.label === '가모가와 동안').open === true
+      && !view(FOG, {}).zones.find((z) => z.label === '가모가와 동안').open, '');
+    const only = clone(ML); delete only.map.listVar; delete only.map.addPlace;
+    ck('찾아낸 곳 목록 없이 moreLists만 — 핀은 꽂히고 고칠 수 있는 건 없다', J(view(only, vars).pins.map((p) => [p.name, p.own])) === J([['철광', false], ['옛 탑', false]]) && view(only, vars).canAdd === false, J(view(only, vars).pins.map((p) => [p.name, p.own])));
+    const many = { finds: Array.from({ length: 50 }, (_, i) => `굴${i} (서쪽 들판)`), ores: Array.from({ length: 50 }, (_, i) => `광${i} (가모가와 동안)`) };
+    ck('상한 80은 목록을 합쳐서 센다', view(ML, many).pins.length === 80, String(view(ML, many).pins.length));
+    const dup = clone(ML); dup.map.moreLists = ['finds', 'ores', 'ores'];
+    ck('같은 목록을 두 번 적어도 한 번만 읽는다', J(view(dup, vars).pins.map((p) => p.name)) === J(['뒷문', '철광']), J(view(dup, vars).pins.map((p) => p.name)));
+
+    v = view(ML, vars);
+    const keyOf = (name) => v.pins.find((p) => p.name === name).key;
+    const card = (name) => MAP.renderMapHtml(v, { sel: keyOf(name) }, {});
+    ck('★ 카드 — 찾아낸 곳 목록의 핀에만 [이름 고치기]·[지우기]', card('뒷문').includes('data-scm-act="rename-open"') && !card('철광').includes('data-scm-act="rename-open"') && !card('철광').includes('data-scm-act="del"'),
+      (card('철광').match(/data-scm-act="[^"]+"/g) || []).join(' '));
+    const rm = MAP.removeFind(ML, st(ML, vars), { raw: '철광 (가모가와 동안)' });
+    const rn = MAP.renameFind(ML, st(ML, vars), engine.makeLookup, { raw: '철광 (가모가와 동안)', name: '쇠' });
+    ck('함께 읽는 목록의 항목은 지우기·고치기가 거절된다 (그 목록은 보조·시스템의 것)', rm.ok === false && rn.ok === false, J([rm, rn]));
+    const nameDup = MAP.addFind(ML, st(ML, vars), engine.makeLookup, { name: '철광', zone: '서쪽 들판', sheet: 'main' });
+    ck('★ 적어 넣을 때 함께 읽는 목록의 이름과도 안 겹친다', nameDup.ok === false && /이미 지도에 있는 이름/.test(nameDup.reason), J(nameDup));
+
+    const errs = (schema) => validateSchema(clone(schema)).errors.filter((e) => e.path.startsWith('$.map.moreLists')).map((e) => e.msg);
+    const warns = (schema) => validateSchema(clone(schema)).warnings.filter((e) => e.path.startsWith('$.map.moreLists')).map((e) => e.msg);
+    ck('검증 — 바른 moreLists는 조용하다', errs(ML).length === 0 && warns(ML).length === 0, J([errs(ML), warns(ML)]));
+    const bad = (val) => { const o = clone(ML); o.map.moreLists = val; return errs(o); };
+    ck('검증 — 배열이 아니면 오류', bad('ores').length === 1, J(bad('ores')));
+    ck('검증 — 없는 변수·list가 아닌 변수는 오류', bad(['nope']).length === 1 && bad(['location']).length === 1 && bad([3]).length === 1, J([bad(['nope']), bad(['location']), bad([3])]));
+    ck('검증 — 9개부터 오류 (8개까지)', (() => { const o = clone(ML); for (let i = 0; i < 9; i++) o.vars.push({ id: 'l' + i, type: 'list', init: [] }); o.map.moreLists = Array.from({ length: 9 }, (_, i) => 'l' + i); return errs(o).some((m) => m.includes('8')); })(), '');
+    const w1 = (() => { const o = clone(ML); o.map.moreLists = ['finds', 'visited']; return warns(o); })();
+    ck('검증 — 찾아낸 곳 목록·발자취와 겹치면 경고 (두 번 읽지 않는다 / 발자취는 장소 이름이라 핀이 겹친다)', w1.length === 2, J(w1));
+    ck('moreLists가 없는 지도의 핀은 글자 하나 안 바뀐다 — list·own 키가 없다 (황금본)', (() => { const p = view(TWO, { finds: ['폐사 (가모가와 동안)'] }).pins[0]; return p.name === '폐사' && !('list' in p) && !('own' in p); })(), '');
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

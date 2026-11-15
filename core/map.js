@@ -14,7 +14,7 @@
 //   · 그리기 재료(mapView)와 HTML(renderMapHtml)을 여기 둔다 — 패널(어댑터)과 편집기 미리보기가 같은 그림을 쓴다.
 //
 // 스키마 (옵트인):
-//   map: { label?, icon?, note?, ratio?, bg?, locVar?, seenVar?, listVar?, fog?, css?,
+//   map: { label?, icon?, note?, ratio?, bg?, locVar?, seenVar?, listVar?, moreLists?(v1.26.1 — 함께 읽는 찾아낸 곳 목록들), fog?, css?,
 //          categories?: [{ label, color? }],
 //          zones?:  [{ label, x, y, w, h, cat?, color?, desc?, known?, match? }],
 //          places?: [{ name, x, y, sub?, cat?, desc?, rumor?, known?, alias? }],
@@ -25,7 +25,7 @@ const { evaluate, truthy } = require('./expr');
 
 const DIRS = { n: '↑', ne: '↗', e: '→', se: '↘', s: '↓', sw: '↙', w: '←', nw: '↖' };
 const DIR_EDGE = { n: 'top', s: 'bottom', e: 'right', ne: 'right', se: 'right', w: 'left', nw: 'left', sw: 'left' };
-const CAPS = { CATS: 10, ZONES: 40, PLACES: 80, EXITS: 16, DYN: 80, NAME: 30, TEXT: 600, SHEETS: 12 };
+const CAPS = { CATS: 10, ZONES: 40, PLACES: 80, EXITS: 16, DYN: 80, NAME: 30, TEXT: 600, SHEETS: 12, MORE_LISTS: 8 };
 const DEFAULT_RATIO = 1;
 const PALETTE = ['#b3392f', '#2f5fa8', '#7a3fa0', '#3f8a4a', '#b07a1c', '#2b8a8a', '#a33a6b', '#5a6b2f', '#8a5a2b', '#4a4a8a'];
 
@@ -33,6 +33,16 @@ function mapConfig(schema) {
   const m = schema?.map;
   if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
   return m;
+}
+
+/**
+ * 찾아낸 곳으로 읽는 목록들 (v1.26.1) — listVar(플레이어가 적을 수 있는 곳) 먼저, 그 뒤 moreLists(함께 읽기만 하는 목록).
+ * 발견이 종류별 목록에 나뉘어 쌓이는 봇(베리디아: 특산품·개척지)이 발단. 같은 목록은 한 번만 읽는다.
+ */
+function findListIds(m) {
+  const out = [];
+  for (const id of [m?.listVar, ...arr(m?.moreLists)]) if (typeof id === 'string' && id && !out.includes(id)) out.push(id);
+  return out;
 }
 
 /** 우상단 버튼 사양 — 어댑터가 registerButton에 그대로 쓴다 (달력과 같은 계약) */
@@ -264,7 +274,10 @@ function mapView(schema, state, makeLookup, opts = {}) {
     return best;
   };
   const stray = [];
-  for (const raw of listOf(m.listVar).slice(0, CAPS.DYN)) {
+  // 목록이 여럿이면(moreLists) 찾아낸 곳 목록 먼저, 상한은 합쳐서 센다
+  const dynAll = [];
+  for (const lid of findListIds(m)) for (const raw of listOf(lid)) dynAll.push([lid, raw]);
+  for (const [lid, raw] of dynAll.slice(0, CAPS.DYN)) {
     const { name, tag } = splitTag(raw);
     if (!name) continue;
     const hit = zoneByTag(tag, raw);
@@ -274,7 +287,10 @@ function mapView(schema, state, makeLookup, opts = {}) {
     const pos = placeInZone(z, name, B.taken, inner);
     B.taken.push({ ...pos, name });
     const key = `d${B.pins.length}`;
-    B.pins.push({ key, name, raw: String(raw), x: pos.x, y: pos.y, zone: z.key, cat: z.cat, color: z.color, here: false });
+    const pin = { key, name, raw: String(raw), x: pos.x, y: pos.y, zone: z.key, cat: z.cat, color: z.color, here: false };
+    // 함께 읽는 목록의 핀만 표시를 단다 (찾아낸 곳 목록의 핀은 옛 재료와 모양이 같게 — 키가 없다). 플레이어는 못 고친다: 그 목록은 보조·시스템의 것
+    if (lid !== m.listVar) { pin.list = lid; pin.own = false; }
+    B.pins.push(pin);
     z.pins.push(key);
   }
 
@@ -374,10 +390,18 @@ function findListDef(schema) {
   return def && def.type === 'list' ? def : null;
 }
 const findListNow = (def, state) => (Array.isArray(state?.vars?.[def.id]) ? state.vars[def.id] : (Array.isArray(def.init) ? def.init : [])).map(String);
+/** 함께 읽는 목록(moreLists)에 지금 든 항목들 — 적을 이름이 그쪽 핀과 겹치는지 볼 때 */
+const moreListItems = (schema, state) => {
+  const m = mapConfig(schema);
+  return findListIds(m).filter((id) => id !== m.listVar).flatMap((id) => {
+    const def = arr(schema.vars).find((v) => v && v.id === id);
+    return def && def.type === 'list' ? findListNow(def, state) : [];
+  });
+};
 const ADD_OFF = '이 지도는 장소 적기를 쓰지 않아요';
 const TAG_BREAKERS = /[()（）@]/;   // 꼬리표 "이름 (구역) @기한"을 깨는 글자
 /** 적을 이름 다듬기·검사 — { name } | { reason }. skipRaw = 고치는 중인 항목(제 이름은 겹침이 아니다) */
-function checkFindName(schema, cur, raw, skipRaw) {
+function checkFindName(schema, cur, raw, skipRaw, others = []) {
   const name = String(raw ?? '').replace(/\s+/g, ' ').trim();
   if (!name) return { reason: '이름을 적어 주세요' };
   // 쉼표도 막는다 — 채팅 변수 미러가 목록을 쉼표로 이어 적고(String(배열)), 스냅샷 없이 미러에서 되읽으면 쉼표에서 둘로 갈린다
@@ -392,6 +416,7 @@ function checkFindName(schema, cur, raw, skipRaw) {
     if (!skipped && skipRaw != null && item === skipRaw) { skipped = true; continue; }
     taken.add(norm(splitTag(item).name));
   }
+  for (const item of others) taken.add(norm(splitTag(item).name));   // 함께 읽는 목록(moreLists)의 핀 이름
   if (taken.has(norm(name))) return { reason: `'${name}'은(는) 이미 지도에 있는 이름이에요` };
   return { name };
 }
@@ -400,7 +425,7 @@ function addFind(schema, state, makeLookup, { name, zone, sheet } = {}) {
   const def = findListDef(schema);
   if (!def) return { ok: false, reason: ADD_OFF };
   const cur = findListNow(def, state);
-  const nm = checkFindName(schema, cur, name, null);
+  const nm = checkFindName(schema, cur, name, null, moreListItems(schema, state));
   if (nm.reason) return { ok: false, reason: nm.reason };
   const view = mapView(schema, state, makeLookup, { sheet });
   const z = view && !view.veiled && typeof zone === 'string' && (typeof sheet !== 'string' || view.sheet === sheet) ? view.zones.find((q) => q.open && q.label === zone.trim()) : null;
@@ -420,7 +445,7 @@ function renameFind(schema, state, makeLookup, { raw, name } = {}) {
   const cur = findListNow(def, state);
   const at = cur.indexOf(String(raw));
   if (at < 0) return { ok: false, reason: '그 항목이 목록에 없어요 — 지도를 닫았다 다시 열어 주세요' };
-  const nm = checkFindName(schema, cur, name, cur[at]);
+  const nm = checkFindName(schema, cur, name, cur[at], moreListItems(schema, state));
   if (nm.reason) return { ok: false, reason: nm.reason };
   const old = splitTag(cur[at]);
   // 꼬리표를 못 읽은 항목(구역 이름에 괄호가 있거나, 글 속 구역 이름으로 꽂힌 것)은 이름만 바꾸면 구역이 떨어져 "자리를 못 찾은 곳"이 되고, 거기선 고칠 수도 지울 수도 없다
@@ -497,6 +522,19 @@ function validateMap(schema, { vars, exprIds, allIds, err, warn, checkExpr }) {
     }
     const seenDef = listVarChk('seenVar', '발자취 목록');
     listVarChk('listVar', '찾아낸 곳 목록');
+    if (M.moreLists != null) {   // 함께 읽는 목록 (v1.26.1)
+      if (!Array.isArray(M.moreLists)) err(`${P}.moreLists`, 'moreLists는 list 변수 id의 배열이어야 함');
+      else {
+        if (M.moreLists.length > CAPS.MORE_LISTS) err(`${P}.moreLists`, `함께 읽는 목록은 ${CAPS.MORE_LISTS}개까지`);
+        M.moreLists.forEach((id, i) => {
+          const lv = typeof id === 'string' ? vars.find((v) => v && v.id === id) : null;
+          if (!lv) err(`${P}.moreLists[${i}]`, `함께 읽는 목록 '${id}'가 vars에 없음`);
+          else if (lv.type !== 'list') err(`${P}.moreLists[${i}]`, `함께 읽는 목록 '${id}'는 list 타입이어야 함 (현재: ${lv.type})`);
+          else if (id === M.listVar || M.moreLists.indexOf(id) < i) warn(`${P}.moreLists[${i}]`, `'${id}'는 이미 읽는 목록입니다 — 한 번만 읽습니다`);
+          else if (id === M.seenVar) warn(`${P}.moreLists[${i}]`, `'${id}'는 발자취 목록입니다 — 들른 장소 이름이 찾아낸 곳 핀으로 한 번 더 꽂힙니다`);
+        });
+      }
+    }
     if (seenDef && M.locVar == null) warn(`${P}.seenVar`, '발자취는 위치 변수를 보고 적힙니다 — locVar가 없으면 비어 있습니다');
     const cats = new Set();
     if (M.categories != null) {
@@ -586,6 +624,7 @@ function validateMap(schema, { vars, exprIds, allIds, err, warn, checkExpr }) {
     const all = [{ s: M, sp: P, id: 'main', fog: M.fog === true }, ...sheetList.map((x) => ({ ...x, fog: (x.s.fog ?? M.fog) === true }))];
     const len = (v) => (Array.isArray(v) ? v.length : 0);
     const nPlaces = all.reduce((n, x) => n + len(x.s.places), 0), nZones = all.reduce((n, x) => n + len(x.s.zones), 0);
+    if (M.listVar == null && Array.isArray(M.moreLists) && M.moreLists.length && !nZones) warn(`${P}.moreLists`, '찾아낸 곳은 구역에 꽂힙니다 — 구역(zones)이 없으면 전부 "자리를 못 찾은 곳"이 됩니다');
     if (M.listVar != null && !nZones) warn(`${P}.listVar`, '찾아낸 곳은 구역에 꽂힙니다 — 구역(zones)이 없으면 전부 "자리를 못 찾은 곳"이 됩니다');
     if (seenDef && (seenDef.maxItems ?? 20) < nPlaces + nZones) warn(`${P}.seenVar`, `발자취 목록 '${seenDef.id}'의 maxItems(${seenDef.maxItems ?? 20})가 장소+구역 수(${nPlaces + nZones})보다 작습니다 — 꽉 차면 더 적지 못해 새로 간 곳이 안개에 남습니다`);
     const en = locDef && locDef.type === 'enum' && Array.isArray(locDef.enum) ? new Set(locDef.enum.map((x) => String(x).trim())) : null;
@@ -627,7 +666,7 @@ function detailOf(view, key) {
   if (d) {
     const z = view.zoneOf(d.zone);
     return { title: d.name, sub: '', where: [z?.label, d.cat].filter(Boolean).join(' · '), badge: d.here ? '📍 지금 여기' : '✓ 찾아낸 곳',
-      text: d.raw !== d.name ? d.raw : '', list: [], own: true, raw: d.raw };
+      text: d.raw !== d.name ? d.raw : '', list: [], own: d.own !== false, raw: d.raw };
   }
   const z = view.zoneOf(key);
   if (z) {

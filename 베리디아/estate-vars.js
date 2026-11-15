@@ -101,6 +101,18 @@ const TER_USE = {
   '유적': ['사람 손이 닿았던 자리가 나왔다', ' 누가 만들었고 왜 버려졌는지가 이 발견의 절반이다.'],
   '수원': ['물이 나는 자리를 찾았다', ''],
 };
+// ── 탐사 띠 (지도, 2026-11-15 유저) ──
+// "탐사는 가까운 곳부터 먼 곳으로" — 방향마다 띠 셋(가까운 곳 · 중간 · 경계)을 두고 자리마다 어느 띠인지 정해 둔다.
+// 자리 순서가 고정이라(자원 1→4 · 지형 1→3) 띠는 안쪽부터만 열린다: 중간 자리는 가까운 자리가 먼저 나와야 나온다.
+// 이름은 지도 구역 이름이자 발견 기록의 꼬리표다("은빛 목재 (서 숲 초입)") — 방향 글자로 시작해 어느 쪽 것인지 기록만 봐도 안다.
+const BANDS = {
+  n: ['북 산기슭', '북 산허리', '북 능선 너머'],   // 지역 이름(칼날 능선)을 띠 이름에 쓰지 않는다 — 통지가 "칼날 능선에서 … 찾은 곳은 「북 산기슭」"이라 헷갈린다
+  w: ['서 숲 초입', '서 깊은 숲', '서 숲 끝자락'],
+  s: ['남 가도 변', '남 마른 벌판', '남 평원 끝'],
+  e: ['동 강기슭', '동 강줄기', '동 강 건너'],
+};
+const RES_BAND = [0, 1, 1, 2];   // 자원 자리 1~4 → 띠
+const TER_BAND = [0, 1, 2];      // 지형 자리 1~3 → 띠 (서쪽 첫 지형 = 정본 "숲 초입 북서쪽" 취수구 — 가까운 띠와 맞는다)
 const LAND_FARM_GAIN = 2;   // 개간지 하나 = 경작 상한 +2 (12 → 최대 16) [초안]
 // ── 정본 발견 (로어북 다이어트, 2026-08-17) ──
 // 로어북에 적혀 있던 "정답"들 — 방향마다 뭐가 사는지, 수맥이 어디 갇혀 있는지 — 을 여기로 옮겼다.
@@ -654,10 +666,12 @@ const S = {
         + 'Their sum is added to daily income.' },
     // 탐사 v2 (§16) — 탐사로 찾은 것만 들어가는 목록 둘. 숫자를 안 적는다: 특산품 값은 시스템이 매기고(가동 수 × 단가),
     //   개척지는 그 위에 무엇을 짓느냐가 밭·거처·인프라 목록으로 간다. 서사로만 찾은 것은 자원지(sites) 단서로 — 이게 둘을 가르는 선이다.
-    { id: 'specials', label: '특산품', type: 'list', init: [], maxItems: 8, itemMaxLength: 28, cmd: '특산품',
-      desc: 'ONLY from a [탐사 · 자원] notice — "이름 · 방향", no number (see DISCOVERIES).' },
-    { id: 'lands', label: '개척지', type: 'list', init: [], maxItems: 10, itemMaxLength: 28, cmd: '개척지',
-      desc: 'ONLY from a [탐사 · 지형] notice — "이름 · 방향", no number (see DISCOVERIES).' },
+    // 꼴은 "이름 (곳)" (2026-11-15 — 옛 "이름 · 방향"). 곳 = 통지가 알려 주는 띠 이름이고, 지도가 그 꼬리표를 읽어 그 띠에 핀을 꽂는다.
+    //   옛 꼴로 적힌 항목은 그 방향의 가까운 띠에 꽂힌다(지도 구역의 match). 길이는 꼬리표(최대 10자)만큼 늘렸다.
+    { id: 'specials', label: '특산품', type: 'list', init: [], maxItems: 8, itemMaxLength: 34, cmd: '특산품',
+      desc: 'ONLY from a [탐사 · 자원] notice — "이름 (곳)", no number (see DISCOVERIES).' },
+    { id: 'lands', label: '개척지', type: 'list', init: [], maxItems: 10, itemMaxLength: 34, cmd: '개척지',
+      desc: 'ONLY from a [탐사 · 지형] notice — "이름 (곳)", no number (see DISCOVERIES).' },
     // ── 길 ──
     // 무역로를 목록으로 두면 "길이 있다"만 적히고 정작 중요한 "지금 막혔나"가 안 잡힌다.
     // 길은 상태가 아니라 사건이다 — 얼고, 무너지고, 도적이 앉고, 다시 뚫린다.
@@ -1481,12 +1495,14 @@ const S = {
       // 꺼내기 — 100을 넘친 몫은 그 게이지에 남아 다음 발견으로 간다
       const back = (g) => [{ set: `${g}_${k}`, expr: `max(0, ${g}_${k} - 100)` }, { set: v, expr: '0' }];
       const tail = ' 이름이 붙지 않으면 기록에 남지 않는다.';
+      // 찾은 곳 = 그 자리의 띠 (BANDS) — 서사는 거기서 찾은 것으로 그리고, 보조는 꼬리표로 옮긴다
+      const spot = (b) => ` 찾은 곳은 「${BANDS[k][b]}」이다 — 기록에는 "이름 (${BANDS[k][b]})" 꼴로 올린다.`;
       const hint = (h) => ` 예컨대 ${h} — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라.`;
       const res = RES[k].map((h, i) => ({
         id: `find_${k}_res_${i + 1}`, once: true, when: `${v} == ${110 + i}`,
         effects: [{ set: `res_${k}`, expr: `res_${k} + 1` }, ...back('exr')],
         notify: `[탐사 · ${dir} · 자원] ${place}에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. `
-          + `무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라.${tail} 캐거나 거두기 시작하면 그 값은 시스템이 매긴다.${hint(h)}`,
+          + `무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라.${tail} 캐거나 거두기 시작하면 그 값은 시스템이 매긴다.${hint(h)}${spot(RES_BAND[i])}`,
       }));
       const ter = TER[k].map(([use, h], i) => {
         const canon = TER_CANON[k]?.[i];
@@ -1495,9 +1511,9 @@ const S = {
           effects: [{ set: `ter_${k}`, expr: `ter_${k} + 1` }, ...back('ext')],
           notify: canon
             ? `[탐사 · ${dir} · 지형] ${place}에서 ${TER_USE[use][0]}. 정체는 이미 정해져 있다 — ${canon} `
-              + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라.'
+              + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라.' + spot(TER_BAND[i])
             : `[탐사 · ${dir} · 지형] ${place}에서 ${TER_USE[use][0]}. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라.${tail}`
-              + `${TER_USE[use][1]}${hint(h)}`,
+              + `${TER_USE[use][1]}${hint(h)}${spot(TER_BAND[i])}`,
         };
       });
       // 둥지 — 세력은 3~4에서 시작해 그 방향에서 앞서 나온 수만큼 세진다(깊은 곳의 것). 이름은 서사가 짓고 보조가 lairname_*에
@@ -2623,8 +2639,9 @@ const S = {
       + 'talked about. A lead is a note, not a find: it yields nothing and opens nothing until real work begins or a '
       + '[탐사] notice makes it real.\n'
       + 'DISCOVERIES: a [탐사] notice says which kind was found — 자원, 지형 or 위협 — and where. The narration names the thing; '
-      + 'copy that name, one short line in the narration\'s words: 자원 → specials as "이름 · 방향" (no number — the system '
-      + 'prices it), 지형 → lands as "이름 · 방향" (no number), 위협 → lairname_n/w/s/e of that direction. Do not raise threat '
+      + 'copy that name, one short line in the narration\'s words: 자원 → specials as "이름 (곳)" (no number — the system '
+      + 'prices it), 지형 → lands as "이름 (곳)" (no number), 위협 → lairname_n/w/s/e of that direction. 곳 is the spot the notice names in 「」, '
+      + 'copied exactly inside the parentheses — "은빛 목재 (서 숲 초입)" — it is what pins the find on the map. Keep the name itself within 20 characters. Do not raise threat '
       + 'for a found lair — the system does. If the narration named nothing concrete, add nothing — do not invent a name '
       + 'to fill the slot. If the find is a lead already noted (a sites "이름 0" line or a stock note), move it: remove the '
       + 'lead line and add the entry. Nothing found without a [탐사] notice ever goes into specials or lands — that stays a lead.\n'
@@ -3011,7 +3028,7 @@ S.party = {
       + row('광휘회', '{bond2}') + row('메이드군단', '{bond3}')
       + sec('현지 고용인') + '{staff:tags}'
       + sec('인맥 · 교역 상대') + '{contacts:tags}' },
-    { id: 'survey', label: '탐사', fab: '🗺️', template: ''
+    { id: 'survey', label: '탐사', fab: '🧭', template: ''
       + `<div class="vled-h">탐사 지도<small>영토 파악 {survey} ({finds}/${FINITE_TOTAL})</small></div>`
       + row('척후 파견', '{explore_dir} ({scouting}) — 인원 {scout_men}')
       + row('알려진 둥지', '{lairs_txt}')
@@ -3119,11 +3136,207 @@ S.messenger = {
     + '여왕은 겉치레를 싫어하고 짧고 결단력 있게 쓴다. 베아트릭스 주교는 돌려 말하지 않는다.',
 };
 
+
+// ── 🗺️ 지도 (SimCore v1.26.1) — 세 장 ──
+// 설계: docs/design-베리디아-지도.md (2026-11-15 유저 확정)
+//   첫 장  베리디아 남작령 — 그림 한 장(map_estate, 카드 에셋). 네 방향 × 띠 셋이 안개 구역이고, 척후가 그 띠의 자리를 찾으면 걷힌다.
+//   town   성채와 마을 — 그림 없음. 건물은 전부 핀이다: 고쳐지고 새로 서는 것을 그림에 그려 두면 그림이 틀린다(예배당).
+//   realm  왕국 전도 — 그림 없음. 이웃 넷과 왕도. 첫 장 가장자리의 길 넷이 여기로 가는 문이다.
+// 변수는 새로 하나뿐(발자취 visited — 시스템이 적는다). 위치는 자유 글 그대로 두고 설명에 지도 이름을 일러 준다:
+//   선택지로 묶으면 이야기가 지도 밖으로 못 나간다. 보조가 다른 말로 적은 턴엔 "지도 밖"으로 뜨고 첫 장이 보인다.
+// 찾아낸 곳 = 개척지 + 특산품, 둘 다 함께 읽는 목록(moreLists)으로. 장소 적기는 끈다 — 두 목록 다 [탐사] 통지로만 차는 시스템의 것이다.
+const MAP_DIRS = [
+  // [키, 방향 이름(탐사 방향·옛 기록의 꼬리표), 분류, 색, 띠 셋의 자리 { x, y, w, h } — 가까운 곳 · 중간 · 경계]
+  ['n', '북 산맥', '산맥', '#8a8f98', [{ x: 24, y: 24, w: 52, h: 11 }, { x: 24, y: 12, w: 52, h: 12 }, { x: 24, y: 0, w: 52, h: 12 }]],
+  ['w', '서 숲', '숲', '#5f7a3a', [{ x: 22, y: 37, w: 11, h: 50 }, { x: 11, y: 37, w: 11, h: 50 }, { x: 0, y: 37, w: 11, h: 50 }]],
+  ['s', '남 평원', '평원', '#a08f6a', [{ x: 34, y: 71, w: 62, h: 9 }, { x: 34, y: 80, w: 62, h: 10 }, { x: 34, y: 90, w: 62, h: 10 }]],
+  ['e', '동 강가', '강', '#4f7f9a', [{ x: 63, y: 37, w: 12, h: 31 }, { x: 75, y: 37, w: 12, h: 31 }, { x: 87, y: 37, w: 13, h: 31 }]],
+];
+const BAND_DEPTH = ['가까운 곳 — 척후가 먼저 훑는 자리다.', '안쪽 — 가까운 곳을 훑은 뒤에야 닿는다.', '영지의 끝 — 그 너머는 남의 땅이다.'];
+// 띠가 걷히는 조건 — 그 띠에 속한 자리가 하나라도 나왔다 (자리 순서가 고정이라 개수로 안다)
+const bandKnown = (k, b) => `res_${k} >= ${RES_BAND.indexOf(b) + 1} or ter_${k} >= ${TER_BAND.indexOf(b) + 1}`;
+S.map = {
+  // 찾아낸 곳 목록(listVar)은 비운다 — 개척지·특산품 둘 다 읽기만 하는 목록이라, 누가 장소 적기를 켜도 플레이어가 못 고친다
+  label: '베리디아 남작령', icon: '🗺️', locVar: 'location', seenVar: 'visited', moreLists: ['lands', 'specials'],
+  fog: true, bg: 'map_estate', ratio: 1,
+  note: '안개는 척후가 찾아낸 만큼 걷힌다 — 가까운 곳부터. 가장자리의 길을 누르면 왕국 전도가 펼쳐진다.',
+  categories: [...MAP_DIRS.map(([, , cat, color]) => ({ label: cat, color })), { label: '성채', color: '#7d2a20' }],
+  zones: MAP_DIRS.flatMap(([k, dir, cat, , boxes]) => boxes.map((box, b) => ({
+    label: BANDS[k][b], ...box, cat,
+    desc: `${EXPLORE.find(([d]) => d === dir)[2]} · ${BAND_DEPTH[b]}`,
+    known: bandKnown(k, b),
+    // 꼬리표를 글자까지 못 옮긴 기록도 받는다 — 방향 글자 없는 이름("숲 초입")은 그 띠가, 방향만("서 숲")·지역 이름("속삭이는 숲")·옛 꼴("· 서")은 가까운 띠가.
+    // 장소 적기가 꺼져 있어 "자리를 못 찾은 곳"으로 빠지면 플레이어가 패널에서 고칠 길이 없다
+    match: [BANDS[k][b].slice(2), ...(b === 0 ? [dir, EXPLORE.find(([d]) => d === dir)[2], `· ${dir.slice(0, 1)}`] : [])],
+  }))),
+  places: [
+    { name: '베리디아 성채', x: 50, y: 54, cat: '성채', known: true, alias: ['성채', '베리디아'], to: 'town',
+      desc: '영지 한가운데, 반석 언덕 위의 저택과 그 아래 마을. 네 방향이 다 여기서 보인다.' },
+  ],
+  exits: [
+    { label: '북 산길 · 모르웬령 5일', dir: 'n', to: 'realm' },
+    { label: '동 강길 · 리아나령 4일', dir: 'e', to: 'realm' },
+    { label: '남 가도 · 발레리우스령 3일', dir: 's', to: 'realm' },
+    { label: '서 숲길 · 실바나령 6일', dir: 'w', to: 'realm' },
+  ],
+  sheets: [
+    {
+      id: 'town', label: '성채와 마을', fog: false, ratio: 1,
+      note: '깨끗한 것은 바람 위·물 위에, 더러운 것은 바람 아래·물 아래에 — 바람은 북서에서 남동으로, 물은 서에서 동으로 흐른다.',
+      zones: [
+        { label: '성채 언덕', x: 30, y: 26, w: 42, h: 36, cat: '성채', desc: '반석 위의 가운데 언덕. 큰물이 닿지 않고 몰래 다가오기 어렵다 — 행정·방어·금고.' },
+        { label: '노을 언덕', x: 2, y: 34, w: 25, h: 40, desc: '서쪽, 바람 위. 샘가의 완만한 비탈 — 거처·목욕탕·신전과 진료소 자리. 공기와 물이 가장 좋다.' },
+        { label: '연기 골', x: 74, y: 26, w: 13, h: 42, desc: '동쪽, 바람 아래. 강어귀의 낮은 돌밭 — 대장간·무두질·가마·배수. 연기가 마을을 등지고 강 위로 빠진다.' },
+        { label: '기름진 들', x: 16, y: 78, w: 60, h: 20, desc: '남쪽, 평원으로 이어지는 무른 땅 — 마구간·곳간·풍차. 짐승 냄새를 집에서 떼어 둔다.' },
+        { label: '강 나루', x: 88, y: 6, w: 11, h: 88, desc: '동쪽 강기슭의 진흙 둔치 — 시장·창고·길드·주점 자리. 바깥 상인이 배를 대는 곳이 될 땅.' },
+      ],
+      places: [
+        { name: '영주 저택', x: 54, y: 36, cat: '성채', alias: ['저택', '집무실', '영주 집무실'], desc: '돌로 지은 삼층. 뼈대는 멀쩡하고 속은 털렸다. 이층 집무실 벽에 영지 지도가 붙어 있다.' },
+        { name: '병영', x: 37, y: 44, cat: '성채', desc: '돌 병영 — 꽉 채우면 마흔.' },
+        { name: '연병장', x: 44, y: 54, cat: '성채', desc: '병영 앞 훈련 마당.' },
+        { name: '예배당', x: 17, y: 20, desc: '마을 위 낮은 언덕. 광휘회의 분원이 있던 자리다.' },
+        { name: '마을', x: 62, y: 68, alias: ['베리디아 마을'], desc: '언덕 남동쪽 기슭의 오두막들.' },
+        { name: '마을 우물', x: 50, y: 73, alias: ['우물'], desc: '마을 사람들이 물을 긷던 자리.' },
+        { name: '대장간', x: 80, y: 40, desc: '연기 골의 대장간 터.' },
+      ],
+      exits: [{ label: '영지 전도', dir: 's', to: 'main' }],
+    },
+    {
+      id: 'realm', label: '왕국 전도', fog: false, ratio: 1.5,
+      note: '거리는 베리디아에서 걸리는 날수다. 편지도 그만큼 걸린다.',
+      places: [
+        { name: '왕도', sub: '알라릭 여왕', x: 50, y: 9, alias: ['수도'], desc: '여왕의 자리 — 큰길로 14일. 베리디아와 공식으로 닿는 곳은 왕실 세무서와 메이드 학원 둘뿐이다.' },
+        { name: '모르웬 백작령', sub: '회색 변경 · 북', x: 50, y: 40, alias: ['회색 변경', '모르웬령'], desc: '북방 방어선 — 산길로 5일. 변경은 영지를 그 땅이 치운 몬스터로 잰다.' },
+        { name: '우리 영지', sub: '베리디아 남작령', x: 50, y: 66, cat: '성채', to: 'main', desc: '버려진 방패 — 왕국 남쪽 끝의 완충지. 북은 산, 서는 숲, 남은 평원, 동은 강.' },
+        { name: '리아나 백작령', sub: '푸른 해안 · 동', x: 84, y: 64, alias: ['푸른 해안', '리아나령'], desc: '무역로 — 강을 따라 4일, 길로는 7일. 배는 부두가 있는 곳에만 선다.' },
+        { name: '발레리우스 백작령', sub: '옛 제국령 · 남', x: 50, y: 88, alias: ['발레리우스령'], desc: '포장된 제국 가도로 3일 — 가장 가깝고, 이 땅에서 무언가 나기 시작하면 가장 먼저 안다.' },
+        { name: '실바나 후작령', sub: '고원 · 서', x: 13, y: 58, alias: ['실바나 고원', '실바나령'], desc: '6일 — 길은 속삭이는 숲을 지나는 하나뿐이다. 흔한 물건에는 관심이 없다.' },
+      ],
+    },
+  ],
+  // 달력·청원함과 같은 장부 팔레트. 열린 구역은 그림이 비치게 거의 투명, 안개는 짙게
+  css: `
+.scg-card.scm-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a; font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
+.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }
+.scg-title .scg-x { color:#4a2c2a; }
+.scm-frame { border:2px solid #4a2c2a; border-radius:3px; box-shadow:0 3px 10px rgba(74,44,42,.35); }
+.scm-zone { background:rgba(255,250,238,.05); border-color:rgba(74,44,42,.32); border-radius:4px; }
+.scm-zone.scm-fog { background:repeating-linear-gradient(45deg,rgba(74,60,48,.58) 0 7px,rgba(74,60,48,.42) 7px 14px); }
+.scm-zone.scm-fog .scm-zl { color:rgba(240,229,209,.85); }
+.scm-name { background:rgba(240,229,209,.94); border-color:#bda27e; color:#3d352a; border-radius:2px; }
+.scm-exit { background:#4a2c2a; border-color:#2c1a19; color:#f0e5d1; border-radius:2px; }
+.scm-sbtn, .scm-fbtn { border-color:#bda27e; background:#f0e5d1; color:#3d352a; }
+.scm-sbtn.scm-on, .scm-fbtn.scm-on { background:#4a2c2a; border-color:#4a2c2a; color:#f0e5d1; }
+.scm-dt-go { background:#4a2c2a; border-color:#4a2c2a; color:#f0e5d1; border-radius:3px; }
+.scm-note, .scm-count { color:#6b5744; }`,
+};
+// 지도에 있는 이름 — 위치 설명과 발자취 칸 수가 여기서 나온다 (손으로 두 번 적지 않는다)
+const MAP_SHEETS_ALL = [S.map, ...S.map.sheets];
+const MAP_PLACE_NAMES = MAP_SHEETS_ALL.flatMap((sh) => (sh.places || []).map((p) => p.name));
+const MAP_ZONE_NAMES = MAP_SHEETS_ALL.flatMap((sh) => (sh.zones || []).map((z) => z.label));
+// 위치로 적으라고 일러 줄 이름 — 첫 장으로 돌아오는 문 핀(왕국 전도의 "우리 영지")은 뺀다: 그렇게 적으면 영지 안 장면인데 왕국 전도가 뜬다
+const MAP_LOC_NAMES = MAP_SHEETS_ALL.flatMap((sh) => (sh.places || []).filter((p) => p.to !== 'main').map((p) => p.name));
+{
+  const at = S.vars.findIndex((x) => x.id === 'location');
+  S.vars[at].desc = 'Where the scene is right now, in a few words. When it is one of the mapped places, write that exact name so the map follows: '
+    + MAP_LOC_NAMES.join(', ') + '. Out in the country, use the stretch it is in: ' + Object.values(BANDS).flat().join(', ')
+    + '. Anywhere else, a short name of your own.';
+  // 발자취 — 지도가 들른 곳을 적는다 (엔진 정산). 보조 계약표(allow)에 없다. 칸은 장소+구역 수보다 넉넉히
+  S.vars.splice(at + 1, 0, { id: 'visited', label: '발자취', type: 'list', init: [], maxItems: MAP_PLACE_NAMES.length + MAP_ZONE_NAMES.length + 6, itemMaxLength: 30,
+    desc: '시스템 전용 — 지도가 들른 곳을 적는다.' });
+}
+
 const v = validateSchema(S);
 console.log('검증:', v.ok ? '통과' : '실패');
 for (const e of v.errors) console.log('  ✗', e.path, e.msg);
 for (const w of v.warnings) console.log('  ⚠', w.path, w.msg);
 if (!v.ok) process.exit(1);
+
+// ── 🗺️ 지도 검증 (v1.26.1) ──
+{
+  console.log('\n── 지도 — 세 장 · 띠 · 발견 핀 ──');
+  const MAPM = SC.require('map');
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  const fresh = (vars = {}) => { const t = engine.initState(S); t.meta.setupDone = true; Object.assign(t.vars, vars); return t; };
+  const mv = (vars, opts) => MAPM.mapView(S, fresh(vars), engine.makeLookup, opts);
+  const zone = (view, label) => view.zones.find((z) => z.label === label);
+  const mapIssues = [...v.errors, ...v.warnings].filter((e) => String(e.path).startsWith('$.map'));
+  ok('지도 검증 — 오류·경고 없음', mapIssues.length === 0, mapIssues.map((e) => `${e.path} ${e.msg}`).join(' / ') || '없음');
+
+  let w = mv();
+  ok('새 판 — 지금 여기는 첫 장의 베리디아 성채', w.sheet === 'main' && w.here?.name === '베리디아 성채' && w.bg === 'map_estate', `${w.sheet} · ${w.here?.name} · ${w.bg}`);
+  ok('새 판 — 띠 열둘이 전부 안개', w.zones.length === 12 && w.zones.every((z) => !z.open), w.zones.filter((z) => z.open).map((z) => z.label).join(',') || '열린 띠 없음');
+  ok('장 띠 — 세 장 (성채와 마을·왕국 전도는 안개가 없어 처음부터)', w.strip.map((x) => x.label).join(' / ') === '베리디아 남작령 / 성채와 마을 / 왕국 전도', w.strip.map((x) => x.label).join(' / '));
+  ok('문 — 성채 핀은 성채와 마을로, 가장자리 길 넷은 왕국 전도로', w.places[0].to?.id === 'town' && w.exits.length === 4 && w.exits.every((e) => e.to?.id === 'realm'), w.exits.map((e) => e.to?.id).join(','));
+  ok('문 — 돌아오는 길 (마을의 이정표 · 왕국 전도의 우리 영지)', mv({}, { sheet: 'town' }).exits[0].to?.id === 'main' && mv({}, { sheet: 'realm' }).places.find((p) => p.name === '우리 영지').to?.id === 'main', '');
+
+  // 위치가 바뀌면 그 장이 뜬다
+  const sheetOf = (loc) => { const x = mv({ location: loc }); return `${x.sheet}:${x.here ? x.here.name : '지도 밖'}`; };
+  const follow = [['영주 저택', 'town:영주 저택'], ['집무실', 'town:영주 저택'], ['예배당', 'town:예배당'], ['연기 골', 'town:연기 골'],
+    ['왕도', 'realm:왕도'], ['회색 변경', 'realm:모르웬 백작령'], ['서 숲 초입', 'main:서 숲 초입'], ['서 숲', 'main:서 숲 초입'], ['성채', 'main:베리디아 성채'],
+    ['숲 속 어딘가의 빈터', 'main:지도 밖']];
+  ok('위치 → 장 (이름·별칭·구역 · 지도에 없는 글은 첫 장에 "지도 밖")', follow.every(([loc, want]) => sheetOf(loc) === want), follow.map(([loc]) => sheetOf(loc)).join(' | '));
+  const locDesc = S.vars.find((x) => x.id === 'location').desc;
+  ok('위치 설명이 지도의 장소 이름과 띠 이름을 다 일러 준다', [...MAP_LOC_NAMES, ...Object.values(BANDS).flat()].every((n) => locDesc.includes(n)), `${locDesc.length}자`);
+  ok('★ 위치 설명에 "우리 영지"가 없다 — 그렇게 적으면 영지 안 장면인데 왕국 전도가 뜬다 (검토 중요 1)', !locDesc.includes('우리 영지') && MAP_PLACE_NAMES.includes('우리 영지'), '');
+  ok('지도의 모든 이름이 위치 칸(24자)에 들어간다', [...MAP_PLACE_NAMES, ...MAP_ZONE_NAMES].every((n) => n.length <= 24), '');
+
+  // 띠 — 가까운 곳부터
+  const openOf = (vars, k) => BANDS[k].map((b) => (zone(mv(vars), b).open ? 'O' : '-')).join('');
+  const steps = [[{ res_w: 1 }, 'O--'], [{ ter_w: 1 }, 'O--'], [{ res_w: 2 }, 'OO-'], [{ res_w: 3, ter_w: 1 }, 'OO-'], [{ ter_w: 2 }, 'OO-'], [{ res_w: 4 }, 'OOO'], [{ ter_w: 3 }, 'OOO']];
+  ok('띠는 그 띠의 자리가 나와야 걷힌다 (자원 1·지형 1 → 가까운 곳 / 자원 2·3·지형 2 → 중간 / 자원 4·지형 3 → 경계)', steps.every(([vars, want]) => openOf(vars, 'w') === want), steps.map(([vars]) => openOf(vars, 'w')).join(' '));
+  ok('한 방향의 발견은 다른 방향을 안 걷는다', ['n', 's', 'e'].every((k) => openOf({ res_w: 4, ter_w: 3 }, k) === '---'), ['n', 's', 'e'].map((k) => openOf({ res_w: 4, ter_w: 3 }, k)).join(' '));
+
+  // 통지 — 자리마다 찾은 곳
+  const evOf = (id) => S.rules.events.find((e) => e.id === id);
+  const spots = EXPLORE.every(([, ev]) => {
+    const k = ev.slice(4);
+    return RES_BAND.every((b, i) => evOf(`find_${k}_res_${i + 1}`).notify.includes(`찾은 곳은 「${BANDS[k][b]}」`))
+      && TER_BAND.every((b, i) => evOf(`find_${k}_ter_${i + 1}`).notify.includes(`"이름 (${BANDS[k][b]})"`));
+  });
+  ok('발견 통지 스물여덟 개가 다 찾은 곳(띠)과 기록 꼴을 알려 준다', spots, evOf('find_w_ter_1').notify.slice(-70));
+  ok('보조 지침·목록 설명이 새 꼴("이름 (곳)")을 말한다 — 옛 꼴은 안 남았다', !JSON.stringify(S).includes('이름 · 방향') && S.updater.guide.includes('은빛 목재 (서 숲 초입)'), '');
+  const longest = Math.max(...Object.values(BANDS).flat().map((b) => b.length));
+  ok('목록 한 칸에 이름 스무 자 + 꼬리표가 들어간다', ['specials', 'lands'].every((id) => S.vars.find((x) => x.id === id).itemMaxLength >= 20 + longest + 3), `꼬리표 최대 ${longest + 3}자`);
+
+  // 발견 핀
+  w = mv({ res_w: 2, ter_w: 1, specials: ['은빛 목재 (서 숲 초입)', '수지 숲 (서 깊은 숲)'], lands: ['옛 수로 취수구 (서 숲 초입)'] });
+  const pinAt = (view, name) => { const p = view.pins.find((x) => x.name === name); return p ? view.zones.find((z) => z.key === p.zone).label : '없음'; };
+  ok('특산품·개척지가 둘 다 그 띠에 핀으로 — 이름표엔 꼬리표가 안 붙는다', pinAt(w, '은빛 목재') === '서 숲 초입' && pinAt(w, '수지 숲') === '서 깊은 숲' && pinAt(w, '옛 수로 취수구') === '서 숲 초입' && w.stray.length === 0,
+    w.pins.map((p) => `${p.name}@${pinAt(w, p.name)}`).join(' · '));
+  w = mv({ specials: ['은빛 목재 · 서', '화강암 노두 · 북 산맥'], lands: ['옛 나루터 (동 강가)', '소금 껍질 벌 · 남쪽'] });
+  ok('옛 꼴 기록은 그 방향의 가까운 띠에 꽂힌다 (사라지지 않는다)', pinAt(w, '은빛 목재 · 서') === '서 숲 초입' && pinAt(w, '화강암 노두 · 북 산맥') === '북 산기슭' && pinAt(w, '옛 나루터') === '동 강기슭'
+    && pinAt(w, '소금 껍질 벌 · 남쪽') === '남 가도 변' && w.stray.length === 0, w.pins.map((p) => `${p.name}@${pinAt(w, p.name)}`).join(' · ') + (w.stray.length ? ` · 못 찾음 ${w.stray.map((x) => x.name)}` : ''));
+  {
+    // 꼬리표를 글자까지 못 옮긴 기록 — 통지의 지역 이름을 적거나 방향 글자를 빼거나 붙여 쓴 것 (검토 중요 2)
+    const loose = [['화강암 노두 (칼날 능선)', '북 산기슭'], ['이탄층 (잿빛 평원)', '남 가도 변'], ['갈대밭 (강가)', '동 강기슭'], ['꿀 고목 (속삭이는 숲)', '서 숲 초입'],
+      ['은빛 목재 (숲 초입)', '서 숲 초입'], ['수지 숲 (서쪽 깊은 숲)', '서 깊은 숲'], ['사금 모래톱 (동강줄기)', '동 강줄기'], ['유황 틈 (평원 끝)', '남 평원 끝']];
+    const lw = mv({ specials: loose.map(([raw]) => raw) });
+    const got = loose.map(([raw]) => { const p = lw.pins.find((x) => x.raw === raw); return p ? lw.zones.find((z) => z.key === p.zone).label : '못 찾음'; });
+    ok('★ 꼬리표를 덜 정확히 옮겨도 제 띠에 꽂힌다 (지역 이름 → 가까운 띠 · 방향 글자 빠짐 · 붙여 씀)', loose.every(([, want], i) => got[i] === want) && lw.stray.length === 0, got.join(' · '));
+    const regions = Object.fromEntries(EXPLORE.map(([, ev, place]) => [ev.slice(4), place]));
+    ok('★ 띠 이름이 통지의 지역 이름을 품지 않는다 ("칼날 능선에서 … 찾은 곳은 「북 산기슭」" 옆에 "북 칼날 능선"이 있었다)', Object.entries(BANDS).every(([k, bs]) => bs.every((b) => !b.includes(regions[k]))),
+      Object.entries(BANDS).flatMap(([k, bs]) => bs.filter((b) => b.includes(regions[k]))).join(',') || '없음');
+    ok('우상단 단추 그림이 편성표 탭과 안 겹친다 (🗺️가 둘이었다)', !S.party.tabs.some((x) => x.fab === S.map.icon), S.party.tabs.map((x) => x.fab).join(' '));
+    ok('두 목록 다 읽기만 한다 — 찾아낸 곳 목록(listVar) 없이 함께 읽는 목록으로 (누가 장소 적기를 켜도 개척지를 못 고친다)', S.map.listVar === undefined && S.map.moreLists.join() === 'lands,specials'
+      && mv({ lands: ['옛 수로 취수구 (서 숲 초입)'] }).pins[0].own === false, JSON.stringify([S.map.listVar, S.map.moreLists]));
+    ok('보조 지침이 이름 길이를 일러 준다 (칸을 넘으면 꼬리표가 잘려 자리를 못 찾는다)', /20 characters/.test(S.updater.guide), '');
+  }
+  ok('핀이 꽂힌 띠는 개수 변수가 없어도 걷힌다 (옛 세이브)', zone(w, '서 숲 초입').open && zone(w, '북 산기슭').open && !zone(w, '서 깊은 숲').open, '');
+  ok('장소 적기는 꺼져 있다 — 두 목록은 [탐사] 통지로만 찬다', w.canAdd === false && !MAPM.renderMapHtml(w, { sel: w.pins[0].key }, {}).includes('data-scm-act'), '');
+
+  // 발자취 — 영주가 직접 간 띠는 발견이 없어도 남는다
+  const t = fresh({ location: '남 가도 변' });
+  const rec = MAPM.recordVisit(S, t, engine.makeLookup);
+  t.vars.location = '베리디아 성채';
+  ok('영주가 직접 간 띠는 떠난 뒤에도 걷혀 있다 (발자취)', rec === '남 가도 변' && zone(MAPM.mapView(S, t, engine.makeLookup), '남 가도 변').open, JSON.stringify(t.vars.visited));
+  const vd = S.vars.find((x) => x.id === 'visited');
+  ok('발자취 칸이 장소+구역 수보다 넉넉하고 보조 계약표에 없다', vd.maxItems >= MAP_PLACE_NAMES.length + MAP_ZONE_NAMES.length && !S.updater.allow.some((a) => a.id === 'visited'), `${vd.maxItems}칸 / ${MAP_PLACE_NAMES.length + MAP_ZONE_NAMES.length}곳`);
+
+  // 그림 — 예외 없이 그려진다
+  const htmls = ['main', 'town', 'realm'].map((id) => MAPM.renderMapHtml(mv({ res_n: 1, specials: ['화강암 노두 (북 산기슭)'] }, { sheet: id }), {}, { bgUrl: id === 'main' ? 'blob:x' : null }));
+  ok('세 장이 다 그려진다 — 첫 장만 배경 그림', htmls[0].includes('scm-bg') && !htmls[1].includes('scm-bg') && !htmls[2].includes('scm-bg') && htmls.every((h) => h.includes('scm-sheets')), htmls.map((h) => h.length).join(' / '));
+}
 
 // ── flat30 이행 하네스 규약 ──
 // 아래 시뮬들은 전부 "1턴 = 최소 하루"를 전제로 짜여 있다 (12일 런·400일 방치·수확 표…).

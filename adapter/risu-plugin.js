@@ -5027,7 +5027,7 @@
   // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
   let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
   let questView = { tab: 'offers' };                // 의뢰판 (v1.7.9): 'offers' 게시 | 'mine' 수주 중
-  let mapUi = { cat: null, sel: null };             // 지도 (v1.23.0): 분류 거르기 · 고른 장소 열쇠
+  let mapUi = { cat: null, sel: null, sheet: null }; // 지도 (v1.23.0): 분류 거르기 · 고른 장소 열쇠 · 구경 중인 장(v1.26.0, null = 지금 여기를 따라간다)
   let questBusy = false;
   let msgrBusy = false;                             // 메신저 전용 보조 호출 진행 중
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
@@ -6750,7 +6750,7 @@
     shopView = { shopId: kind === 'shop' ? tabId : null, cat: null, exchQty: '' };
     msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
     questView = { tab: 'offers' };   // 의뢰판은 열 때마다 게시부터
-    mapUi = { cat: null, sel: null };   // 지도는 열 때마다 전체·고른 것 없이
+    mapUi = { cat: null, sel: null, sheet: null };   // 지도는 열 때마다 전체·고른 것 없이 · 지금 여기의 장부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -6788,9 +6788,15 @@
   // 그림은 코어(mapMod.renderMapHtml)가 HTML 한 벌로 만든다 — 편집기 미리보기와 같은 그림. 여기는 제목·닫기와
   // 위임 클릭(분류 단추 data-scm-cat · 장소 data-scm)만. 우리 iframe DOM이라 data-*가 산다 (상태창 새니타이저와 무관).
   // 배경 그림(map.bg)은 카드 에셋 이름 — 초상과 같은 길(resolvePortraitUrl)로 읽고, 늦게 오면 자리에 끼운다.
+  // 장 여러 개 (v1.26.0): 문(data-scm-go)·띠(data-scm-sheet)를 누르면 그 장을 구경한다 — mapUi.sheet(램)만 바뀌고 상태는 안 건드린다.
+  // 위치 변수가 다른 장으로 가면 따라가고(sheet가 null일 때), 구경 중이면 보던 장에 머문다.
   function renderMapPanel(root) {
-    const view = mapMod.mapView(schema, session.current, engine.makeLookup);
+    const view = mapMod.mapView(schema, session.current, engine.makeLookup, { sheet: mapUi.sheet });
     if (!view) { root.innerHTML = ''; return; }
+    // 보던 장이 사라졌거나(번들 교체) 지금 여기의 장이 됐으면 구경을 끝낸다 — 그 뒤로는 위치를 따라간다
+    if (mapUi.sheet && (view.sheet !== mapUi.sheet || !view.peek)) mapUi = { ...mapUi, sheet: null };
+    // 장이 바뀌면 고른 것을 놓는다 — 열쇠(p0·z0)는 장 안에서만 뜻이 있다
+    if (mapUi.shown !== view.sheet) mapUi = { ...mapUi, sel: mapUi.shown === undefined ? mapUi.sel : null, shown: view.sheet };
     if (mapUi.sel && !mapMod.detailOf(view, mapUi.sel)) mapUi.sel = null; // 정산으로 사라진 것을 고르고 있었으면 놓는다
     root.innerHTML = '';
     const card = document.createElement('div');
@@ -6808,9 +6814,12 @@
     const body = document.createElement('div');
     body.innerHTML = mapMod.renderMapHtml(view, mapUi, { bgUrl });
     body.addEventListener('click', (ev) => {
-      const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm-cat],[data-scm]') : null;
+      const t = ev.target && ev.target.closest ? ev.target.closest('[data-scm-act],[data-scm-go],[data-scm-sheet],[data-scm-cat],[data-scm]') : null;
       if (!t) return;
-      if (t.hasAttribute('data-scm-cat')) {
+      if (t.hasAttribute('data-scm-go') || t.hasAttribute('data-scm-sheet')) {
+        const id = t.hasAttribute('data-scm-go') ? t.getAttribute('data-scm-go') : t.getAttribute('data-scm-sheet');
+        mapUi = { ...mapUi, sheet: id || null, sel: null };
+      } else if (t.hasAttribute('data-scm-cat')) {
         const c = t.getAttribute('data-scm-cat') || null;
         mapUi = { ...mapUi, cat: mapUi.cat === c ? null : c };
       } else {

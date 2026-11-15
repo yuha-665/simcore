@@ -272,8 +272,8 @@ const BASE = {
   console.log('── ⑦ 배선');
   {
     ck('번들 CORE에 map', /const CORE = \[[^\]]*'map'/.test(fs.readFileSync(__P('../build.js'), 'utf8')), '');
-    ck('어댑터 — 버튼·패널·CSS·열 때 초기화', ["kind: 'map'", "gameKind === 'map') renderMapPanel(root)", 'function renderMapPanel(root)', "gameKind === 'map' ? schema?.map?.css", 'mapUi = { cat: null, sel: null };   // 지도는 열 때마다', 'mapMod.MAP_CSS'].every((k) => src.includes(k)), '');
-    ck('어댑터 패널은 data-* 위임 클릭', /closest\('\[data-scm-cat\],\[data-scm\]'\)/.test(src), '');
+    ck('어댑터 — 버튼·패널·CSS·열 때 초기화', ["kind: 'map'", "gameKind === 'map') renderMapPanel(root)", 'function renderMapPanel(root)', "gameKind === 'map' ? schema?.map?.css", 'mapUi = { cat: null, sel: null, sheet: null };   // 지도는 열 때마다', 'mapMod.MAP_CSS'].every((k) => src.includes(k)), '');
+    ck('어댑터 패널은 data-* 위임 클릭', src.includes("closest('[data-scm-act],[data-scm-go],[data-scm-sheet],[data-scm-cat],[data-scm]')"), '');
     const E = SC.require('editor');
     ck('기능 지도 표에 지도', E.FEATURE_MAP.some((f) => f.id === 'map' && f.keys.includes('map') && f.where === '[지도] 탭' && f.on({ map: {} }) && !f.on({})), '');
     ck('편집기 탭 목록·묶음·본문', src.includes("['map', '지도']") && src.includes("'quest', 'map']]") && src.includes('map: tabMap'), '');

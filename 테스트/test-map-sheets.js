@@ -231,6 +231,77 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('문 단추는 눌린다 (이정표 기본은 pointer-events:none)', /\.scm-exit\.scm-door\{[^}]*pointer-events:auto/.test(MAP.MAP_CSS), '');
   }
 
+  console.log('── ④ 패널 — 문 · 따라가기 (renderMapPanel 구간을 소스에서 떼어 가짜 DOM으로, 규칙 #8)');
+  const panelRig = (schema0, vars0 = {}) => {
+    const a = src.indexOf('  function renderMapPanel(root) {');
+    const b = src.indexOf('\n  }\n', a) + 4;
+    const mk = (tag) => {
+      const el = { tag, children: [], listeners: {}, className: '', _html: '', isConnected: true, textContent: '',
+        addEventListener(t, fn) { (el.listeners[t] = el.listeners[t] || []).push(fn); },
+        appendChild(c) { el.children.push(c); return c; }, append(...c) { el.children.push(...c); },
+        insertBefore(c) { el.children.unshift(c); return c; }, querySelector: (sel) => (sel === '.scm-surface' ? (el._surf = el._surf || mk('surf')) : null) };
+      Object.defineProperty(el, 'innerHTML', { get: () => el._html, set(v) { el._html = String(v); el.children = []; } });
+      return el;
+    };
+    const root = mk('root');
+    const session = { current: st(schema0, vars0) };
+    const asked = [];
+    const commits = [];
+    const cache = new Map();   // 진짜 resolvePortraitUrl처럼 읽은 그림을 캐시에 넣는다
+    const rig = { root, session, asked, commits, turnBusy: false, notice: null };
+    const names = ['document', 'mapMod', 'engine', 'schema', 'session', 'mapUi', 'closeGamePanel', 'currentChaId', 'portraitCache', 'resolvePortraitUrl', 'renderGamePanel', 'gameNotice',
+      'commitPanelChanges', 'turnBusyNow', 'TURN_BUSY_MSG'];
+    const api = new Function(...names, src.slice(a, b)
+      + '\nreturn { renderMapPanel, ui: () => mapUi, setUi: (v) => { mapUi = v; }, setSchema: (v) => { schema = v; }, notice: () => gameNotice, setNotice: (v) => { gameNotice = v; } };')(
+      { createElement: mk }, MAP, engine, clone(schema0), session, { cat: null, sel: null, sheet: null }, () => {}, 'c1', cache,
+      (name) => { asked.push(name); cache.set('c1:' + name, 'blob:' + name); return Promise.resolve('blob:' + name); }, () => api.renderMapPanel(root), null,
+      async (changes, what) => { commits.push({ changes: clone(changes), what }); Object.assign(session.current.vars, changes); api.renderMapPanel(root); }, () => rig.turnBusy, '턴 진행 중');
+    rig.api = api;
+    rig.render = () => api.renderMapPanel(root);
+    rig.body = () => root.children[0].children.find((c) => c.listeners.click && String(c._html).includes('class="scm'));
+    rig.html = () => rig.body()._html;
+    rig.click = async (attrs, extra = {}) => {
+      const t = { hasAttribute: (k) => k in attrs, getAttribute: (k) => (k in attrs ? attrs[k] : null), ...extra };
+      const body = rig.body();
+      for (const fn of body.listeners.click) await fn({ target: { closest: () => t } });
+    };
+    return rig;
+  };
+  {
+    ck('패널 구간을 소스에서 찾음', src.indexOf('  function renderMapPanel(root) {') > 0, '');
+    const withBg = clone(TWO); withBg.map.bg = '교토도';
+    const R = panelRig(withBg);
+    R.render();
+    ck('패널 — 처음엔 지금 여기의 장 (첫 장) · 그 장의 그림을 읽는다', R.html().includes('data-scm-sheet="main"') && R.html().includes('data-scm-go="under"') && J(R.asked) === '["교토도"]', J(R.asked));
+    await R.click({ 'data-scm': 'p0' });
+    ck('패널 — 장소를 고르면 카드', R.api.ui().sel === 'p0' && R.html().includes('scm-dt-go'), J(R.api.ui()));
+    const before = J(R.session.current);
+    await R.click({ 'data-scm-go': 'under' });
+    ck('★ 문을 누르면 그 장이 그려진다 (고른 것은 놓는다)', R.api.ui().sheet === 'under' && R.api.ui().sel === null && R.html().includes('scm-veil') && R.html().includes('scm-back')
+      && /class="scm-sbtn scm-on" data-scm-sheet="under"/.test(R.html()), J(R.api.ui()));
+    ck('★ 문을 눌러도 상태는 그대로', J(R.session.current) === before, '');
+    ck('★ 가려진 장의 그림은 읽지도 않는다', J(R.asked) === '["교토도"]', J(R.asked));
+    R.session.current.vars.location = '기온'; R.render();
+    ck('★ 구경 중 위치가 바뀌어도(같은 장 안) 보던 장에 머문다', R.api.ui().sheet === 'under' && /class="scm-sbtn scm-on" data-scm-sheet="under"/.test(R.html()), J(R.api.ui()));
+    await R.click({ 'data-scm-sheet': '' });
+    ck('[📍 내 위치로] → 따라가기', R.api.ui().sheet === null && /class="scm-sbtn scm-on" data-scm-sheet="main"/.test(R.html()) && !R.html().includes('scm-back'), J(R.api.ui()));
+    await R.click({ 'data-scm-go': 'under' });
+    R.session.current.vars.location = '수문'; R.session.current.vars.visited = ['수문']; R.render();
+    ck('보던 장이 지금 여기의 장이 되면 구경이 끝난다 (따라가기로)', R.api.ui().sheet === null && R.html().includes('data-scm-sheet="under">📍 지하 수로') && !R.html().includes('scm-back'), J(R.api.ui()));
+    ck('발 디딘 장은 그림을 읽는다', J(R.asked) === '["교토도","수로도"]', J(R.asked));
+    await R.click({ 'data-scm': 'p0' });
+    R.session.current.vars.location = '어소'; R.render();
+    ck('★ 따라가다 장이 바뀌면 고른 것을 놓는다 (다른 장의 같은 열쇠가 열리지 않게)', R.api.ui().sel === null && /class="scm-sbtn scm-on" data-scm-sheet="main"/.test(R.html()), J(R.api.ui()));
+    await R.click({ 'data-scm-sheet': 'under' });
+    ck('띠의 장 이름을 눌러도 구경', R.api.ui().sheet === 'under', J(R.api.ui()));
+    R.api.setSchema(clone(BASE));
+    const e = noThrow(() => R.render());
+    ck('★ 보던 장이 스키마에서 사라지면 던지지 않고 따라가기로', !e && R.api.ui().sheet === null && !R.html().includes('scm-sheets'), e ? e.stack : J(R.api.ui()));
+    await R.click({ 'data-scm-cat': '유흥' });
+    ck('분류 단추는 그대로', R.api.ui().cat === '유흥', J(R.api.ui()));
+    ck('어댑터 — 열 때 장 고르기도 초기화 · 위임 선택자', src.includes("mapUi = { cat: null, sel: null, sheet: null };") && src.includes("closest('[data-scm-act],[data-scm-go],[data-scm-sheet],[data-scm-cat],[data-scm]')"), '');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })().catch((e) => { console.log('FAIL 테스트 본문이 던짐 →', e && e.stack || e); console.log('\n0 passed, 1 failed'); process.exit(1); });

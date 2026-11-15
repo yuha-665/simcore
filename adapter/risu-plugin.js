@@ -4005,6 +4005,7 @@
     const rest = plan.lines.filter((ln) => !open.includes(ln));
     return `<span class="status-warn">🧩 ${escapeText(bundleMod.summaryText(plan))}</span>`
       + `${plan.note ? `<div style="margin:4px 0;opacity:.85">제작자 설명: ${escapeText(plan.note)}</div>` : ''}`
+      + `${(plan.bgMissing || []).length ? `<div class="status-warn">🖼 이 조각의 지도 배경 그림 ${plan.bgMissing.length}장(${plan.bgMissing.slice(0, 6).map(escapeText).join(', ')}${plan.bgMissing.length > 6 ? ' …' : ''})이 이 캐릭터에 없어요 — 그림은 번들 파일에 안 실려요. 같은 이름의 이미지 에셋을 카드에 넣어야 보이고, 없어도 지도는 종이 바탕으로 돌아요</div>` : ''}`
       + `${plan.downgrade ? `<div class="status-warn">⚠ 설치된 판보다 낮은 판이에요 (r${plan.rev} &lt; r${plan.installedRev}) — 그래도 넣을 수는 있어요</div>` : ''}`
       + `${plan.schemaErrors.length ? `<div class="status-bad">⚠ 이대로 합치면 스키마가 검증을 못 넘어요 — 아래 줄에서 [번들 것]/[내 것]을 바꿔 보세요:<br>${plan.schemaErrors.slice(0, 5).map(escapeText).join('<br>')}</div>` : ''}`
       + open.map(row).join('')
@@ -4134,6 +4135,8 @@
       + `<div style="${head}">로어북</div>${lorePart}`
       + `<div style="${head}">정규식</div><div>${regexPart}</div>`
       + `<div style="margin-top:8px;opacity:.85;">같이 따라가는 것 (자동): ${autoBits.length ? autoBits.join(' / ') : '없음'}</div>`
+      + (() => { const bgs = bundleMod.mapBgNames(built.data && built.data.schema);   // 🖼 배경 그림은 카드 에셋 — 파일에 안 실린다 (v1.26.0)
+        return bgs.length ? `<div class="status-warn" style="margin-top:4px;">🖼 지도 배경 그림 ${bgs.length}장(${bgs.slice(0, 6).map(escapeText).join(', ')}${bgs.length > 6 ? ' …' : ''})은 파일에 안 들어가요 — 받는 분이 같은 이름으로 카드에 이미지 에셋을 넣어야 보여요. 그림 파일을 같이 나눠 주세요</div>` : ''; })()
       + `<div style="margin-top:4px;">${built.errors.length
         ? `<span class="status-bad">⚠ 이대로는 내보낼 수 없어요:<br>${built.errors.slice(0, 6).map(escapeText).join('<br>')}${built.errors.length > 6 ? `<br>외 ${built.errors.length - 6}건` : ''}</span>`
         : '<span class="status-ok">✓ 이 조각만으로 설치돼요 (검증 통과) — 값(진행 상태)은 안 실리고, 받는 쪽에서 시작값으로 서요</span>'}</div>`

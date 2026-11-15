@@ -524,6 +524,63 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('어댑터 — 편집기에 그림 읽는 훅을 넘긴다', src.includes('assetUrl: (name) => resolvePortraitUrl(name)'), '');
   }
 
+  console.log('── ⑦ 번들 조각 — 장 하나가 단위 하나 · 배경 그림 안내');
+  {
+    const B = SC.require('bundle');
+    const THREE = clone(TWO);
+    THREE.map.bg = '교토도';
+    THREE.map.sheets.push({ id: 'deep', label: '깊은 수로', fog: true, bg: '수로도', places: [{ name: '물밑 문', x: 30, y: 30, known: true }], exits: [{ label: '위로', dir: 'n', to: 'under' }] });
+    THREE.map.sheets[0].exits.push({ label: '더 아래로', dir: 's', to: 'deep' });
+    THREE.vars[0].enum.push('물밑 문');
+    const HOST = { simcore: '0.1', meta: { name: '받는 봇' }, vars: [{ id: 'hp', label: '체력', type: 'int', init: 5, min: 0, max: 10 }], statusUI: { mode: 'auto', groups: [] } };
+    const charOf = (schema, assets = []) => ({ chaId: 'c1', name: '봇', additionalAssets: assets, customscript: [],
+      globalLore: [{ comment: '⚙simcore', key: ' __simcore_never__', content: JSON.stringify(schema) }] });
+    const schemaOf = (char) => JSON.parse(char.globalLore.find((l) => l.comment === '⚙simcore').content);
+    const piece = (rev, edit) => { const d = { simcoreBundle: 2, id: 'b_maps0001', rev, name: '교토 지도 묶음', schema: { vars: clone(THREE.vars), map: clone(THREE.map) } }; if (edit) edit(d.schema.map); return d; };
+
+    const fp = B.fingerprintOf(piece(1));
+    ck('★ 단위 — 장 하나가 열쇠 하나 (sheets 통째가 아니다)', typeof fp['schema:map.sheets[under]'] === 'string' && typeof fp['schema:map.sheets[deep]'] === 'string' && !('schema:map.sheets' in fp), Object.keys(fp).filter((k) => k.includes('sheets')).join(','));
+    const fpOld = B.fingerprintOf({ simcoreBundle: 2, id: 'b_old00001', rev: 1, name: '한 장', schema: { vars: clone(BASE.vars), map: clone(BASE.map) } });
+    ck('장 없는 조각의 열쇠는 그대로 (첫 장의 장소·구역은 통째 단위)', 'schema:map.places' in fpOld && 'schema:map.zones' in fpOld && !Object.keys(fpOld).some((k) => k.startsWith('schema:map.sheets')), Object.keys(fpOld).filter((k) => k.startsWith('schema:map')).join(','));
+
+    const char = charOf(HOST);
+    const p1 = B.planPiece({ char, data: piece(1) });
+    ck('조각 r1 — 받는 봇에 들어간다', p1.ok && p1.schemaErrors.length === 0, p1.ok ? J(p1.schemaErrors) : p1.error);
+    B.applyPlanToChar(char, p1);
+    ck('r1 — 장 둘이 순서대로', J(schemaOf(char).map.sheets.map((x) => x.id)) === J(['under', 'deep']), J(schemaOf(char).map.sheets?.map((x) => x.id)));
+    // 받는 사람이 깊은 수로의 이름을 고친다 → 제작자의 r2는 지하 수로만 고쳤다
+    { const e = char.globalLore[0]; const sc = JSON.parse(e.content); sc.map.sheets[1].label = '내가 붙인 이름'; e.content = JSON.stringify(sc); }
+    const p2 = B.planPiece({ char, data: piece(2, (m) => { m.sheets[0].label = '지하 수로 (개정)'; }), base: { id: 'b_maps0001', format: 2, rev: 1, units: fp } });
+    const kindOf = (key) => (p2.lines.find((l) => l.key === key) || {}).kind;
+    ck('★ r2 — 제작자가 고친 장은 번들 수정, 내가 고친 장은 내 수정 유지', p2.ok && kindOf('schema:map.sheets[under]') === 'update' && kindOf('schema:map.sheets[deep]') === 'mineEdit', p2.ok ? J(p2.lines.map((l) => [l.key, l.kind])) : p2.error);
+    B.applyPlanToChar(char, p2);
+    ck('★ r2 뒤 — 둘 다 산다', schemaOf(char).map.sheets[0].label === '지하 수로 (개정)' && schemaOf(char).map.sheets[1].label === '내가 붙인 이름', J(schemaOf(char).map.sheets.map((x) => x.label)));
+    const pBad = B.planPiece({ char: charOf(HOST), data: piece(1, (m) => { m.sheets.push({ label: 'id 없는 장' }); }) });
+    ck('★ id 없는 장이 든 조각 — 모양이 어긋난 조각으로 거절한다 (받는 봇에 장이 없어도)', pBad.ok === false && /모양/.test(pBad.error) && /map.sheets/.test(pBad.error), J(pBad.ok ? pBad.schemaErrors : pBad.error));
+
+    ck('mapBgNames — 첫 장 + 장들의 그림 이름 (겹침 없이)', J(B.mapBgNames(THREE)) === J(['교토도', '수로도']) && J(B.mapBgNames(BASE)) === '[]' && J(B.mapBgNames(null)) === '[]' && J(B.mapBgNames({ map: { bg: 5, sheets: [null, { bg: ' ' }] } })) === '[]', J(B.mapBgNames(THREE)));
+    ck('★ 계획 — 받는 봇에 없는 배경 그림을 알려 준다', J(B.planPiece({ char: charOf(HOST), data: piece(1) }).bgMissing) === J(['교토도', '수로도'])
+      && J(B.planPiece({ char: charOf(HOST, [['교토도.png', 'a1', 'png'], ['수로도', 'a2', 'webp']]), data: piece(1) }).bgMissing) === '[]'
+      && J(B.planPiece({ char: charOf(HOST, [['교토도', 'a1', 'png']]), data: piece(1) }).bgMissing) === J(['수로도']), J(B.planPiece({ char: charOf(HOST), data: piece(1) }).bgMissing));
+
+    // 화면 — 어댑터의 두 함수를 소스에서 떼어 돌린다
+    const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const cut = (head) => { const a = src.indexOf(head); return src.slice(a, src.indexOf('\n  }\n', a) + 4); };
+    const planHtml = new Function('bundleMod', 'escapeText', cut('  function bundlePlanHtml(plan, opts = {}) {') + '\nreturn bundlePlanHtml;')(B, esc);
+    const pickerHtml = new Function('bundleMod', 'escapeText', cut('  function bundlePickerHtml(pk, built, st) {') + '\nreturn bundlePickerHtml;')(B, esc);
+    const hMiss = planHtml(B.planPiece({ char: charOf(HOST), data: piece(1, (m) => { m.bg = '<b>도</b>'; }) }), {});
+    ck('★ 요약 화면 — 없는 배경 그림 줄 (이름 이스케이프)', hMiss.includes('배경 그림 2장') && hMiss.includes('&lt;b&gt;도&lt;/b&gt;') && !hMiss.includes('<b>도</b>') && hMiss.includes('수로도'), (hMiss.match(/🖼[^<]*/) || ['줄 없음'])[0]);
+    ck('요약 화면 — 그림이 다 있으면 줄 없음', !planHtml(B.planPiece({ char: charOf(HOST, [['교토도', 'a', 'png'], ['수로도', 'b', 'png']]), data: piece(1) }), {}).includes('🖼'), '');
+    const author = charOf(clone(THREE));
+    const picks = { tabs: ['map'], items: {}, lore: [], regex: [] };
+    const built = B.buildPiece(author, picks, { name: '교토 지도' });
+    ck('조각 만들기 — 지도 탭에 장이 같이 실린다', built.errors.length === 0 && J(built.data.schema.map.sheets.map((x) => x.id)) === J(['under', 'deep']), J(built.errors));
+    const hPick = pickerHtml(B.pickables(author), built, { picks, open: [], name: '교토 지도', note: '', rev: 1 });
+    ck('★ 고르기 화면 — 배경 그림은 파일에 안 들어간다고 알린다', hPick.includes('배경 그림 2장') && hPick.includes('교토도') && hPick.includes('수로도') && hPick.includes('파일에 안 들어가요'), (hPick.match(/🖼[^<]*/) || ['줄 없음'])[0]);
+    const noMap = B.buildPiece(author, { tabs: [], items: { vars: ['location'] }, lore: [], regex: [] }, { name: 'x' });
+    ck('지도를 안 고르면 그 줄이 없다', !pickerHtml(B.pickables(author), noMap, { picks: { tabs: [], items: { vars: ['location'] }, lore: [], regex: [] }, open: [], name: 'x', note: '', rev: 1 }).includes('🖼'), '');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })().catch((e) => { console.log('FAIL 테스트 본문이 던짐 →', e && e.stack || e); console.log('\n0 passed, 1 failed'); process.exit(1); });

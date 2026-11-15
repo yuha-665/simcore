@@ -9930,6 +9930,7 @@ SimCore.define("bundle", function (require, module, exports) {
 
 const P = require('./profile');
 const { validateSchema } = require('./validate');
+const { matchAssetName } = require('./party');
 
 const BASE_COMMENT = P.BASE_COMMENT;
 const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
@@ -10028,7 +10029,8 @@ const schemaKey = (path, id) => 'schema:' + path.join('.') + (id != null ? `[${i
 const schemaUnit = (path, id, value) => ({ key: schemaKey(path, id), kind: 'schema', path, id: id ?? null, value, label: schemaLabel(path, id) });
 const idList = (x) => Array.isArray(x) && x.length > 0 && P.keyed(x);
 // 스키마에서 늘 id 목록인 자리 — 받는 봇의 그 목록이 비어 있어도 조각이 여기 다른 모양을 못 넣는다
-const ID_LIST_PATHS = new Set(['vars', 'derived', 'checks', 'actions', 'directives', 'rules.events', 'rules.randomEvents.table', 'updater.allow']);
+// map.sheets (v1.26.0) — 지도의 더한 장. 장 하나가 병합 단위 하나라, 제작자가 중층만 고친 다음 판을 내도 받는 사람이 고친 상층은 남는다
+const ID_LIST_PATHS = new Set(['vars', 'derived', 'checks', 'actions', 'directives', 'rules.events', 'rules.randomEvents.table', 'updater.allow', 'map.sheets']);
 
 /**
  * 내 것(c)과 번들(i)을 같은 경로에서 같이 내려간다 — 둘이 같은 굵기의 단위로 쪼개지게.
@@ -10187,6 +10189,17 @@ function alignUnits(cUnits, iUnits, hasB, bOf, kind) {
   return cUnits;
 }
 /** 계획의 서명 — 화면에 보인 계획과 적용 직전에 다시 세운 계획이 같은지 댄다 */
+/** 지도 배경 그림의 에셋 이름들 (첫 장 + 더한 장, 겹침 없이) — 그림은 카드 에셋이라 번들 파일에 안 실린다. 내보낼 때·넣을 때 그 사실을 알리는 데 쓴다 */
+function mapBgNames(schema) {
+  const m = isObj(schema) && isObj(own(schema, 'map')) ? schema.map : null;
+  if (!m) return [];
+  const out = [];
+  for (const s of [m, ...(Array.isArray(m.sheets) ? m.sheets : [])]) {
+    const bg = isObj(s) && typeof s.bg === 'string' ? s.bg.trim() : '';
+    if (bg && !out.includes(bg)) out.push(bg);
+  }
+  return out;
+}
 const planSig = (plan) => (plan && plan.ok ? plan.lines.map((l) => l.key + '|' + l.kind + '|' + l.choice).join('\n') + '\n' + plan.schemaErrors.length : '');
 
 /**
@@ -10403,6 +10416,8 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
     installedRev, downgrade: installedRev != null && rev < installedRev,
     lines, counts, result: { globalLore, customscript, schemaChanged }, schemaErrors, errorKeys,
     fingerprint: fingerprintOf(data),
+    // 조각의 지도가 쓰는 배경 그림 중 받는 캐릭터에 없는 것 (v1.26.0) — 요약 화면이 알린다. 이름 맞추기는 패널과 같은 규칙(party.matchAssetName)
+    bgMissing: mapBgNames(data.schema).filter((n) => !matchAssetName(Array.isArray(char && char.additionalAssets) ? char.additionalAssets : [], n)),
   };
 }
 
@@ -10696,7 +10711,7 @@ function picksFromPiece(data, char) {
 
 module.exports = {
   hash53, unitHash, sameUnit, loreUnits, regexUnits, schemaUnits, pairUnits, fingerprintOf,
-  pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER, planSig, validBundleId,
+  pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER, planSig, validBundleId, mapBgNames,
   newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, prunePicks, pickSigs, relocatePicks, PICK_LISTS, TAB_COVERS,
 };
 
@@ -43034,6 +43049,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const rest = plan.lines.filter((ln) => !open.includes(ln));
     return `<span class="status-warn">🧩 ${escapeText(bundleMod.summaryText(plan))}</span>`
       + `${plan.note ? `<div style="margin:4px 0;opacity:.85">제작자 설명: ${escapeText(plan.note)}</div>` : ''}`
+      + `${(plan.bgMissing || []).length ? `<div class="status-warn">🖼 이 조각의 지도 배경 그림 ${plan.bgMissing.length}장(${plan.bgMissing.slice(0, 6).map(escapeText).join(', ')}${plan.bgMissing.length > 6 ? ' …' : ''})이 이 캐릭터에 없어요 — 그림은 번들 파일에 안 실려요. 같은 이름의 이미지 에셋을 카드에 넣어야 보이고, 없어도 지도는 종이 바탕으로 돌아요</div>` : ''}`
       + `${plan.downgrade ? `<div class="status-warn">⚠ 설치된 판보다 낮은 판이에요 (r${plan.rev} &lt; r${plan.installedRev}) — 그래도 넣을 수는 있어요</div>` : ''}`
       + `${plan.schemaErrors.length ? `<div class="status-bad">⚠ 이대로 합치면 스키마가 검증을 못 넘어요 — 아래 줄에서 [번들 것]/[내 것]을 바꿔 보세요:<br>${plan.schemaErrors.slice(0, 5).map(escapeText).join('<br>')}</div>` : ''}`
       + open.map(row).join('')
@@ -43163,6 +43179,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       + `<div style="${head}">로어북</div>${lorePart}`
       + `<div style="${head}">정규식</div><div>${regexPart}</div>`
       + `<div style="margin-top:8px;opacity:.85;">같이 따라가는 것 (자동): ${autoBits.length ? autoBits.join(' / ') : '없음'}</div>`
+      + (() => { const bgs = bundleMod.mapBgNames(built.data && built.data.schema);   // 🖼 배경 그림은 카드 에셋 — 파일에 안 실린다 (v1.26.0)
+        return bgs.length ? `<div class="status-warn" style="margin-top:4px;">🖼 지도 배경 그림 ${bgs.length}장(${bgs.slice(0, 6).map(escapeText).join(', ')}${bgs.length > 6 ? ' …' : ''})은 파일에 안 들어가요 — 받는 분이 같은 이름으로 카드에 이미지 에셋을 넣어야 보여요. 그림 파일을 같이 나눠 주세요</div>` : ''; })()
       + `<div style="margin-top:4px;">${built.errors.length
         ? `<span class="status-bad">⚠ 이대로는 내보낼 수 없어요:<br>${built.errors.slice(0, 6).map(escapeText).join('<br>')}${built.errors.length > 6 ? `<br>외 ${built.errors.length - 6}건` : ''}</span>`
         : '<span class="status-ok">✓ 이 조각만으로 설치돼요 (검증 통과) — 값(진행 상태)은 안 실리고, 받는 쪽에서 시작값으로 서요</span>'}</div>`

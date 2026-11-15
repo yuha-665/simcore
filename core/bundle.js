@@ -22,6 +22,7 @@
 
 const P = require('./profile');
 const { validateSchema } = require('./validate');
+const { matchAssetName } = require('./party');
 
 const BASE_COMMENT = P.BASE_COMMENT;
 const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
@@ -120,7 +121,8 @@ const schemaKey = (path, id) => 'schema:' + path.join('.') + (id != null ? `[${i
 const schemaUnit = (path, id, value) => ({ key: schemaKey(path, id), kind: 'schema', path, id: id ?? null, value, label: schemaLabel(path, id) });
 const idList = (x) => Array.isArray(x) && x.length > 0 && P.keyed(x);
 // 스키마에서 늘 id 목록인 자리 — 받는 봇의 그 목록이 비어 있어도 조각이 여기 다른 모양을 못 넣는다
-const ID_LIST_PATHS = new Set(['vars', 'derived', 'checks', 'actions', 'directives', 'rules.events', 'rules.randomEvents.table', 'updater.allow']);
+// map.sheets (v1.26.0) — 지도의 더한 장. 장 하나가 병합 단위 하나라, 제작자가 중층만 고친 다음 판을 내도 받는 사람이 고친 상층은 남는다
+const ID_LIST_PATHS = new Set(['vars', 'derived', 'checks', 'actions', 'directives', 'rules.events', 'rules.randomEvents.table', 'updater.allow', 'map.sheets']);
 
 /**
  * 내 것(c)과 번들(i)을 같은 경로에서 같이 내려간다 — 둘이 같은 굵기의 단위로 쪼개지게.
@@ -279,6 +281,17 @@ function alignUnits(cUnits, iUnits, hasB, bOf, kind) {
   return cUnits;
 }
 /** 계획의 서명 — 화면에 보인 계획과 적용 직전에 다시 세운 계획이 같은지 댄다 */
+/** 지도 배경 그림의 에셋 이름들 (첫 장 + 더한 장, 겹침 없이) — 그림은 카드 에셋이라 번들 파일에 안 실린다. 내보낼 때·넣을 때 그 사실을 알리는 데 쓴다 */
+function mapBgNames(schema) {
+  const m = isObj(schema) && isObj(own(schema, 'map')) ? schema.map : null;
+  if (!m) return [];
+  const out = [];
+  for (const s of [m, ...(Array.isArray(m.sheets) ? m.sheets : [])]) {
+    const bg = isObj(s) && typeof s.bg === 'string' ? s.bg.trim() : '';
+    if (bg && !out.includes(bg)) out.push(bg);
+  }
+  return out;
+}
 const planSig = (plan) => (plan && plan.ok ? plan.lines.map((l) => l.key + '|' + l.kind + '|' + l.choice).join('\n') + '\n' + plan.schemaErrors.length : '');
 
 /**
@@ -495,6 +508,8 @@ function planPiece({ char, data, base = null, choices = {}, fresh = false }) {
     installedRev, downgrade: installedRev != null && rev < installedRev,
     lines, counts, result: { globalLore, customscript, schemaChanged }, schemaErrors, errorKeys,
     fingerprint: fingerprintOf(data),
+    // 조각의 지도가 쓰는 배경 그림 중 받는 캐릭터에 없는 것 (v1.26.0) — 요약 화면이 알린다. 이름 맞추기는 패널과 같은 규칙(party.matchAssetName)
+    bgMissing: mapBgNames(data.schema).filter((n) => !matchAssetName(Array.isArray(char && char.additionalAssets) ? char.additionalAssets : [], n)),
   };
 }
 
@@ -788,6 +803,6 @@ function picksFromPiece(data, char) {
 
 module.exports = {
   hash53, unitHash, sameUnit, loreUnits, regexUnits, schemaUnits, pairUnits, fingerprintOf,
-  pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER, planSig, validBundleId,
+  pieceShapeError, schemaFileHint, planPiece, summaryText, applyPlanToChar, LINE_LABELS, LINE_ORDER, planSig, validBundleId, mapBgNames,
   newBundleId, stripKeep, pickables, buildPiece, picksFromPiece, prunePicks, pickSigs, relocatePicks, PICK_LISTS, TAB_COVERS,
 };

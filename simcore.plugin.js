@@ -6815,48 +6815,94 @@ function validateMap(schema, { vars, exprIds, allIds, err, warn, checkExpr }) {
       }
     }
     const catChk = (v, p) => { if (v != null && (typeof v !== 'string' || !cats.has(v.trim()))) warn(p, `분류 '${v}'가 categories에 없습니다 — 분류 단추로 거를 수 없어요`); };
-    const names = new Set();
-    for (const [k, cap, what] of [['zones', 40, '구역'], ['places', 80, '장소'], ['exits', 16, '이정표']]) {
-      if (M[k] == null) continue;
-      if (!Array.isArray(M[k])) { err(`${P}.${k}`, `${what}(${k})은 배열`); continue; }
-      if (M[k].length > cap) err(`${P}.${k}`, `${what}은 ${cap}개까지`);
-      M[k].forEach((e, i) => {
-        const ep = `${P}.${k}[${i}]`;
-        if (!e || typeof e !== 'object' || Array.isArray(e)) { err(ep, `${what}은 객체`); return; }
-        const nm = k === 'places' ? e.name : e.label;
-        if (typeof nm !== 'string' || !nm.trim()) err(`${ep}.${k === 'places' ? 'name' : 'label'}`, `${what} 이름 필요`);
-        else if (k !== 'exits') {
-          for (const n of [nm, ...(Array.isArray(e.alias) ? e.alias : []), ...(Array.isArray(e.match) ? e.match : [])]) {
-            if (typeof n !== 'string') { err(ep, '별칭·match는 문자열 배열'); continue; }
-            if (names.has(n.trim())) err(ep, `이름 '${n}'이 다른 장소·구역과 겹칩니다 — 위치 값이 어디를 가리키는지 모호해집니다`);
-            names.add(n.trim());
-          }
-        }
-        for (const t of ['desc', 'rumor', 'sub', 'color']) if (e[t] != null && typeof e[t] !== 'string') err(`${ep}.${t}`, `${t}는 문자열`);
-        knownChk(e.known, `${ep}.known`);
-        if (k === 'exits') {
-          if (!['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].includes(e.dir)) err(`${ep}.dir`, 'dir은 n·ne·e·se·s·sw·w·nw 중 하나');
-          if (e.at != null) pctChk(e.at, `${ep}.at`, 'at(변을 따라 놓을 자리)');
-          return;
-        }
-        catChk(e.cat, `${ep}.cat`);
-        const okX = pctChk(e.x, `${ep}.x`, 'x'), okY = pctChk(e.y, `${ep}.y`, 'y');
-        if (k === 'zones') {
-          const okW = pctChk(e.w, `${ep}.w`, 'w'), okH = pctChk(e.h, `${ep}.h`, 'h');
-          if (okW && okH && (!e.w || !e.h)) err(ep, '구역 너비·높이(w·h)는 0보다 커야 함');
-          if (okX && okY && okW && okH && (e.x + e.w > 100.5 || e.y + e.h > 100.5)) warn(ep, '구역이 지도 밖으로 나갑니다 — 넘친 만큼 잘려 그려집니다');
-        }
-      });
+    if (M.addPlace != null && typeof M.addPlace !== 'boolean') err(`${P}.addPlace`, 'addPlace는 true/false');
+    else if (M.addPlace === true && M.listVar == null) warn(`${P}.addPlace`, '장소 적기는 찾아낸 곳 목록(listVar)에 적습니다 — listVar가 없으면 단추가 안 생깁니다');
+    // 장 (v1.26.0) — 지금의 map이 첫 장 'main', sheets[]가 더한 장. 문(to)이 가리킬 수 있는 id부터 모은다
+    const sheetList = [];   // { s, sp, id } — 객체인 더한 장만 (id가 틀려도 안의 것은 검사한다)
+    const doorIds = new Set(['main']);
+    if (M.sheets != null) {
+      if (!Array.isArray(M.sheets)) err(`${P}.sheets`, 'sheets(더한 장)는 배열');
+      else {
+        if (M.sheets.length > CAPS.SHEETS - 1) err(`${P}.sheets`, `지도는 첫 장을 포함해 ${CAPS.SHEETS}장까지`);
+        M.sheets.forEach((s, i) => {
+          const sp = `${P}.sheets[${i}]`;
+          if (!isObj(s)) { err(sp, '장은 객체'); return; }
+          let id = null;
+          if (typeof s.id !== 'string' || !SHEET_ID.test(s.id)) err(`${sp}.id`, '장 id 필요 — 영문·숫자·_·- (32자 이내)');
+          else if (s.id === 'main') err(`${sp}.id`, "장 id 'main'은 첫 장의 이름이라 쓸 수 없음");
+          else if (doorIds.has(s.id)) err(`${sp}.id`, `중복 장 id '${s.id}'`);
+          else { id = s.id; doorIds.add(id); }
+          for (const k of ['label', 'note', 'bg']) if (s[k] != null && typeof s[k] !== 'string') err(`${sp}.${k}`, `${k}는 문자열이어야 함`);
+          if (s.ratio != null && (typeof s.ratio !== 'number' || s.ratio < 0.4 || s.ratio > 2.5)) err(`${sp}.ratio`, 'ratio(세로÷가로)는 0.4~2.5 숫자');
+          for (const k of ['fog', 'bgAlways']) if (s[k] != null && typeof s[k] !== 'boolean') err(`${sp}.${k}`, `${k}는 true/false`);
+          sheetList.push({ s, sp, id });
+        });
+      }
     }
-    const nPlaces = Array.isArray(M.places) ? M.places.length : 0, nZones = Array.isArray(M.zones) ? M.zones.length : 0;
+    const names = new Set();
+    /** 장 하나의 구역·장소·이정표 — S는 첫 장이면 map 자신, sid는 그 장의 id(틀린 id면 null) */
+    const checkItems = (S, SP, sid) => {
+      for (const [k, cap, what] of [['zones', 40, '구역'], ['places', 80, '장소'], ['exits', 16, '이정표']]) {
+        if (S[k] == null) continue;
+        if (!Array.isArray(S[k])) { err(`${SP}.${k}`, `${what}(${k})은 배열`); continue; }
+        if (S[k].length > cap) err(`${SP}.${k}`, `${what}은 ${cap}개까지`);
+        S[k].forEach((e, i) => {
+          const ep = `${SP}.${k}[${i}]`;
+          if (!e || typeof e !== 'object' || Array.isArray(e)) { err(ep, `${what}은 객체`); return; }
+          const nm = k === 'places' ? e.name : e.label;
+          if (typeof nm !== 'string' || !nm.trim()) err(`${ep}.${k === 'places' ? 'name' : 'label'}`, `${what} 이름 필요`);
+          else if (k !== 'exits') {
+            for (const n of [nm, ...(Array.isArray(e.alias) ? e.alias : []), ...(Array.isArray(e.match) ? e.match : [])]) {
+              if (typeof n !== 'string') { err(ep, '별칭·match는 문자열 배열'); continue; }
+              if (names.has(n.trim())) err(ep, `이름 '${n}'이 다른 장소·구역과 겹칩니다 — 위치 값이 어디를 가리키는지 모호해집니다`);
+              names.add(n.trim());
+            }
+          }
+          for (const t of ['desc', 'rumor', 'sub', 'color']) if (e[t] != null && typeof e[t] !== 'string') err(`${ep}.${t}`, `${t}는 문자열`);
+          knownChk(e.known, `${ep}.known`);
+          // 문 — 장소·이정표를 누르면 펼칠 장
+          if (k !== 'zones' && e.to != null) {
+            if (typeof e.to !== 'string' || !doorIds.has(e.to)) err(`${ep}.to`, `문(to) '${String(e.to)}'가 없는 지도(장)를 가리킵니다 — 장 id(문자열)를 적으세요 (첫 장은 main)`);
+            else if (e.to === sid) err(`${ep}.to`, '문(to)이 자기 장을 가리킵니다');
+          }
+          if (k === 'exits') {
+            if (!['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].includes(e.dir)) err(`${ep}.dir`, 'dir은 n·ne·e·se·s·sw·w·nw 중 하나');
+            if (e.at != null) pctChk(e.at, `${ep}.at`, 'at(변을 따라 놓을 자리)');
+            return;
+          }
+          catChk(e.cat, `${ep}.cat`);
+          const okX = pctChk(e.x, `${ep}.x`, 'x'), okY = pctChk(e.y, `${ep}.y`, 'y');
+          if (k === 'zones') {
+            const okW = pctChk(e.w, `${ep}.w`, 'w'), okH = pctChk(e.h, `${ep}.h`, 'h');
+            if (okW && okH && (!e.w || !e.h)) err(ep, '구역 너비·높이(w·h)는 0보다 커야 함');
+            if (okX && okY && okW && okH && (e.x + e.w > 100.5 || e.y + e.h > 100.5)) warn(ep, '구역이 지도 밖으로 나갑니다 — 넘친 만큼 잘려 그려집니다');
+          }
+        });
+      }
+    };
+    checkItems(M, P, 'main');
+    for (const { s, sp, id } of sheetList) checkItems(s, sp, id);
+    const all = [{ s: M, sp: P, id: 'main', fog: M.fog === true }, ...sheetList.map((x) => ({ ...x, fog: (x.s.fog ?? M.fog) === true }))];
+    const len = (v) => (Array.isArray(v) ? v.length : 0);
+    const nPlaces = all.reduce((n, x) => n + len(x.s.places), 0), nZones = all.reduce((n, x) => n + len(x.s.zones), 0);
     if (M.listVar != null && !nZones) warn(`${P}.listVar`, '찾아낸 곳은 구역에 꽂힙니다 — 구역(zones)이 없으면 전부 "자리를 못 찾은 곳"이 됩니다');
     if (seenDef && (seenDef.maxItems ?? 20) < nPlaces + nZones) warn(`${P}.seenVar`, `발자취 목록 '${seenDef.id}'의 maxItems(${seenDef.maxItems ?? 20})가 장소+구역 수(${nPlaces + nZones})보다 작습니다 — 꽉 차면 더 적지 못해 새로 간 곳이 안개에 남습니다`);
-    // 안개 지도에서 위치 선택지에 없는 장소 = 영영 못 가 보는 곳 (known도 없으면 끝까지 안 보인다)
-    if (M.fog === true && locDef && locDef.type === 'enum' && Array.isArray(locDef.enum) && Array.isArray(M.places)) {
-      const en = new Set(locDef.enum.map((x) => String(x).trim()));
-      const never = M.places.filter((p) => p && typeof p.name === 'string' && p.known == null
-        && ![p.name, ...(Array.isArray(p.alias) ? p.alias : [])].some((n) => en.has(String(n).trim()))).map((p) => p.name);
-      if (never.length) warn(`${P}.places`, `위치 선택지(${M.locVar})에 없고 known도 없는 장소 ${never.length}곳 — 갈 수 없어 끝까지 안개 속입니다: ${never.slice(0, 5).join(', ')}${never.length > 5 ? ' …' : ''}`);
+    const en = locDef && locDef.type === 'enum' && Array.isArray(locDef.enum) ? new Set(locDef.enum.map((x) => String(x).trim())) : null;
+    for (const x of all) {
+      // 안개 낀 장에서 위치 선택지에 없는 장소 = 영영 못 가 보는 곳 (known도 없으면 끝까지 안 보인다)
+      if (x.fog && en && Array.isArray(x.s.places)) {
+        const never = x.s.places.filter((p) => p && typeof p.name === 'string' && p.known == null
+          && ![p.name, ...(Array.isArray(p.alias) ? p.alias : [])].some((n) => en.has(String(n).trim()))).map((p) => p.name);
+        if (never.length) warn(`${x.sp}.places`, `위치 선택지(${M.locVar})에 없고 known도 없는 장소 ${never.length}곳 — 갈 수 없어 끝까지 안개 속입니다: ${never.slice(0, 5).join(', ')}${never.length > 5 ? ' …' : ''}`);
+      }
+      // 아무도 못 보는 장 — 안개 낀 장은 가 보거나 문으로 들어가야 보인다 (안개 없는 장은 띠에 늘 뜬다)
+      if (x.id && x.id !== 'main' && x.fog) {
+        const door = all.some((o) => o !== x && ['places', 'exits'].some((k) => (Array.isArray(o.s[k]) ? o.s[k] : []).some((e) => e && e.to === x.id)));
+        const namesIn = [...(Array.isArray(x.s.places) ? x.s.places : []).flatMap((p) => (p ? [p.name, ...(Array.isArray(p.alias) ? p.alias : [])] : [])),
+          ...(Array.isArray(x.s.zones) ? x.s.zones : []).flatMap((z) => (z ? [z.label, ...(Array.isArray(z.match) ? z.match : [])] : []))];
+        const reachable = en ? namesIn.some((n) => en.has(String(n).trim())) : M.locVar != null;
+        if (!door && !reachable) warn(x.sp, `이 장으로 가는 문도 없고 위치 선택지${M.locVar ? `(${M.locVar})` : ''}에 이 장의 장소·구역도 없습니다 — 아무도 이 장을 볼 수 없어요`);
+      }
     }
   }
 }

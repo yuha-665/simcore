@@ -148,6 +148,54 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     }
   }
 
+  console.log('── ② 검증 — 장');
+  {
+    const iss = (patch, base = TWO) => { const s = clone(base); patch(s.map, s); return validateSchema(s); };
+    const has = (r, path, word, kind) => (kind === 'err' ? r.errors : kind === 'warn' ? r.warnings : [...r.errors, ...r.warnings]).some((e) => e.path.startsWith(path) && e.msg.includes(word));
+    const mapOnly = (r) => ({ errors: r.errors.filter((e) => String(e.path).startsWith('$.map')).map((e) => ({ path: e.path, msg: e.msg })),
+      warnings: r.warnings.filter((e) => String(e.path).startsWith('$.map')).map((e) => ({ path: e.path, msg: e.msg })) });
+    const ok = mapOnly(validateSchema(clone(TWO)));
+    ck('장 둘 예시 — 지도 오류 0 · 경고 0', ok.errors.length === 0 && ok.warnings.length === 0, J(ok));
+    const G = JSON.parse(fs.readFileSync(__P('fixtures/map-golden-v1.25.1.json'), 'utf8'));
+    for (const c of G.cases.filter((x) => x.issues)) ck(`★ 황금본 — 검증 결과가 그대로 (${c.name})`, J(mapOnly(validateSchema(clone(c.schema)))) === J(c.issues), J(mapOnly(validateSchema(clone(c.schema)))));
+
+    ck('sheets는 배열', has(iss((m) => { m.sheets = {}; }), '$.map.sheets', '배열', 'err'), '');
+    ck('장은 객체', has(iss((m) => { m.sheets[0] = 5; }), '$.map.sheets[0]', '객체', 'err'), '');
+    ck('장 id 없음', has(iss((m) => { delete m.sheets[0].id; m.places[0].to = undefined; m.exits[0].to = undefined; }), '$.map.sheets[0].id', '장 id', 'err'), '');
+    ck('장 id 형식', has(iss((m) => { m.sheets[0].id = 'a b'; }), '$.map.sheets[0].id', '장 id', 'err'), '');
+    ck('장 id main은 못 쓴다', has(iss((m) => { m.sheets[0].id = 'main'; }), '$.map.sheets[0].id', 'main', 'err'), '');
+    ck('장 id 중복', has(iss((m) => { m.sheets.push({ id: 'under', label: '또' }); }), '$.map.sheets[1].id', '중복', 'err'), '');
+    ck('장은 12장까지', has(iss((m) => { for (let i = 0; i < 11; i++) m.sheets.push({ id: `s${i}`, label: `장${i}`, fog: false }); }), '$.map.sheets', '12', 'err'), '');
+    ck('11장 더한 것(합 12)은 통과', !has(iss((m) => { for (let i = 0; i < 10; i++) m.sheets.push({ id: `s${i}`, label: `장${i}`, fog: false }); }), '$.map.sheets', '12', 'err'), '');
+    ck('★ 문이 없는 장을 가리킴', has(iss((m) => { m.places[1].to = 'nope'; }), '$.map.places[1].to', '없는 지도', 'err'), '');
+    ck('문이 글자가 아님', has(iss((m) => { m.places[1].to = 5; }), '$.map.places[1].to', '장 id', 'err'), '');
+    ck('★ 문이 자기 장을 가리킴 (더한 장 · 첫 장)', has(iss((m) => { m.sheets[0].exits[0].to = 'under'; }), '$.map.sheets[0].exits[0].to', '자기', 'err')
+      && has(iss((m) => { m.places[1].to = 'main'; }), '$.map.places[1].to', '자기', 'err'), '');
+    ck('★ 장을 넘어 이름이 겹침', has(iss((m) => { m.sheets[0].places[0].name = '어소'; }), '$.map.sheets[0].places[0]', '겹칩니다', 'err')
+      && has(iss((m) => { m.sheets[0].zones[0].match = ['들판']; }), '$.map.sheets[0].zones[0]', '겹칩니다', 'err'), '');
+    ck('장의 fog·bgAlways · 지도의 addPlace는 true/false', has(iss((m) => { m.sheets[0].fog = 'yes'; }), '$.map.sheets[0].fog', 'true/false', 'err')
+      && has(iss((m) => { m.sheets[0].bgAlways = 1; }), '$.map.sheets[0].bgAlways', 'true/false', 'err') && has(iss((m) => { m.addPlace = 'on'; }), '$.map.addPlace', 'true/false', 'err'), '');
+    ck('장의 이름·배경·비율', has(iss((m) => { m.sheets[0].bg = 5; }), '$.map.sheets[0].bg', '문자열', 'err') && has(iss((m) => { m.sheets[0].label = 5; }), '$.map.sheets[0].label', '문자열', 'err')
+      && has(iss((m) => { m.sheets[0].ratio = 9; }), '$.map.sheets[0].ratio', '0.4~2.5', 'err'), '');
+    ck('장 안의 좌표·방향·식·분류는 첫 장과 같은 검사 (경로만 장)', has(iss((m) => { m.sheets[0].places[0].x = 140; }), '$.map.sheets[0].places[0].x', '0~100', 'err')
+      && has(iss((m) => { m.sheets[0].exits[0].dir = 'up'; }), '$.map.sheets[0].exits[0].dir', 'n·ne', 'err')
+      && has(iss((m) => { m.sheets[0].places[0].known = 'has(nope, "x")'; }), '$.map.sheets[0].places[0].known', "알 수 없는 변수 'nope'", 'err')
+      && has(iss((m) => { m.sheets[0].places[0].cat = '종교'; }), '$.map.sheets[0].places[0].cat', 'categories에 없습니다', 'warn')
+      && has(iss((m) => { m.sheets[0].zones = 'x'; }), '$.map.sheets[0].zones', '배열', 'err'), '');
+
+    ck('★ 발자취 크기 경고는 전 장 합계로 (첫 장 5 + 수로 3 = 8)', has(iss((m, s) => { s.vars[1].maxItems = 6; }), '$.map.seenVar', '장소+구역 수(8)', 'warn')
+      && !has(iss((m, s) => { s.vars[1].maxItems = 6; }, BASE), '$.map.seenVar', 'maxItems'), '');
+    ck('★ 안개 낀 장 — 위치 선택지에 없고 known도 없는 장소', has(iss((m, s) => { s.vars[0].enum = s.vars[0].enum.filter((x) => x !== '수문'); }), '$.map.sheets[0].places', '안개 속', 'warn'), '');
+    ck('안개 없는 장이면 그 경고 없음', !has(iss((m, s) => { s.vars[0].enum = s.vars[0].enum.filter((x) => x !== '수문'); m.sheets[0].fog = false; }), '$.map.sheets[0].places', '안개 속'), '');
+    const lost = (m) => { m.sheets.push({ id: 'lost', label: '잃어버린 곳', fog: true, places: [{ name: '섬', x: 10, y: 10, known: true }] }); };
+    ck('★ 아무도 못 보는 장 (문도 없고 위치 선택지에도 없는 안개 장)', has(iss(lost), '$.map.sheets[1]', '아무도', 'warn'), '');
+    ck('문이 있으면 그 경고 없음', !has(iss((m) => { lost(m); m.places[2].to = 'lost'; }), '$.map.sheets[1]', '아무도'), '');
+    ck('위치 선택지에 있으면 없음', !has(iss((m, s) => { lost(m); s.vars[0].enum.push('섬'); }), '$.map.sheets[1]', '아무도'), '');
+    ck('안개 없는 장이면 없음 (띠에 뜬다)', !has(iss((m) => { lost(m); m.sheets[1].fog = false; }), '$.map.sheets[1]', '아무도'), '');
+    ck('찾아낸 곳 목록 없이 장소 적기를 켬', has(iss((m) => { m.addPlace = true; delete m.listVar; }), '$.map.addPlace', '찾아낸 곳', 'warn') && !has(iss((m) => { m.addPlace = true; }), '$.map.addPlace', '찾아낸 곳'), '');
+    ck('찾아낸 곳인데 구역 없음 경고는 전 장 기준', !has(iss((m) => { delete m.zones; }), '$.map.listVar', '구역') && has(iss((m) => { delete m.zones; delete m.sheets[0].zones; }), '$.map.listVar', '구역', 'warn'), '');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })().catch((e) => { console.log('FAIL 테스트 본문이 던짐 →', e && e.stack || e); console.log('\n0 passed, 1 failed'); process.exit(1); });

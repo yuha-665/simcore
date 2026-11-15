@@ -4399,7 +4399,8 @@ const SCHEMA_MAP_RULES = [
   '- 지도는 **우상단 버튼이 여는 그림 지도 패널**입니다. 좌표는 지도 크기에 대한 % (x 0=왼쪽~100=오른쪽, y 0=위~100=아래). `ratio`는 세로÷가로(기본 1).',
   '- `places`: [{ "name", "x", "y", "sub"?, "cat"?, "desc"?, "rumor"?, "known"?, "alias"? }] — 핀 하나, 누르면 desc가 펼쳐집니다. `cat`은 `categories`([{ "label", "color" }])의 이름 — 분류 단추로 거릅니다.',
   '- `zones`: [{ "label", "x", "y", "w", "h", "cat"?, "desc"?, "known"? }] — 구역(직사각형: 권역·지형·방향). `exits`: [{ "label", "dir": "n|ne|e|se|s|sw|w|nw" }] — 가장자리 이정표(지도 밖으로 이어지는 곳).',
-  '- `locVar` = 현재 위치 변수(enum 추천). 값이 장소 name·alias나 구역 label과 **똑같으면** 거기에 "현재 위치"가 찍힙니다 — **장소 이름을 위치 선택지와 맞추세요.**',
+  '- `locVar` = 현재 위치 변수(enum 추천). 값이 장소 name·alias나 구역 label과 **똑같으면** 거기에 "현재 위치"가 찍힙니다 — **장소 이름을 위치 선택지와 맞추세요.** '
+  + '위치가 자유 글(text)이면 **품은 이름**으로도 찾습니다("영주 저택 집무실" → 영주 저택, 긴 이름 우선) — 그 변수 desc에 "지도의 장소 이름으로 시작해 적어라"와 이름들을 일러 주세요.',
   '- **채워지는 지도**: `fog: true`면 못 가 본 구역은 안개로 가리고 모르는 장소는 안 그립니다. `seenVar`(list 변수)를 주면 **시스템이** 들른 장소·구역 이름을 적어 한 번 간 곳은 계속 보입니다 (allow에 안 넣어도 됨, maxItems ≥ 장소+구역 수).',
   '- `known`: true = 처음부터 보임(집·출발지), 조건식 = 참이 되면 보임(소문·탐사 진척), 없음 = 가 봐야 보임. 보이지만 안 가 본 곳은 desc 대신 `rumor`가 나옵니다.',
   '- `listVar`(list 변수) 항목 "이름 (구역)"은 그 구역 빈자리에 핀으로 꽂힙니다 — 보조가 서사로 찾아낸 곳(채집지·던전·발견물)을 적는 목록에. 그 목록 desc에 "이름 (구역)" 꼴을 못박으세요.',
@@ -12114,7 +12115,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(section('02', '위치와 채워지는 지도', '어느 변수가 "지금 여기"인지, 가 본 곳을 어디에 적을지 정해요.',
       h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
         field('현재 위치 변수', bindSelect(M.locVar ?? '', [['', '(없음)'], ...ones.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
-          (x) => { if (x) M.locVar = x; else delete M.locVar; rerender(); }), '값이 장소 이름·구역 이름과 똑같으면 거기에 현재 위치가 찍혀요. 선택지(enum)를 장소 이름과 맞추세요.'),
+          (x) => { if (x) M.locVar = x; else delete M.locVar; rerender(); }), '값이 장소 이름·구역 이름과 똑같으면 거기에 현재 위치가 찍혀요. 선택지(enum)를 장소 이름과 맞추세요. 자유 글(text) 변수면 이름을 품기만 해도 잡아요("저택 2층 집무실" → 저택).'),
         field('발자취 목록', h('div', { class: 'sce-map-tools' },
           tag(bindSelect(M.seenVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
             (x) => { if (x) M.seenVar = x; else delete M.seenVar; dropMore(x); rerender(); }), 'seen-var'),

@@ -708,6 +708,30 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('moreLists가 없는 지도의 핀은 글자 하나 안 바뀐다 — list·own 키가 없다 (황금본)', (() => { const p = view(TWO, { finds: ['폐사 (가모가와 동안)'] }).pins[0]; return p.name === '폐사' && !('list' in p) && !('own' in p); })(), '');
   }
 
+  console.log('── ⑩ 자유 글 위치 — 품은 이름으로 지금 여기 (v1.26.2)');
+  {
+    // 실기(베리디아 세이브): 위치가 자유 글이면 보조는 "영주 저택 집무실"처럼 방까지 적는다 — 똑같아야 잡는 규칙으론 41턴에 3턴만 지도에 떴다
+    const TX = clone(TWO); TX.vars[0] = { id: 'location', label: '위치', type: 'text', init: '어소', maxLength: 30 };
+    const at = (loc, schema = TX, more = {}) => { const v = view(schema, { location: loc, ...more }); return v.here ? `${v.sheet}:${v.here.kind}:${v.here.name}` : `${v.sheet}:밖`; };
+    ck('★ 자유 글 위치 — 장소 이름을 품으면 그 장소', at('어소 뒤뜰') === 'main:place:어소' && at('기온의 찻집 이층') === 'main:place:기온', [at('어소 뒤뜰'), at('기온의 찻집 이층')].join(' '));
+    ck('★ 다른 장의 장소를 품으면 그 장이 뜬다', at('수문 앞 계단') === 'under:place:수문', at('수문 앞 계단'));
+    ck('별칭·구역 이름·구역의 다른 이름도', at('島原 대문') === 'main:place:시마바라' && at('가모가와 동안의 둑') === 'main:zone:가모가와 동안' && at('넓은 들판 한가운데') === 'main:zone:서쪽 들판',
+      [at('島原 대문'), at('가모가와 동안의 둑'), at('넓은 들판 한가운데')].join(' '));
+    ck('★ 여럿을 품으면 긴 이름이 이긴다 · 길이가 같으면 장소 > 찾아낸 곳 > 구역', at('서쪽 들판 끝 기온 가는 길') === 'main:zone:서쪽 들판'
+      && at('폐사 옆 어소 담', TX, { finds: ['폐사 (들판)'] }) === 'main:place:어소' && at('들판의 폐사', TX, { finds: ['폐사 (들판)'] }) === 'main:pin:폐사', [at('서쪽 들판 끝 기온 가는 길'), at('폐사 옆 어소 담', TX, { finds: ['폐사 (들판)'] }), at('들판의 폐사', TX, { finds: ['폐사 (들판)'] })].join(' '));
+    ck('똑같은 이름이 있으면 그쪽이 먼저 (옛 규칙 그대로)', at('가모가와 동안', TX, { finds: ['가모가와 동안의 둑 (서쪽 들판)'] }) === 'main:zone:가모가와 동안', at('가모가와 동안', TX, { finds: ['가모가와 동안의 둑 (서쪽 들판)'] }));
+    ck('아무 이름도 안 품으면 지도 밖 — 첫 장', at('에도 가는 배 위') === 'main:밖' && at('') === 'main:밖', at('에도 가는 배 위'));
+    const one = clone(TX); one.map.places.push({ name: '강', x: 5, y: 5 });
+    ck('한 글자 이름은 품은 것으로 안 친다 ("강"이 "강아지 가게"에 걸리지 않게) — 똑같으면 잡는다', at('강아지 가게', one) === 'main:밖' && at('강', one) === 'main:place:강', [at('강아지 가게', one), at('강', one)].join(' '));
+    ck('★ 선택지(enum) 위치는 똑같아야만 — 옛 지도는 그대로', (() => { const e = clone(TWO); e.vars[0].enum.push('어소 뒤뜰'); return at('어소 뒤뜰', e) === 'main:밖'; })(), '');
+    const t2 = st(TX, { location: '수문 앞 계단' });
+    const rec = MAP.recordVisit(TX, t2, engine.makeLookup);
+    ck('★ 발자취에는 지도의 이름이 적힌다 (적힌 글 그대로가 아니라)', rec === '수문' && J(t2.vars.visited) === J(['수문']), J([rec, t2.vars.visited]));
+    const h = MAP.renderMapHtml(view(TX, { location: '어소 뒤뜰' }), {}, {});
+    ck('아래 줄에 적힌 글 그대로가 보인다 — 어느 방인지는 위치 값이 안다', h.includes('어소 뒤뜰'), (h.match(/<div class="scm-hereline">.*?<\/div>/) || [''])[0]);
+    ck('규격서 — 자유 글 위치 줄', src.includes('품은 이름'), '');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })().catch((e) => { console.log('FAIL 테스트 본문이 던짐 →', e && e.stack || e); console.log('\n0 passed, 1 failed'); process.exit(1); });

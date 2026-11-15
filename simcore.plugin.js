@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.26.1
-//@display-name SimCore (시뮬 엔진) v1.26.1 🗺️ 지도 여러 장 — 문을 누르면 다음 지도 (찾아낸 곳 목록 여러 개)
+//@version 1.26.2
+//@display-name SimCore (시뮬 엔진) v1.26.2 🗺️ 지도 여러 장 — 문을 누르면 다음 지도 (목록 여러 개 · 자유 글 위치)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,14 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.26.2 ───────────────────────────────────────────────
+// **자유 글 위치는 품은 이름으로도 "지금 여기"를 찾는다.** 베리디아 지도를 넣고 유저의 실제 세이브를 대 보니(2026-11-15, 스냅샷 41개) 보조는 위치를
+// "영주 저택 집무실"·"마을 공터"·"저택 2층 집무실"처럼 방까지 적었다 — 값이 장소 이름과 똑같아야 잡는 규칙으론 3턴만 지도에 떴고 나머지는 전부 "지도 밖"이었다.
+// - 위치 변수가 **text**일 때만, 똑같은 이름을 못 찾았을 때만: 값이 품은 이름 가운데 가장 긴 것(장소 이름·별칭 · 찾아낸 곳 · 구역 이름·match).
+//   길이가 같으면 장소 > 찾아낸 곳 > 구역, 그다음 장 순. 한 글자 이름은 안 친다. 발자취에는 지도의 이름이 적히고, 패널 아래 줄에는 적힌 글 그대로가 보인다.
+// - **선택지(enum) 위치는 똑같아야만** — 옛 지도는 재료가 그대로다(황금본).
+// - 테스트: `테스트/test-map-sheets.js` ⑩ (235).
 //
 // ── v1.26.1 ───────────────────────────────────────────────
 // **지도가 찾아낸 곳 목록을 여러 개 읽는다 — `map.moreLists: ["list 변수 id", …]`.** 베리디아에 지도를 넣다 나온 것(2026-11-15): 탐사 발견이 특산품·개척지 두 목록에
@@ -6739,6 +6747,21 @@ function mapView(schema, state, makeLookup, opts = {}) {
     if (!here) for (const B of built) {
       const z = B.zones.find((q) => q.match.some((mm) => norm(mm) === L));
       if (z) { z.here = true; z.seen = true; here = { kind: 'zone', key: z.key, name: z.label }; hereB = B; break; }
+    }
+    // 자유 글 위치(text 변수)는 품은 이름으로도 찾는다 (v1.26.2). 실기(베리디아): 보조는 "영주 저택 집무실"·"마을 공터"처럼 방까지 적는다 —
+    // 똑같아야 잡는 규칙으론 41턴에 3턴만 지도에 떴다. 선택지(enum) 위치는 똑같아야만 잡는다(옛 지도는 그대로).
+    // 긴 이름이 이기고, 같으면 종류 순(장소 > 찾아낸 곳 > 구역) · 장 순. 한 글자 이름은 안 친다("강"이 "강아지 가게"에 걸린다)
+    if (!here && byId[m.locVar]?.type === 'text') {
+      let best = null, bestLen = 1;
+      const tryHit = (n, B, kind, o) => { const s = norm(n); if (s.length > bestLen && L.includes(s)) { best = { B, kind, o }; bestLen = s.length; } };
+      for (const B of built) for (const p of B.places) for (const n of [p.name, ...p.alias]) tryHit(n, B, 'place', p);
+      for (const B of built) for (const d of B.pins) tryHit(d.name, B, 'pin', d);
+      for (const B of built) for (const z of B.zones) for (const n of z.match) tryHit(n, B, 'zone', z);
+      if (best) {
+        const { B, kind, o } = best;
+        o.here = true; if (kind !== 'pin') o.seen = true;
+        here = { kind, key: o.key, name: kind === 'zone' ? o.label : o.name }; hereB = B;
+      }
     }
   }
 
@@ -20942,7 +20965,8 @@ const SCHEMA_MAP_RULES = [
   '- 지도는 **우상단 버튼이 여는 그림 지도 패널**입니다. 좌표는 지도 크기에 대한 % (x 0=왼쪽~100=오른쪽, y 0=위~100=아래). `ratio`는 세로÷가로(기본 1).',
   '- `places`: [{ "name", "x", "y", "sub"?, "cat"?, "desc"?, "rumor"?, "known"?, "alias"? }] — 핀 하나, 누르면 desc가 펼쳐집니다. `cat`은 `categories`([{ "label", "color" }])의 이름 — 분류 단추로 거릅니다.',
   '- `zones`: [{ "label", "x", "y", "w", "h", "cat"?, "desc"?, "known"? }] — 구역(직사각형: 권역·지형·방향). `exits`: [{ "label", "dir": "n|ne|e|se|s|sw|w|nw" }] — 가장자리 이정표(지도 밖으로 이어지는 곳).',
-  '- `locVar` = 현재 위치 변수(enum 추천). 값이 장소 name·alias나 구역 label과 **똑같으면** 거기에 "현재 위치"가 찍힙니다 — **장소 이름을 위치 선택지와 맞추세요.**',
+  '- `locVar` = 현재 위치 변수(enum 추천). 값이 장소 name·alias나 구역 label과 **똑같으면** 거기에 "현재 위치"가 찍힙니다 — **장소 이름을 위치 선택지와 맞추세요.** '
+  + '위치가 자유 글(text)이면 **품은 이름**으로도 찾습니다("영주 저택 집무실" → 영주 저택, 긴 이름 우선) — 그 변수 desc에 "지도의 장소 이름으로 시작해 적어라"와 이름들을 일러 주세요.',
   '- **채워지는 지도**: `fog: true`면 못 가 본 구역은 안개로 가리고 모르는 장소는 안 그립니다. `seenVar`(list 변수)를 주면 **시스템이** 들른 장소·구역 이름을 적어 한 번 간 곳은 계속 보입니다 (allow에 안 넣어도 됨, maxItems ≥ 장소+구역 수).',
   '- `known`: true = 처음부터 보임(집·출발지), 조건식 = 참이 되면 보임(소문·탐사 진척), 없음 = 가 봐야 보임. 보이지만 안 가 본 곳은 desc 대신 `rumor`가 나옵니다.',
   '- `listVar`(list 변수) 항목 "이름 (구역)"은 그 구역 빈자리에 핀으로 꽂힙니다 — 보조가 서사로 찾아낸 곳(채집지·던전·발견물)을 적는 목록에. 그 목록 desc에 "이름 (구역)" 꼴을 못박으세요.',
@@ -28657,7 +28681,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(section('02', '위치와 채워지는 지도', '어느 변수가 "지금 여기"인지, 가 본 곳을 어디에 적을지 정해요.',
       h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
         field('현재 위치 변수', bindSelect(M.locVar ?? '', [['', '(없음)'], ...ones.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
-          (x) => { if (x) M.locVar = x; else delete M.locVar; rerender(); }), '값이 장소 이름·구역 이름과 똑같으면 거기에 현재 위치가 찍혀요. 선택지(enum)를 장소 이름과 맞추세요.'),
+          (x) => { if (x) M.locVar = x; else delete M.locVar; rerender(); }), '값이 장소 이름·구역 이름과 똑같으면 거기에 현재 위치가 찍혀요. 선택지(enum)를 장소 이름과 맞추세요. 자유 글(text) 변수면 이름을 품기만 해도 잡아요("저택 2층 집무실" → 저택).'),
         field('발자취 목록', h('div', { class: 'sce-map-tools' },
           tag(bindSelect(M.seenVar ?? '', [['', '(없음)'], ...lists.map((x) => [x.id, `${x.label ?? x.id} (${x.id})`])],
             (x) => { if (x) M.seenVar = x; else delete M.seenVar; dropMore(x); rerender(); }), 'seen-var'),

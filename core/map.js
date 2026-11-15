@@ -311,6 +311,21 @@ function mapView(schema, state, makeLookup, opts = {}) {
       const z = B.zones.find((q) => q.match.some((mm) => norm(mm) === L));
       if (z) { z.here = true; z.seen = true; here = { kind: 'zone', key: z.key, name: z.label }; hereB = B; break; }
     }
+    // 자유 글 위치(text 변수)는 품은 이름으로도 찾는다 (v1.26.2). 실기(베리디아): 보조는 "영주 저택 집무실"·"마을 공터"처럼 방까지 적는다 —
+    // 똑같아야 잡는 규칙으론 41턴에 3턴만 지도에 떴다. 선택지(enum) 위치는 똑같아야만 잡는다(옛 지도는 그대로).
+    // 긴 이름이 이기고, 같으면 종류 순(장소 > 찾아낸 곳 > 구역) · 장 순. 한 글자 이름은 안 친다("강"이 "강아지 가게"에 걸린다)
+    if (!here && byId[m.locVar]?.type === 'text') {
+      let best = null, bestLen = 1;
+      const tryHit = (n, B, kind, o) => { const s = norm(n); if (s.length > bestLen && L.includes(s)) { best = { B, kind, o }; bestLen = s.length; } };
+      for (const B of built) for (const p of B.places) for (const n of [p.name, ...p.alias]) tryHit(n, B, 'place', p);
+      for (const B of built) for (const d of B.pins) tryHit(d.name, B, 'pin', d);
+      for (const B of built) for (const z of B.zones) for (const n of z.match) tryHit(n, B, 'zone', z);
+      if (best) {
+        const { B, kind, o } = best;
+        o.here = true; if (kind !== 'pin') o.seen = true;
+        here = { kind, key: o.key, name: kind === 'zone' ? o.label : o.name }; hereB = B;
+      }
+    }
   }
 
   const ORDER = { ne: 0, nw: 0, n: 1, s: 1, e: 1, w: 1, se: 2, sw: 2 };

@@ -107,7 +107,7 @@ const TER_USE = {
 // 이름은 지도 구역 이름이자 발견 기록의 꼬리표다("은빛 목재 (서 숲 초입)") — 방향 글자로 시작해 어느 쪽 것인지 기록만 봐도 안다.
 const BANDS = {
   n: ['북 산기슭', '북 산허리', '북 능선 너머'],   // 지역 이름(칼날 능선)을 띠 이름에 쓰지 않는다 — 통지가 "칼날 능선에서 … 찾은 곳은 「북 산기슭」"이라 헷갈린다
-  w: ['서 숲 초입', '서 깊은 숲', '서 숲 끝자락'],
+  w: ['서 숲 초입', '서 깊은 숲', '서 숲 끝'],   // 세로로 긴 띠는 폭이 좁다 — 이름표가 잘리지 않게 다섯 자 안으로
   s: ['남 가도 변', '남 마른 벌판', '남 평원 끝'],
   e: ['동 강기슭', '동 강줄기', '동 강 건너'],
 };
@@ -3148,9 +3148,9 @@ S.messenger = {
 const MAP_DIRS = [
   // [키, 방향 이름(탐사 방향·옛 기록의 꼬리표), 분류, 색, 띠 셋의 자리 { x, y, w, h } — 가까운 곳 · 중간 · 경계]
   ['n', '북 산맥', '산맥', '#8a8f98', [{ x: 24, y: 24, w: 52, h: 11 }, { x: 24, y: 12, w: 52, h: 12 }, { x: 24, y: 0, w: 52, h: 12 }]],
-  ['w', '서 숲', '숲', '#5f7a3a', [{ x: 22, y: 37, w: 11, h: 50 }, { x: 11, y: 37, w: 11, h: 50 }, { x: 0, y: 37, w: 11, h: 50 }]],
-  ['s', '남 평원', '평원', '#a08f6a', [{ x: 34, y: 71, w: 62, h: 9 }, { x: 34, y: 80, w: 62, h: 10 }, { x: 34, y: 90, w: 62, h: 10 }]],
-  ['e', '동 강가', '강', '#4f7f9a', [{ x: 63, y: 37, w: 12, h: 31 }, { x: 75, y: 37, w: 12, h: 31 }, { x: 87, y: 37, w: 13, h: 31 }]],
+  ['w', '서 숲', '숲', '#5f7a3a', [{ x: 26, y: 37, w: 13, h: 50 }, { x: 13, y: 37, w: 13, h: 50 }, { x: 0, y: 37, w: 13, h: 50 }]],
+  ['s', '남 평원', '평원', '#a08f6a', [{ x: 40, y: 71, w: 56, h: 9 }, { x: 40, y: 80, w: 56, h: 10 }, { x: 40, y: 90, w: 56, h: 10 }]],
+  ['e', '동 강가', '강', '#4f7f9a', [{ x: 64, y: 37, w: 12, h: 31 }, { x: 76, y: 37, w: 12, h: 31 }, { x: 88, y: 37, w: 12, h: 31 }]],
 ];
 const BAND_DEPTH = ['가까운 곳 — 척후가 먼저 훑는 자리다.', '안쪽 — 가까운 곳을 훑은 뒤에야 닿는다.', '영지의 끝 — 그 너머는 남의 땅이다.'];
 // 띠가 걷히는 조건 — 그 띠에 속한 자리가 하나라도 나왔다 (자리 순서가 고정이라 개수로 안다)
@@ -3167,17 +3167,18 @@ S.map = {
     known: bandKnown(k, b),
     // 꼬리표를 글자까지 못 옮긴 기록도 받는다 — 방향 글자 없는 이름("숲 초입")은 그 띠가, 방향만("서 숲")·지역 이름("속삭이는 숲")·옛 꼴("· 서")은 가까운 띠가.
     // 장소 적기가 꺼져 있어 "자리를 못 찾은 곳"으로 빠지면 플레이어가 패널에서 고칠 길이 없다
-    match: [BANDS[k][b].slice(2), ...(b === 0 ? [dir, EXPLORE.find(([d]) => d === dir)[2], `· ${dir.slice(0, 1)}`] : [])],
+    match: [BANDS[k][b].slice(2), ...(b === 0 ? [dir, `${dir.slice(0, 1)}쪽 ${dir.slice(2)}`, EXPLORE.find(([d]) => d === dir)[2], `· ${dir.slice(0, 1)}`] : [])],
   }))),
   places: [
-    { name: '베리디아 성채', x: 50, y: 54, cat: '성채', known: true, alias: ['성채', '베리디아'], to: 'town',
+    { name: '베리디아 성채', x: 50, y: 54, cat: '성채', known: true, alias: ['성채', '성문', '베리디아'], to: 'town',
       desc: '영지 한가운데, 반석 언덕 위의 저택과 그 아래 마을. 네 방향이 다 여기서 보인다.' },
   ],
   exits: [
-    { label: '북 산길 · 모르웬령 5일', dir: 'n', to: 'realm' },
-    { label: '동 강길 · 리아나령 4일', dir: 'e', to: 'realm' },
-    { label: '남 가도 · 발레리우스령 3일', dir: 's', to: 'realm' },
-    { label: '서 숲길 · 실바나령 6일', dir: 'w', to: 'realm' },
+    // 이름은 짧게, 동·서는 띠 위쪽 빈 모서리에 — 캡처로 보니 긴 이름표가 띠의 핀을 덮었다 (2026-11-15)
+    { label: '모르웬령 5일', dir: 'n', to: 'realm' },
+    { label: '리아나령 4일', dir: 'e', at: 31, to: 'realm' },
+    { label: '발레리우스령 3일', dir: 's', to: 'realm' },
+    { label: '실바나령 6일', dir: 'w', at: 31, to: 'realm' },
   ],
   sheets: [
     {
@@ -3191,13 +3192,14 @@ S.map = {
         { label: '강 나루', x: 88, y: 6, w: 11, h: 88, desc: '동쪽 강기슭의 진흙 둔치 — 시장·창고·길드·주점 자리. 바깥 상인이 배를 대는 곳이 될 땅.' },
       ],
       places: [
-        { name: '영주 저택', x: 54, y: 36, cat: '성채', alias: ['저택', '집무실', '영주 집무실'], desc: '돌로 지은 삼층. 뼈대는 멀쩡하고 속은 털렸다. 이층 집무실 벽에 영지 지도가 붙어 있다.' },
+        { name: '영주 저택', x: 54, y: 36, cat: '성채', alias: ['저택', '집무실', '빛바랜 언덕', '대욕탕', '대욕실'],   // 실제 세이브에서 보조가 적어 온 말들 (위치가 자유 글이라 품은 이름으로 잡힌다)
+          desc: '돌로 지은 삼층. 뼈대는 멀쩡하고 속은 털렸다. 이층 집무실 벽에 영지 지도가 붙어 있다.' },
         { name: '병영', x: 37, y: 44, cat: '성채', desc: '돌 병영 — 꽉 채우면 마흔.' },
         { name: '연병장', x: 44, y: 54, cat: '성채', desc: '병영 앞 훈련 마당.' },
         { name: '예배당', x: 17, y: 20, desc: '마을 위 낮은 언덕. 광휘회의 분원이 있던 자리다.' },
         { name: '마을', x: 62, y: 68, alias: ['베리디아 마을'], desc: '언덕 남동쪽 기슭의 오두막들.' },
         { name: '마을 우물', x: 50, y: 73, alias: ['우물'], desc: '마을 사람들이 물을 긷던 자리.' },
-        { name: '대장간', x: 80, y: 40, desc: '연기 골의 대장간 터.' },
+        { name: '대장간', x: 80, y: 47, desc: '연기 골의 대장간 터.' },
       ],
       exits: [{ label: '영지 전도', dir: 's', to: 'main' }],
     },
@@ -3208,7 +3210,7 @@ S.map = {
         { name: '왕도', sub: '알라릭 여왕', x: 50, y: 9, alias: ['수도'], desc: '여왕의 자리 — 큰길로 14일. 베리디아와 공식으로 닿는 곳은 왕실 세무서와 메이드 학원 둘뿐이다.' },
         { name: '모르웬 백작령', sub: '회색 변경 · 북', x: 50, y: 40, alias: ['회색 변경', '모르웬령'], desc: '북방 방어선 — 산길로 5일. 변경은 영지를 그 땅이 치운 몬스터로 잰다.' },
         { name: '우리 영지', sub: '베리디아 남작령', x: 50, y: 66, cat: '성채', to: 'main', desc: '버려진 방패 — 왕국 남쪽 끝의 완충지. 북은 산, 서는 숲, 남은 평원, 동은 강.' },
-        { name: '리아나 백작령', sub: '푸른 해안 · 동', x: 84, y: 64, alias: ['푸른 해안', '리아나령'], desc: '무역로 — 강을 따라 4일, 길로는 7일. 배는 부두가 있는 곳에만 선다.' },
+        { name: '리아나 백작령', sub: '푸른 해안 · 동', x: 84, y: 58, alias: ['푸른 해안', '리아나령'], desc: '무역로 — 강을 따라 4일, 길로는 7일. 배는 부두가 있는 곳에만 선다.' },
         { name: '발레리우스 백작령', sub: '옛 제국령 · 남', x: 50, y: 88, alias: ['발레리우스령'], desc: '포장된 제국 가도로 3일 — 가장 가깝고, 이 땅에서 무언가 나기 시작하면 가장 먼저 안다.' },
         { name: '실바나 후작령', sub: '고원 · 서', x: 13, y: 58, alias: ['실바나 고원', '실바나령'], desc: '6일 — 길은 속삭이는 숲을 지나는 하나뿐이다. 흔한 물건에는 관심이 없다.' },
       ],
@@ -3238,9 +3240,10 @@ const MAP_ZONE_NAMES = MAP_SHEETS_ALL.flatMap((sh) => (sh.zones || []).map((z) =
 const MAP_LOC_NAMES = MAP_SHEETS_ALL.flatMap((sh) => (sh.places || []).filter((p) => p.to !== 'main').map((p) => p.name));
 {
   const at = S.vars.findIndex((x) => x.id === 'location');
-  S.vars[at].desc = 'Where the scene is right now, in a few words. When it is one of the mapped places, write that exact name so the map follows: '
-    + MAP_LOC_NAMES.join(', ') + '. Out in the country, use the stretch it is in: ' + Object.values(BANDS).flat().join(', ')
-    + '. Anywhere else, a short name of your own.';
+  // 지도는 값이 품은 이름으로 지금 여기를 찾는다(SimCore v1.26.2 — 자유 글 위치) — 그래서 "지도 이름으로 시작하고 방은 그 뒤에"만 일러 주면 된다
+  S.vars[at].desc = 'Where the scene is right now, in a few words. When it is at a mapped place, start with that place\'s name and add the room or spot after it '
+    + '("영주 저택 집무실", "마을 공터") so the map follows: ' + MAP_LOC_NAMES.join(', ') + '. Out in the country, name the stretch it is in: '
+    + Object.values(BANDS).flat().join(', ') + '. Anywhere else, a short name of your own.';
   // 발자취 — 지도가 들른 곳을 적는다 (엔진 정산). 보조 계약표(allow)에 없다. 칸은 장소+구역 수보다 넉넉히
   S.vars.splice(at + 1, 0, { id: 'visited', label: '발자취', type: 'list', init: [], maxItems: MAP_PLACE_NAMES.length + MAP_ZONE_NAMES.length + 6, itemMaxLength: 30,
     desc: '시스템 전용 — 지도가 들른 곳을 적는다.' });
@@ -3276,7 +3279,14 @@ if (!v.ok) process.exit(1);
     ['왕도', 'realm:왕도'], ['회색 변경', 'realm:모르웬 백작령'], ['서 숲 초입', 'main:서 숲 초입'], ['서 숲', 'main:서 숲 초입'], ['성채', 'main:베리디아 성채'],
     ['숲 속 어딘가의 빈터', 'main:지도 밖']];
   ok('위치 → 장 (이름·별칭·구역 · 지도에 없는 글은 첫 장에 "지도 밖")', follow.every(([loc, want]) => sheetOf(loc) === want), follow.map(([loc]) => sheetOf(loc)).join(' | '));
+  // 실제 세이브에서 보조가 적어 온 위치 값들 (2026-11-15, 스냅샷 41개) — 방 단위로 적는다
+  const real = [['영주 저택 집무실', 'town:영주 저택'], ['마을 공터', 'town:마을'], ['저택 2층 집무실', 'town:영주 저택'], ['속삭이는 숲 옛 취수구', 'main:서 숲 초입'],
+    ['영주 저택 대욕실', 'town:영주 저택'], ['베리디아 성채', 'main:베리디아 성채'], ['빛바랜 언덕 집무실', 'town:영주 저택'], ['저택 대욕탕', 'town:영주 저택'], ['저택 집무실', 'town:영주 저택'],
+    ['서쪽 숲 취수구', 'main:서 숲 초입'], ['서쪽 숲 옛 도랑길', 'main:서 숲 초입'], ['서쪽 숲 초입', 'main:서 숲 초입'], ['속삭이는 숲', 'main:서 숲 초입'], ['1층 대욕탕', 'town:영주 저택'],
+    ['저택 1층 대욕탕', 'town:영주 저택'], ['베리디아 마을 입구', 'town:마을'], ['성문 앞 공터', 'main:베리디아 성채']];
+  ok('★ 실제 세이브의 위치 값 열일곱 가지가 전부 지도에 잡힌다 (방까지 적어도)', real.every(([loc, want]) => sheetOf(loc) === want), real.filter(([loc, want]) => sheetOf(loc) !== want).map(([loc]) => `${loc}→${sheetOf(loc)}`).join(' | ') || '전부');
   const locDesc = S.vars.find((x) => x.id === 'location').desc;
+  ok('위치 설명이 방까지 적어도 된다고 일러 준다 (지도 이름으로 시작)', /영주 저택 집무실/.test(locDesc), '');
   ok('위치 설명이 지도의 장소 이름과 띠 이름을 다 일러 준다', [...MAP_LOC_NAMES, ...Object.values(BANDS).flat()].every((n) => locDesc.includes(n)), `${locDesc.length}자`);
   ok('★ 위치 설명에 "우리 영지"가 없다 — 그렇게 적으면 영지 안 장면인데 왕국 전도가 뜬다 (검토 중요 1)', !locDesc.includes('우리 영지') && MAP_PLACE_NAMES.includes('우리 영지'), '');
   ok('지도의 모든 이름이 위치 칸(24자)에 들어간다', [...MAP_PLACE_NAMES, ...MAP_ZONE_NAMES].every((n) => n.length <= 24), '');

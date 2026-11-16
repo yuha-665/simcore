@@ -8439,6 +8439,7 @@
         "label": "성채와 마을",
         "fog": false,
         "ratio": 1,
+        "bg": "map_town",
         "note": "깨끗한 것은 바람 위·물 위에, 더러운 것은 바람 아래·물 아래에 — 바람은 북서에서 남동으로, 물은 서에서 동으로 흐른다.",
         "zones": [
           {
@@ -8556,6 +8557,7 @@
         "label": "왕국 전도",
         "fog": false,
         "ratio": 1.5,
+        "bg": "map_realm",
         "note": "거리는 베리디아에서 걸리는 날수다. 편지도 그만큼 걸린다.",
         "places": [
           {
@@ -8623,6 +8625,6 @@
         ]
       }
     ],
-    "css": "\n.scg-card.scm-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a; font-family:'Noto Serif KR','Nanum Myeongjo',serif; }\n.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }\n.scg-title .scg-x { color:#4a2c2a; }\n.scm-frame { border:2px solid #4a2c2a; border-radius:3px; box-shadow:0 3px 10px rgba(74,44,42,.35); }\n.scm-zone { background:rgba(255,250,238,.05); border-color:rgba(74,44,42,.32); border-radius:4px; }\n.scm-zone.scm-fog { background:repeating-linear-gradient(45deg,rgba(74,60,48,.58) 0 7px,rgba(74,60,48,.42) 7px 14px); }\n.scm-zone.scm-fog .scm-zl { color:rgba(240,229,209,.85); }\n.scm-name { background:rgba(240,229,209,.94); border-color:#bda27e; color:#3d352a; border-radius:2px; }\n.scm-exit { background:#4a2c2a; border-color:#2c1a19; color:#f0e5d1; border-radius:2px; }\n.scm-sbtn, .scm-fbtn { border-color:#bda27e; background:#f0e5d1; color:#3d352a; }\n.scm-sbtn.scm-on, .scm-fbtn.scm-on { background:#4a2c2a; border-color:#4a2c2a; color:#f0e5d1; }\n.scm-dt-go { background:#4a2c2a; border-color:#4a2c2a; color:#f0e5d1; border-radius:3px; }\n.scm-note, .scm-count { color:#6b5744; }"
+    "css": "\n.scg-card.scm-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a; font-family:'Noto Serif KR','Nanum Myeongjo',serif; }\n.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }\n.scg-title .scg-x { color:#4a2c2a; }\n.scm-frame { border:2px solid #4a2c2a; border-radius:3px; box-shadow:0 3px 10px rgba(74,44,42,.35); }\n.scm-zone { background:rgba(255,250,238,.05); border-color:rgba(74,44,42,.32); border-radius:4px; }\n.scm-zone.scm-fog { background:repeating-linear-gradient(45deg,rgba(74,60,48,.30) 0 6px,rgba(74,60,48,.14) 6px 16px); border-color:rgba(74,44,42,.28); }\n.scm-zone.scm-fog .scm-zl { color:rgba(255,248,232,.9); text-shadow:0 1px 3px rgba(40,26,20,.85); }\n.scm-name { background:rgba(240,229,209,.94); border-color:#bda27e; color:#3d352a; border-radius:2px; }\n.scm-exit { background:#4a2c2a; border-color:#2c1a19; color:#f0e5d1; border-radius:2px; }\n.scm-sbtn, .scm-fbtn { border-color:#bda27e; background:#f0e5d1; color:#3d352a; }\n.scm-sbtn.scm-on, .scm-fbtn.scm-on { background:#4a2c2a; border-color:#4a2c2a; color:#f0e5d1; }\n.scm-dt-go { background:#4a2c2a; border-color:#4a2c2a; color:#f0e5d1; border-radius:3px; }\n.scm-note, .scm-count { color:#6b5744; }"
   }
 }

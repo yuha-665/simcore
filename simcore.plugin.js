@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.26.2
-//@display-name SimCore (시뮬 엔진) v1.26.2 🗺️ 지도 여러 장 — 문을 누르면 다음 지도 (목록 여러 개 · 자유 글 위치)
+//@version 1.26.3
+//@display-name SimCore (시뮬 엔진) v1.26.3 🗺️ 지도 여러 장 — 문을 누르면 다음 지도 (목록 여러 개 · 자유 글 위치)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,16 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.26.3 ───────────────────────────────────────────────
+// 베리디아 지도를 리수 앱에서 처음 돌려 보고 나온 둘 (2026-11-16, 유저 화면).
+// - **문 너머에 가 봤으면 그 문도 가 본 곳.** 위치가 "마을"(성채와 마을 장)인데 첫 장의 "베리디아 성채"(그 장으로 가는 문)가 "성채 ?" · 장소 0/1로 떴다 —
+//   위치는 늘 안쪽 장의 이름으로 잡히니 문 자신은 발자취에 영영 안 적힌다. 이제 `to`가 달린 장소는 그 장에 실제 발자취(지금 여기·발자취 목록)가 있으면 가 본 곳으로 그린다.
+//   좁게: 이미 아는(known) 장소만 — 숨긴 문은 그대로 숨는다 · 문 너머가 첫 장이면 안 건다(누구나 첫 장에서 시작한다) · 찾아낸 곳만 적힌 장은 가 본 것이 아니다 ·
+//   문으로 올린 것이 그 문이 있는 장의 그림 가림을 풀지 않는다 · 발자취 목록(seenVar)에는 안 적는다(그릴 때 따진다 — `has(visited, …)` 식은 그대로).
+// - **분류 단추는 그 장에 보이는 분류만** (장이 여럿일 때). 성채와 마을·왕국 전도에서 "산맥"·"강"을 누르면 전부 흐려지기만 했다. 걷힌 구역·보이는 장소·찾아낸 곳이 쓰는 분류만 단추가 되고,
+//   하나도 없으면 단추 줄이 없다. 다른 장에서 고른 분류는 이 장에 없으면 "전체"로 보인다. 장이 하나인 옛 지도는 그대로(황금본).
+// - 테스트: `테스트/test-map-sheets.js` ⑪.
 //
 // ── v1.26.2 ───────────────────────────────────────────────
 // **자유 글 위치는 품은 이름으로도 "지금 여기"를 찾는다.** 베리디아 지도를 넣고 유저의 실제 세이브를 대 보니(2026-11-15, 스냅샷 41개) 보조는 위치를
@@ -6765,6 +6775,20 @@ function mapView(schema, state, makeLookup, opts = {}) {
     }
   }
 
+  // 발 디딘 장 — 실제 발자취(지금 여기 · 발자취 목록)만. 아래 '문' 규칙이 seen을 올리기 전에 잰다 (문으로 올린 seen이 장의 그림 가림을 풀지 않게)
+  const foot0 = new Map(built.map((B) => [B, hereB === B || B.places.some((p) => p.seen) || B.zones.some((z) => z.seen || z.here)]));
+  // 문 너머에 가 봤으면 그 문도 가 본 곳 (v1.26.3). 실기(베리디아): 위치가 '마을'(성채와 마을 장)인데 첫 장의 '베리디아 성채'(그 장으로 가는 문)가
+  // "성채 ?" · 장소 0/1로 떴다 — 위치는 늘 안쪽 장의 이름으로 잡히니 문 자신은 영영 발자취에 안 적힌다.
+  // 좁게 건다: 이미 아는(known) 장소만 · 문 너머가 첫 장이 아닐 때만 · 그 장에 실제 발자취가 있을 때만.
+  // 숨긴 문(비밀 입구)은 그대로 숨고, 첫 장으로 돌아가는 문은 '첫 장에 있었다'로 열리지 않는다(누구나 첫 장에서 시작한다). 발자취 목록에는 안 적는다 — 그릴 때 따진다
+  if (built.length > 1) {
+    for (const B of built) for (const p of B.places) {
+      if (p.seen || !p.known || !p.to) continue;
+      const T = built.find((x) => x.sh.id === p.to.id);
+      if (T && !T.sh.main && foot0.get(T)) p.seen = true;
+    }
+  }
+
   const ORDER = { ne: 0, nw: 0, n: 1, s: 1, e: 1, w: 1, se: 2, sw: 2 };
   for (const B of built) {
     const { zones, places, pins, fog, sh } = B;
@@ -6793,7 +6817,7 @@ function mapView(schema, state, makeLookup, opts = {}) {
     }
     // 발 디딘 장인가 — 장 띠와 안 가 본 장의 그림 가림이 본다
     // footed = 실제로 발 디딘 장(발자취·지금 여기) — 그림 가림은 이것만 푼다. 찾아낸 곳(보조나 플레이어가 적은 것)까지 치면 적기만으로 안 가 본 장의 그림이 열린다
-    B.footed = hereB === B || places.some((p) => p.state === 'seen') || zones.some((z) => z.seen || z.here);
+    B.footed = foot0.get(B);
     B.stepped = B.footed || pins.length > 0;
   }
 
@@ -7140,7 +7164,11 @@ function detailOf(view, key) {
  */
 function renderMapHtml(view, ui = {}, opts = {}) {
   if (!view) return '';
-  const cat = ui.cat && view.cats.some((c) => c.label === ui.cat) ? ui.cat : null;
+  // 분류 단추 — 장이 여럿이면 이 장에 보이는 분류만 (v1.26.3). 실기(베리디아): 성채와 마을·왕국 전도에서 '산맥'·'강'을 누르면 전부 흐려지기만 했다.
+  // 걷힌 구역 · 보이는 장소 · 찾아낸 곳이 쓰는 분류만 — 아직 안 보이는 것의 분류는 단추도 없다. 장이 하나인 옛 지도는 그대로(제작자가 적은 대로)
+  const usedCats = new Set([...view.zones.filter((z) => z.open).map((z) => z.cat), ...view.places.filter((p) => p.state !== 'hidden').map((p) => p.cat), ...view.pins.map((d) => d.cat)]);
+  const cats = view.multi ? view.cats.filter((c) => usedCats.has(c.label)) : view.cats;
+  const cat = ui.cat && cats.some((c) => c.label === ui.cat) ? ui.cat : null;
   const dim = (c) => (cat && c !== cat ? ' scm-dim' : '');
   const color = (c) => { const ok = safeColor(c); return ok ? `--scm-c:${ok};` : ''; };
   const sel = ui.sel || null;
@@ -7153,10 +7181,10 @@ function renderMapHtml(view, ui = {}, opts = {}) {
     if (view.peek) h.push('<button type="button" class="scm-sbtn scm-back" data-scm-sheet="">📍 내 위치로</button>');
     h.push('</div>');
   }
-  if (view.cats.length) {
+  if (cats.length) {
     h.push('<div class="scm-filters" role="toolbar" aria-label="분류">');
     h.push(`<button type="button" class="scm-fbtn${cat ? '' : ' scm-on'}" data-scm-cat="">전체</button>`);
-    for (const c of view.cats) {
+    for (const c of cats) {
       h.push(`<button type="button" class="scm-fbtn${cat === c.label ? ' scm-on' : ''}" data-scm-cat="${esc(c.label)}" style="${color(c.color)}"><i class="scm-sw"></i>${esc(c.label)}</button>`);
     }
     h.push('</div>');

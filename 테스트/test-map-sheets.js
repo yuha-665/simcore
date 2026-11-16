@@ -732,6 +732,44 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
     ck('규격서 — 자유 글 위치 줄', src.includes('품은 이름'), '');
   }
 
+  console.log('── ⑪ 문 너머에 가 봤으면 그 문도 가 본 곳 · 그 장에 없는 분류 단추 (v1.26.3)');
+  {
+    // 실기(베리디아): 위치가 '마을'(성채와 마을 장)인데 첫 장의 '베리디아 성채'(그 장으로 가는 문)가 "성채 ?" · 장소 0/1로 떴다
+    const DF = clone(TWO); DF.map.fog = true;
+    const stOf = (vars, opts) => { const v = view(DF, vars, { sheet: 'main', ...opts }); return v.places.find((p) => p.name === '어소').state; };
+    ck('★ 문 너머 장에 서 있으면 그 문(장소)은 가 본 곳', stOf({ location: '수문' }) === 'seen', stOf({ location: '수문' }));
+    ck('★ 문 너머 장에 발자취가 있으면 떠난 뒤에도', stOf({ location: '기온', visited: ['망루 밑'] }) === 'seen', stOf({ location: '기온', visited: ['망루 밑'] }));
+    ck('안 가 봤으면 그대로 아는 곳(?)', stOf({ location: '기온' }) === 'known', stOf({ location: '기온' }));
+    ck('찾아낸 곳만 적힌 장은 가 본 것이 아니다 (적기만으로 문이 열리지 않는다)', stOf({ location: '기온', finds: ['물길 (북쪽 수로)'] }) === 'known', stOf({ location: '기온', finds: ['물길 (북쪽 수로)'] }));
+    const h0 = MAP.renderMapHtml(view(DF, { location: '수문' }, { sheet: 'main' }), {}, {});
+    ck('★ 화면 — 이름표에 ?가 안 붙고 장소 1 / 3', !h0.includes('어소 ?') && h0.includes('장소 1 / 3'), (h0.match(/장소 \d+ \/ \d+/) || [''])[0] + (h0.includes('어소 ?') ? ' · 어소 ?' : ''));
+    // 문이 이어진 장 — 수로의 수문에서 더 깊은 곳으로
+    const D3 = clone(DF); D3.vars[0].enum.push('제단');
+    D3.map.sheets[0].places[0].to = 'deep';
+    D3.map.sheets.push({ id: 'deep', label: '깊은 곳', fog: true, places: [{ name: '제단', x: 50, y: 50 }] });
+    D3.map.sheets[0].places[1].to = 'deep';   // 망루 밑(known) — 깊은 곳으로 가는 아는 문
+    const v3 = (sheet, vars) => MAP.mapView(D3, st(D3, { location: '제단', ...vars }), engine.makeLookup, { sheet });
+    const s3 = (sheet, name, vars) => v3(sheet, vars).places.find((p) => p.name === name).state;
+    ck('★ 문이 이어진 장 — 아는 문은 가 본 곳, 숨긴 문(수문)은 그대로 숨는다', s3('under', '망루 밑') === 'seen' && s3('under', '수문') === 'hidden', [s3('under', '망루 밑'), s3('under', '수문')].join(' '));
+    ck('★ 지나온 장에 발자취가 없으면 그 앞 문은 그대로 (문으로 올린 것이 번지지 않는다) · 그 장의 그림 가림도 안 풀린다', s3('main', '어소') === 'known' && v3('under').veiled === true, [s3('main', '어소'), v3('under').veiled].join(' '));
+    ck('지나온 발자취가 있으면 앞 문도 가 본 곳', s3('main', '어소', { visited: ['수문'] }) === 'seen', s3('main', '어소', { visited: ['수문'] }));
+    const BK = clone(DF); BK.map.sheets[0].places[1].to = 'main';   // 망루 밑(known) — 첫 장으로 돌아가는 문
+    const vb = MAP.mapView(BK, st(BK, { location: '기온' }), engine.makeLookup, { sheet: 'under' });
+    ck('★ 첫 장으로 돌아가는 문은 첫 장에 있었다고 열리지 않는다', vb.places.find((p) => p.name === '망루 밑').state === 'known' && vb.veiled === true, [vb.places.find((p) => p.name === '망루 밑').state, vb.veiled].join(' '));
+    const t3 = st(D3, { location: '제단' }); MAP.recordVisit(D3, t3, engine.makeLookup);
+    ck('발자취 목록에는 선 곳만 적힌다 (문은 그릴 때 따진다)', J(t3.vars.visited) === J(['제단']), J(t3.vars.visited));
+    // 분류 단추 — 장이 여럿이면 그 장에 보이는 분류만
+    const chips = (html) => (html.match(/data-scm-cat="[^"]*"/g) || []).map((x) => x.slice(14, -1)).join(',');
+    const hm = MAP.renderMapHtml(view(TWO, { location: '어소' }, { sheet: 'main' }), {}, {});
+    const hu = MAP.renderMapHtml(view(TWO, { location: '어소' }, { sheet: 'under' }), { cat: '권력' }, {});
+    ck('★ 분류가 있는 장에는 단추가 그대로', chips(hm) === ',권력,유흥', chips(hm));
+    ck('★ 그 장에 분류가 하나도 없으면 단추 줄이 없다 · 다른 장에서 고른 분류로 흐려지지 않는다', !hu.includes('scm-filters') && !hu.includes('scm-dim'), chips(hu) + (hu.includes('scm-dim') ? ' · 흐려짐' : ''));
+    const hf = MAP.renderMapHtml(view(DF, { location: '수문' }, { sheet: 'main' }), {}, {});
+    ck('안 보이는 장소뿐인 분류는 단추가 없다 (안개 — 유흥은 아직 모른다)', chips(hf) === ',권력', chips(hf));
+    const B1 = clone(BASE); B1.map.categories.push({ label: '빈 분류' });
+    ck('장이 하나인 옛 지도는 단추가 그대로 (황금본)', chips(MAP.renderMapHtml(view(B1, { location: '어소' }), {}, {})) === ',권력,유흥,빈 분류', chips(MAP.renderMapHtml(view(B1, { location: '어소' }), {}, {})));
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })().catch((e) => { console.log('FAIL 테스트 본문이 던짐 →', e && e.stack || e); console.log('\n0 passed, 1 failed'); process.exit(1); });

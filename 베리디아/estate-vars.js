@@ -3182,7 +3182,7 @@ S.map = {
   ],
   sheets: [
     {
-      id: 'town', label: '성채와 마을', fog: false, ratio: 1,
+      id: 'town', label: '성채와 마을', fog: false, ratio: 1, bg: 'map_town',   // 그림은 아직 없다 — 카드 추가 에셋에 이 이름으로 넣으면 깔린다(없으면 민무늬)
       note: '깨끗한 것은 바람 위·물 위에, 더러운 것은 바람 아래·물 아래에 — 바람은 북서에서 남동으로, 물은 서에서 동으로 흐른다.',
       zones: [
         { label: '성채 언덕', x: 30, y: 26, w: 42, h: 36, cat: '성채', desc: '반석 위의 가운데 언덕. 큰물이 닿지 않고 몰래 다가오기 어렵다 — 행정·방어·금고.' },
@@ -3204,7 +3204,7 @@ S.map = {
       exits: [{ label: '영지 전도', dir: 's', to: 'main' }],
     },
     {
-      id: 'realm', label: '왕국 전도', fog: false, ratio: 1.5,
+      id: 'realm', label: '왕국 전도', fog: false, ratio: 1.5, bg: 'map_realm',
       note: '거리는 베리디아에서 걸리는 날수다. 편지도 그만큼 걸린다.',
       places: [
         { name: '왕도', sub: '알라릭 여왕', x: 50, y: 9, alias: ['수도'], desc: '여왕의 자리 — 큰길로 14일. 베리디아와 공식으로 닿는 곳은 왕실 세무서와 메이드 학원 둘뿐이다.' },
@@ -3216,15 +3216,15 @@ S.map = {
       ],
     },
   ],
-  // 달력·청원함과 같은 장부 팔레트. 열린 구역은 그림이 비치게 거의 투명, 안개는 짙게
+  // 달력·청원함과 같은 장부 팔레트. 열린 구역은 그림이 비치게 거의 투명. 안개는 옅게 — 앱에서 보니 빗금 띠 열두 개가 그림을 거의 다 덮었다 (2026-11-16)
   css: `
 .scg-card.scm-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a; font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
 .scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }
 .scg-title .scg-x { color:#4a2c2a; }
 .scm-frame { border:2px solid #4a2c2a; border-radius:3px; box-shadow:0 3px 10px rgba(74,44,42,.35); }
 .scm-zone { background:rgba(255,250,238,.05); border-color:rgba(74,44,42,.32); border-radius:4px; }
-.scm-zone.scm-fog { background:repeating-linear-gradient(45deg,rgba(74,60,48,.58) 0 7px,rgba(74,60,48,.42) 7px 14px); }
-.scm-zone.scm-fog .scm-zl { color:rgba(240,229,209,.85); }
+.scm-zone.scm-fog { background:repeating-linear-gradient(45deg,rgba(74,60,48,.30) 0 6px,rgba(74,60,48,.14) 6px 16px); border-color:rgba(74,44,42,.28); }
+.scm-zone.scm-fog .scm-zl { color:rgba(255,248,232,.9); text-shadow:0 1px 3px rgba(40,26,20,.85); }
 .scm-name { background:rgba(240,229,209,.94); border-color:#bda27e; color:#3d352a; border-radius:2px; }
 .scm-exit { background:#4a2c2a; border-color:#2c1a19; color:#f0e5d1; border-radius:2px; }
 .scm-sbtn, .scm-fbtn { border-color:#bda27e; background:#f0e5d1; color:#3d352a; }
@@ -3333,6 +3333,13 @@ if (!v.ok) process.exit(1);
     ok('보조 지침이 이름 길이를 일러 준다 (칸을 넘으면 꼬리표가 잘려 자리를 못 찾는다)', /20 characters/.test(S.updater.guide), '');
   }
   ok('핀이 꽂힌 띠는 개수 변수가 없어도 걷힌다 (옛 세이브)', zone(w, '서 숲 초입').open && zone(w, '북 산기슭').open && !zone(w, '서 깊은 숲').open, '');
+  // 앱에서 본 것 (2026-11-16): 위치가 '베리디아 마을 입구'인데 첫 장의 성채가 "성채 ?" · 장소 0/1 — 문 너머에 가 봤으면 그 문도 가 본 곳 (SimCore v1.26.3)
+  const inTown = mv({ location: '베리디아 마을 입구' }, { sheet: 'main' });
+  const hTown = MAPM.renderMapHtml(inTown, {}, {});
+  ok('★ 마을에 있으면 첫 장의 성채는 가 본 곳이다 ("성채 ?"가 아니다 · 장소 1 / 1)', inTown.places[0].state === 'seen' && !hTown.includes('베리디아 성채 ?') && hTown.includes('장소 1 / 1'), inTown.places[0].state);
+  const chipsOf = (id, vars = {}) => (MAPM.renderMapHtml(mv({ location: '베리디아 마을 입구', ...vars }, { sheet: id }), {}, {}).match(/data-scm-cat="[^"]+"/g) || []).map((x) => x.slice(14, -1)).join(',');
+  ok('★ 분류 단추는 그 장에 보이는 것만 — 새 판 첫 장은 성채뿐, 띠가 걷히면 늘고, 왕국 전도엔 강·산맥이 없다', chipsOf('main') === '성채' && chipsOf('main', { res_w: 1, ter_n: 1 }).includes('숲') && !/산맥|강|숲|평원/.test(chipsOf('realm')),
+    [chipsOf('main'), chipsOf('main', { res_w: 1, ter_n: 1 }), chipsOf('town'), chipsOf('realm')].join(' | '));
   ok('장소 적기는 꺼져 있다 — 두 목록은 [탐사] 통지로만 찬다', w.canAdd === false && !MAPM.renderMapHtml(w, { sel: w.pins[0].key }, {}).includes('data-scm-act'), '');
 
   // 발자취 — 영주가 직접 간 띠는 발견이 없어도 남는다

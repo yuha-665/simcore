@@ -2921,7 +2921,7 @@ const CSS = `
 .sce .sce-board-section-copy { margin-top:4px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
 .sce .sce-board-section-body, .sce .sce-board-stack { display:grid; gap:10px; min-width:0; }
 .sce .sce-board-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-.sce .sce-board-field { display:grid; grid-template-rows:auto 40px minmax(30px,auto); gap:4px; min-width:0; }
+.sce .sce-board-field { display:grid; grid-template-rows:auto minmax(40px,auto) minmax(30px,auto); gap:4px; min-width:0; }
 .sce .sce-board-field.is-wide { grid-column:1 / -1; }
 .sce .sce-board-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
 .sce .sce-board-field > small { min-height:30px; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
@@ -12138,9 +12138,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             if (next.length) M.moreLists = next; else delete M.moreLists;
             rerender();
           };
-          return field('함께 읽을 목록', h('div', { style: 'display:flex;flex-wrap:wrap;gap:4px 12px' },
-            ...cand.map((x) => tag(bindCheck(on.has(x.id), (yes) => flip(x.id, yes), `${x.label ?? x.id} (${x.id})`), 'more-list'))),
-            '이 목록들의 "이름 (구역)" 항목도 핀으로 꽂혀요(최대 8개). 읽기만 해요 — 플레이어가 적고 고치는 곳은 위의 찾아낸 곳 목록 하나예요.');
+          // 두 칸 폭 + div (v1.26.4): 목록 변수가 많으면 체크 칸이 여러 줄이라 반 칸·40px 줄에 안 들어갔다(아래 설명·토글을 덮었다 — 제보).
+          // label로 감싸면 제목·설명 글을 누를 때 첫 체크 칸이 뒤집힌다(label 안의 첫 조작 요소가 눌린다) — 체크 칸 여럿을 한 label에 넣지 않는다.
+          return h('div', { class: 'sce-board-field is-wide' },
+            h('span', {}, '함께 읽을 목록'),
+            h('div', { style: 'display:flex;flex-wrap:wrap;gap:4px 12px' },
+              ...cand.map((x) => tag(bindCheck(on.has(x.id), (yes) => flip(x.id, yes), `${x.label ?? x.id} (${x.id})`), 'more-list'))),
+            h('small', {}, '이 목록들의 "이름 (구역)" 항목도 핀으로 꽂혀요(최대 8개). 읽기만 해요 — 플레이어가 적고 고치는 곳은 위의 찾아낸 곳 목록 하나예요.'));
         })(),
         h('div', { class: 'sce-board-toggle' },
           h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '안개 — 가 본 만큼 채워지는 지도'),

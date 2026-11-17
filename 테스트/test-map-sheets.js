@@ -556,6 +556,17 @@ const view = (schema, vars, opts) => MAP.mapView(schema, st(schema, vars), engin
       const ty = open(s2);
       ty.set(ty.tagged('list-var')[0], 'ores');
       ck('★ 찾아낸 곳으로 고른 목록도 빠진다', ty.last().map.listVar === 'ores' && !('moreLists' in ty.last().map), J([ty.last().map.listVar, ty.last().map.moreLists]));
+      // v1.26.4 — 제보(2026-11-17): 목록 변수가 많은 봇은 체크 칸이 여러 줄이 되는데 칸 줄이 40px 고정이라 아래 설명·토글을 덮었다.
+      // 같은 칸이 label이라 설명 글을 누르면 첫 체크 칸이 뒤집혔다(브라우저 실측 — label 안의 첫 조작 요소가 눌린다).
+      {
+        const tw = open(ML);
+        let f = tw.tagged('more-list')[0];
+        while (f && !String(f.className).split(' ').includes('sce-board-field')) f = f.parentNode;
+        ck('★ 함께 읽을 목록 칸 — 두 칸 폭(is-wide)이고 label로 감싸지 않는다', !!f && String(f.className).split(' ').includes('is-wide') && f.tagName !== 'LABEL', f ? `${f.tagName} ${f.className}` : '칸 없음');
+        ck('★ 번호 섹션 칸의 조작 줄은 고정 40px이 아니다 — 내용이 길면 줄이 자란다',
+          !src.includes('.sce .sce-board-field { display:grid; grid-template-rows:auto 40px')
+          && src.includes('.sce .sce-board-field { display:grid; grid-template-rows:auto minmax(40px,auto) minmax(30px,auto);'), '');
+      }
       ck('규격서 — moreLists 줄', src.includes('- `moreLists`: ['), '');
     }
     ck('규격서 — 장·문·적기 줄', src.includes('**지도 여러 장**') && src.includes('`addPlace: true`'), '');

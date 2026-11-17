@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.26.3
-//@display-name SimCore (시뮬 엔진) v1.26.3 🗺️ 지도 여러 장 — 문을 누르면 다음 지도 (목록 여러 개 · 자유 글 위치)
+//@version 1.26.4
+//@display-name SimCore (시뮬 엔진) v1.26.4 🗺️ 지도 여러 장 — 문을 누르면 다음 지도 (목록 여러 개 · 자유 글 위치)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기 · 비워 두면 지난 설정
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림) · 비워 두면 지난 설정
 //@link https://github.com/yuha-665/simcore-release SimCore 배포처
@@ -12,6 +12,16 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 // ⚠ 리수는 파일의 **모든 줄**에서 `//@`로 시작하는 줄을 머리말로 읽는다 — 본문(코어 포함)에 줄머리 `//@`를 두지 말 것 (test-bundle이 잡는다).
+//
+// ── v1.26.4 ───────────────────────────────────────────────
+// 공지 뒤 첫 제보(2026-11-17): 편집기 [지도] 탭 "02 위치와 채워지는 지도"에서 목록 부분이 아래 칸과 겹친다.
+// - 원인: 번호 섹션 칸(`.sce-board-field`)의 조작 줄이 **40px 고정**이었다. 함께 읽을 목록(v1.26.1)은 목록 변수마다 체크 칸이 하나라
+//   목록이 많은 봇은 여러 줄이 되는데, 줄이 안 자라 넘친 만큼 아래 설명·안개 토글·[장소 적기] 토글을 덮었다
+//   (Edge 실측, 목록 17개 봇: 넓은 화면 156px · 좁은 화면 190px 넘침).
+// - 고침: 조작 줄을 `minmax(40px,auto)`로(입력·선택 칸은 그대로 40px, 긴 내용만 자란다) + 함께 읽을 목록은 두 칸 폭으로.
+// - 같이 고침: 그 칸이 label이라 **제목·설명 글을 누르면 첫 체크 칸이 뒤집혔다**(브라우저는 label 안의 첫 조작 요소를 누른다).
+//   체크 칸 여럿을 한 label에 넣지 않는다 — div로.
+// - 엔진·스키마·세이브는 그대로. 테스트: `테스트/test-map-sheets.js`(함께 읽을 목록 칸).
 //
 // ── v1.26.3 ───────────────────────────────────────────────
 // 베리디아 지도를 리수 앱에서 처음 돌려 보고 나온 둘 (2026-11-16, 유저 화면).
@@ -19515,7 +19525,7 @@ const CSS = `
 .sce .sce-board-section-copy { margin-top:4px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
 .sce .sce-board-section-body, .sce .sce-board-stack { display:grid; gap:10px; min-width:0; }
 .sce .sce-board-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-.sce .sce-board-field { display:grid; grid-template-rows:auto 40px minmax(30px,auto); gap:4px; min-width:0; }
+.sce .sce-board-field { display:grid; grid-template-rows:auto minmax(40px,auto) minmax(30px,auto); gap:4px; min-width:0; }
 .sce .sce-board-field.is-wide { grid-column:1 / -1; }
 .sce .sce-board-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
 .sce .sce-board-field > small { min-height:30px; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
@@ -28732,9 +28742,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             if (next.length) M.moreLists = next; else delete M.moreLists;
             rerender();
           };
-          return field('함께 읽을 목록', h('div', { style: 'display:flex;flex-wrap:wrap;gap:4px 12px' },
-            ...cand.map((x) => tag(bindCheck(on.has(x.id), (yes) => flip(x.id, yes), `${x.label ?? x.id} (${x.id})`), 'more-list'))),
-            '이 목록들의 "이름 (구역)" 항목도 핀으로 꽂혀요(최대 8개). 읽기만 해요 — 플레이어가 적고 고치는 곳은 위의 찾아낸 곳 목록 하나예요.');
+          // 두 칸 폭 + div (v1.26.4): 목록 변수가 많으면 체크 칸이 여러 줄이라 반 칸·40px 줄에 안 들어갔다(아래 설명·토글을 덮었다 — 제보).
+          // label로 감싸면 제목·설명 글을 누를 때 첫 체크 칸이 뒤집힌다(label 안의 첫 조작 요소가 눌린다) — 체크 칸 여럿을 한 label에 넣지 않는다.
+          return h('div', { class: 'sce-board-field is-wide' },
+            h('span', {}, '함께 읽을 목록'),
+            h('div', { style: 'display:flex;flex-wrap:wrap;gap:4px 12px' },
+              ...cand.map((x) => tag(bindCheck(on.has(x.id), (yes) => flip(x.id, yes), `${x.label ?? x.id} (${x.id})`), 'more-list'))),
+            h('small', {}, '이 목록들의 "이름 (구역)" 항목도 핀으로 꽂혀요(최대 8개). 읽기만 해요 — 플레이어가 적고 고치는 곳은 위의 찾아낸 곳 목록 하나예요.'));
         })(),
         h('div', { class: 'sce-board-toggle' },
           h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '안개 — 가 본 만큼 채워지는 지도'),

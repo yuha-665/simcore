@@ -2437,8 +2437,10 @@ const S = {
       check: 'chk_drill',
       effects: [{ set: 'food', expr: 'max(0, food - 30)' }],
       inject: 'The Baron calls a muster and drills the able-bodied — 30 food goes to the training tables.' },
+    // 방향이 없으면 잠근다 (2026-11-21 유저 실기) — 진척(pushFx)은 지금 훑는 방향에만 붙으니, "없음"에서 누르면
+    //   식량 20만 쓰고 진척은 어디에도 안 쌓였다(실패면 사기·보건까지 깎였다).
     { id: 'act_survey', label: '🧭 집중 답사', mode: 'oneshot', cooldown: 12,
-      when: 'scout_men >= 3',
+      when: 'scout_men >= 3 and explore_dir != "없음"',
       check: 'chk_survey',
       effects: [{ set: 'food', expr: 'max(0, food - 20)' }],
       inject: 'The Baron sends the scouts on a hard push into the current survey direction, provisioned with 20 food.' },
@@ -3872,6 +3874,13 @@ for (const t of S.party.tabs) {
   const sp2 = engine.sendPhase(S, t2, { rng: seededRng('p4', 2, 's') });
   ok('답사 진척은 현 방향(남)에만', sp2.state.vars.ext_s > 40 && sp2.state.vars.ext_n === 40,
     `남 지형 40→${sp2.state.vars.ext_s} · 북 지형 40→${sp2.state.vars.ext_n}`);
+  // 방향이 없으면 잠긴다 — 식량 20만 쓰고 진척은 어디에도 안 쌓이던 것 (2026-11-21)
+  const t3 = engine.initState(S); t3.meta.setupDone = true; t3.vars.labor_policy = '개척 우선'; t3.vars.explore_dir = '없음';
+  const tg3 = engine.toggleAction(S, t3, 'act_survey');
+  const t4 = engine.initState(S); t4.meta.setupDone = true; t4.vars.labor_policy = '개척 우선'; t4.vars.explore_dir = '서 숲';
+  const tg4 = engine.toggleAction(S, t4, 'act_survey');
+  ok('탐사 방향이 없으면 🧭 집중 답사가 잠긴다 · 방향이 있으면 눌린다', !tg3.armed && tg3.blocked && tg4.armed,
+    `없음: ${tg3.armed ? '눌림' : '잠김 (' + tg3.blocked + ')'} · 서 숲: ${tg4.armed ? '눌림' : '잠김 (' + tg4.blocked + ')'}`);
 }
 
 // ── 공사 큐 검증 (P4-2) — 등록 → 추적 → 완공일 정리 → 통지 합류 ──

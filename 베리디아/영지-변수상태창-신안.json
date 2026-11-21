@@ -7021,7 +7021,7 @@
       "label": "🧭 집중 답사",
       "mode": "oneshot",
       "cooldown": 12,
-      "when": "scout_men >= 3",
+      "when": "scout_men >= 3 and explore_dir != \"없음\"",
       "check": "chk_survey",
       "effects": [
         {

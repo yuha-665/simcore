@@ -707,8 +707,8 @@ const S = {
     //   자리 순서는 고정이다(옛 판의 시작점 굴림 o_*는 폐지) — 판마다 다른 건 서사가 짓는 이름이다.
     { id: 'explore_dir', label: '탐사 방향', type: 'enum', cmd: '탐사',
       enum: ['없음', '북 산맥', '서 숲', '남 평원', '동 강가'], init: '없음',
-      desc: 'Where the scouts are currently working. Set it when the narration sends them somewhere; '
-        + '"없음" means they are kept home.' },
+      desc: 'Where the survey party is working (see SCOUTS). A standing order stays set through nights at home; '
+        + '"없음" means no search is under way.' },
     // 종류별 진척 게이지 + 그 턴에 나온 것 — 시스템 전용. 보조 계약표(allow)에 없다
     ...EXPLORE.flatMap(([dir, v]) => {
       const k = v.slice(4), d = dir.slice(0, 1);
@@ -2627,10 +2627,18 @@ const S = {
       + 'heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word '
       + 'carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. '
       + 'One domain hearing something does not inform the others.\n'
-      + 'SCOUTS: set explore_dir when the narration sends the scouts somewhere, "없음" when they are pulled back. '
-      + 'A dispatch is STANDING: the scouts stay out working that ground day after day until recalled — the Baron '
-      + 'himself coming home does not recall them. But if the scene clearly ends with EVERYONE back and nobody left '
-      + 'working the ground, that IS a recall — set "없음". '
+      // 철수 기준 (2026-11-21 유저 실기) — 08-19 "전원 복귀로 끝나면 철수"가 당일치기 탐사를 매일 저녁 끊었다.
+      //   진척은 날이 넘어갈 때만 쌓이는데(span) 그 장면은 늘 마을에서 자는 밤이라 닷새 숲을 돌아도 하루치만 쌓였고,
+      //   "오늘도 탐사하러 간다"(남작이 동행)는 척후 파견으로 안 읽혀 다시 켜지지도 않았다. 이제 상시 명령은 밤 귀가로 안 끊기고,
+      //   하루짜리 나들이만 전원 복귀가 철수다 — 08-19 사고(하루 원정 뒤 진척이 계속 오름)는 이쪽이 막는다.
+      + 'SCOUTS: explore_dir is where the survey party is working — the scouts, or anyone the Baron sends to search a '
+      + 'direction (companions leading workers count, and so does the Baron going along himself). Set it the moment the '
+      + 'narration sends them out, and again whenever they go back out ("exploring again today"). How it ends depends on '
+      + 'the order. A STANDING order — meant for more than today ("for now", "every day", "from now on", "focus on the '
+      + 'forest") — stays set while the party searches by day and sleeps at home by night: coming home for the night is '
+      + 'NOT a recall. Set "없음" only when the Baron calls the search off, puts the party to other work for days, or '
+      + 'sends them elsewhere (then set that direction instead). A ONE-DAY outing ("let\'s look around today") ends when '
+      + 'the scene ends with everyone back and no plan to go out again — set "없음". '
       + 'The system tracks how much ground is covered and announces WHEN something is found and of what kind — '
       + 'it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn, '
       + 'with ONE exception — a LEAD: when the Baron himself in the narration lays eyes on something real and specific '

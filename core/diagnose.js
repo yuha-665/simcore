@@ -1228,6 +1228,18 @@ function diagnose(schema, opts = {}) {
           + '시작값 근처에 머뭅니다 — **여는 조건을 낮추지 마세요.**', null);
         continue;
       }
+      // 보조 AI·유저가 세우는 플래그(enum·bool)에 막힌 버튼 (v1.26.5) — 이벤트의 '설정 의존'과 같은 판정이다.
+      //   위 aiGated는 숫자 문턱만 본다. 베리디아 🧭 집중 답사(`explore_dir != "없음"`)는 탐사 방향을 보조가 서사를 보고 정해서
+      //   AI 없는 시뮬에선 늘 "없음"인데 🔴 못 쓰는 액션으로 나왔다. 아무도 못 바꾸는 플래그면 아래로 흘려 그대로 🔴.
+      const gateA = gatedBySetting(a.when, schema, writers, moved, null, polStates, deadOnlyVars);
+      if (gateA && (gateA.byPlayer || gateA.byAI)) {
+        stats.settingGatedActs = (stats.settingGatedActs ?? 0) + 1;
+        add('low', '설정 의존', `'${a.label ?? a.id}'는 ${gateA.label}이(가) ${JSON.stringify(gateA.init)}인 동안 안 열립니다`
+          + (gateA.byPlayer ? ' (다른 설정에서는 열립니다 — 정상)'
+            : ' — 이 값은 보조 AI가 서사를 보고 세웁니다. 시뮬레이션에는 AI가 없어 영영 시작값인 것이고, 결함이 아닙니다 — '
+              + '**여는 조건을 낮추지 마세요.**'), null);
+        continue;
+      }
       // 안 뜬 이벤트만이 세우는 값에 막힌 버튼 (v1.13.4) — 이벤트 쪽의 연쇄와 같다: 원인은 그 이벤트 하나
       //   (베리디아 💔 혼약 파기: 혼례일은 청혼을 받아들여야 선다 — 청혼이 안 뜬 판에선 🔴 못 쓰는 액션으로)
       const bDeadA = bnVar(b, (id) => deadOnlyVars.has(id));

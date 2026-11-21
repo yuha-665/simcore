@@ -299,6 +299,26 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
     return f && f.tag === '못 쓰는 액션' && f.sev === 'high';
   })(), '');
 
+  // 보조 AI가 세우는 플래그(enum)에 막힌 버튼 (v1.26.5 — 베리디아 🧭 집중 답사 `explore_dir != "없음"`이 🔴로 나왔다)
+  {
+    const s4 = cp(TEMPLATES.survival.schema);
+    s4.vars.push({ id: 'trek_dir', label: '원정 방향', type: 'enum', enum: ['없음', '북'], init: '없음' });
+    s4.updater = s4.updater || {};
+    s4.updater.allow = [...(s4.updater.allow || []), { id: 'trek_dir' }];
+    s4.actions.push({ id: 'push', label: '🧭 강행', mode: 'oneshot', when: 'trek_dir != "없음"',
+      inject: 'x', effects: [{ set: 'hope', expr: 'hope' }] });
+    const r4 = diagnose(s4, { turns: 30, runs: 4 });
+    const f4 = r4.findings.find((x) => /강행/.test(x.text));
+    ck('★ 보조 AI가 세우는 플래그에 막힌 버튼은 🔴이 아니라 🔵 설정 의존', f4 && f4.tag === '설정 의존' && f4.sev === 'low',
+      f4 ? `${f4.tag}/${f4.sev}: ${f4.text}` : '언급 없음');
+    const s5 = cp(s4);
+    s5.updater.allow = s5.updater.allow.filter((x) => x.id !== 'trek_dir');
+    const r5 = diagnose(s5, { turns: 30, runs: 4 });
+    const f5 = r5.findings.find((x) => /강행/.test(x.text));
+    ck('아무도 못 바꾸는 플래그에 막힌 버튼은 여전히 🔴', f5 && f5.tag === '못 쓰는 액션' && f5.sev === 'high',
+      f5 ? `${f5.tag}/${f5.sev}: ${f5.text}` : '언급 없음');
+  }
+
   ck('소스에 긴 판 확인이 실제로 들어감',
     src.includes('const longTurns = turns * 2;') && src.includes('onlyLonger'), '');
   ck('긴 판 확인은 미발동 항목이 있을 때만 돈다 (평소엔 공짜)',
